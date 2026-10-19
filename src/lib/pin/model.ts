@@ -1,0 +1,568 @@
+/*
+ * Pinch: tag a batch of screenshots with what works and what
+ * doesn't, on a dot, an area or an arrow, and export it all for an agent. Everything
+ * here is pure: the browser keeps the images (IndexedDB) and draws the
+ * crops; this file decides the data, the crop rectangles, file names and the
+ * text an agent reads.
+ */
+
+export type Dot = { kind: 'dot'; x: number; y: number };
+/** x, y is the top-left corner; all four are fractions of the image (0–1). */
+export type Area = { kind: 'area'; x: number; y: number; w: number; h: number };
+/**
+ * A pointer from one spot to another: x, y is the tail (where the number
+ * sits), x2, y2 the head. For "move this there", "align this with that".
+ */
+export type Arrow = { kind: 'arrow'; x: number; y: number; x2: number; y2: number };
+export type Shape = Dot | Area | Arrow;
+
+export type MarkOrigin = 'user' | 'ai';
+
+/** An AI suggestion for an empty note, shown as grey text the user accepts with Tab. */
+export type Suggestion = {
+  works: string;
+  doesNotWork: string;
+  /** A short name for the spot, two to five words: "revenue headline". Optional. */
+  label?: string;
+  /** The shape it was written for (`shapeKey`); a moved or resized note gets a new one. */
+  shape: string;
+};
+
+export type Mark = {
+  id: string;
+  shape: Shape;
+  /** A short name for the spot: "one number, huge". Optional. */
+  label: string;
+  /** What works here, and why. */
+  good: string;
+  /** What doesn't, and why. */
+  bad: string;
+  /** Placed by the user, or by the AI from the asset's note. */
+  origin: MarkOrigin;
+  /** For an AI mark: the words of the note it came from. */
+  quote?: string;
+  /** For an AI mark: whether the user has checked where it landed. */
+  confirmed?: boolean;
+  suggestion?: Suggestion;
+  /** The suggestion text accepted into each field, so the export can say which words were the AI's. */
+  accepted?: { good?: string; bad?: string };
+};
+
+/** Whose design an image is. */
+export type SourceKind = 'ours' | 'competitor' | 'other' | 'concept';
+
+export const SOURCES: { kind: SourceKind; label: string; hint: string }[] = [
+  { kind: 'ours', label: 'Ours', hint: 'Our own product' },
+  { kind: 'competitor', label: 'Competitor', hint: 'A product in our space' },
+  {
+    kind: 'other',
+    label: 'Other product',
+    hint: 'A real product outside our space',
+  },
+  {
+    kind: 'concept',
+    label: 'Concept',
+    hint: 'A mockup or concept, never shipped',
+  },
+];
+
+export const sourceLabel = (kind: SourceKind) =>
+  SOURCES.find((s) => s.kind === kind)?.label ?? kind;
+
+export type Source = {
+  kind: SourceKind;
+  /** The product or maker: "Linear", "Stripe Dashboard". Optional. */
+  by: string;
+  /** Where it came from. Optional. */
+  link: string;
+};
+
+export type Asset = {
+  id: string;
+  name: string;
+  type: string;
+  width: number;
+  height: number;
+  /** Free text about the whole image; the AI can turn it into marks. */
+  note: string;
+  /** The note as it was when the AI last placed it, so an unchanged note isn't placed twice. */
+  locatedNote?: string;
+  /** Parts of the note the AI found no place for (about the whole image). */
+  unplaced?: string[];
+  /** Whose design it is. Unset until the user picks one. */
+  source?: Source;
+  marks: Mark[];
+};
+
+export type Verdict = 'good' | 'bad' | 'both' | 'empty';
+
+export const verdictOf = (m: Pick<Mark, 'good' | 'bad'>): Verdict => {
+  const good = m.good.trim();
+  const bad = m.bad.trim();
+  return good && bad ? 'both' : good ? 'good' : bad ? 'bad' : 'empty';
+};
+
+export const hasNotes = (a: Asset) =>
+  a.note.trim().length > 0 || a.marks.some((m) => verdictOf(m) !== 'empty');
+
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+/** An area from two corners in any order, kept inside the image. */
+export function areaFrom(x0: number, y0: number, x1: number, y1: number): Area {
+  const [l, r] = [clamp01(Math.min(x0, x1)), clamp01(Math.max(x0, x1))];
+  const [t, b] = [clamp01(Math.min(y0, y1)), clamp01(Math.max(y0, y1))];
+  return { kind: 'area', x: l, y: t, w: r - l, h: b - t };
+}
+
+/** A drag smaller than this (in fractions of the image) is a click: a dot. */
+export const isTinyArea = (a: Area) => a.w < 0.012 || a.h < 0.012;
+
+/** An arrow from tail to head, both ends kept inside the image. */
+export function arrowFrom(x0: number, y0: number, x1: number, y1: number): Arrow {
+  return { kind: 'arrow', x: clamp01(x0), y: clamp01(y0), x2: clamp01(x1), y2: clamp01(y1) };
+}
+
+/** An arrow shorter than this (in fractions of the image) is a slip of the hand, not an arrow. */
+export const isTinyArrow = (a: Arrow) => Math.hypot(a.x2 - a.x, a.y2 - a.y) < 0.02;
+
+/** The arrow moved by dx, dy, both ends kept inside the image so it keeps its length. */
+export function moveArrow(a: Arrow, dx: number, dy: number): Arrow {
+  const ddx = Math.max(-Math.min(a.x, a.x2), Math.min(1 - Math.max(a.x, a.x2), dx));
+  const ddy = Math.max(-Math.min(a.y, a.y2), Math.min(1 - Math.max(a.y, a.y2), dy));
+  return { kind: 'arrow', x: a.x + ddx, y: a.y + ddy, x2: a.x2 + ddx, y2: a.y2 + ddy };
+}
+
+/** A shape as a short key, so a suggestion knows whether its note has since moved. */
+export const shapeKey = (s: Shape) =>
+  s.kind === 'arrow'
+    ? `arrow:${[s.x, s.y, s.x2, s.y2].map((n) => n.toFixed(3)).join(',')}`
+    : (s.kind === 'dot' ? [s.x, s.y] : [s.x, s.y, s.w, s.h]).map((n) => n.toFixed(3)).join(',');
+
+/** The note's suggestion, if it was written for where the note is now. */
+export const currentSuggestion = (m: Mark) =>
+  m.suggestion && m.suggestion.shape === shapeKey(m.shape) ? m.suggestion : undefined;
+
+/** Whether an empty note still needs a suggestion. */
+export const needsSuggestion = (m: Mark) => verdictOf(m) === 'empty' && !currentSuggestion(m);
+
+/** How a field's text relates to the AI suggestion accepted into it. */
+export type SuggestionUse = 'as-is' | 'edited';
+export function suggestionUse(m: Mark, field: 'good' | 'bad'): SuggestionUse | undefined {
+  const accepted = m.accepted?.[field]?.trim();
+  const text = m[field].trim();
+  if (!accepted || !text) return undefined;
+  return text === accepted ? 'as-is' : 'edited';
+}
+
+/** Where a mark sits: a dot's position, an area's centre, the middle of an arrow. */
+export const centreOf = (s: Shape) =>
+  s.kind === 'dot'
+    ? { x: s.x, y: s.y }
+    : s.kind === 'arrow'
+      ? { x: (s.x + s.x2) / 2, y: (s.y + s.y2) / 2 }
+      : { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+
+export type Rect = { x: number; y: number; w: number; h: number };
+
+/**
+ * The part of the image to crop for a mark, in pixels. An area gets a margin
+ * so its edges show; a dot gets a square around it, big enough to see what
+ * it sits on; an arrow gets both its ends with a wide margin, so what each
+ * end points at shows. Either way the crop stays inside the image.
+ */
+export function cropRect(shape: Shape, width: number, height: number): Rect {
+  const fit = (cx: number, cy: number, w: number, h: number): Rect => {
+    const cw = Math.min(width, Math.round(w));
+    const ch = Math.min(height, Math.round(h));
+    const x = Math.min(width - cw, Math.max(0, Math.round(cx - cw / 2)));
+    const y = Math.min(height - ch, Math.max(0, Math.round(cy - ch / 2)));
+    return { x, y, w: cw, h: ch };
+  };
+  if (shape.kind === 'dot') {
+    const side = Math.min(640, Math.max(200, Math.round(Math.min(width, height) * 0.24)));
+    return fit(shape.x * width, shape.y * height, side, side);
+  }
+  if (shape.kind === 'arrow') {
+    const w = Math.abs(shape.x2 - shape.x) * width;
+    const h = Math.abs(shape.y2 - shape.y) * height;
+    const pad = Math.max(48, Math.round(Math.max(w, h) * 0.2));
+    return fit(
+      ((shape.x + shape.x2) / 2) * width,
+      ((shape.y + shape.y2) / 2) * height,
+      Math.max(200, w + pad * 2),
+      Math.max(200, h + pad * 2),
+    );
+  }
+  const w = shape.w * width;
+  const h = shape.h * height;
+  const pad = Math.max(16, Math.round(Math.max(w, h) * 0.08));
+  return fit(
+    (shape.x + shape.w / 2) * width,
+    (shape.y + shape.h / 2) * height,
+    Math.max(96, w + pad * 2),
+    Math.max(96, h + pad * 2),
+  );
+}
+
+/**
+ * An image's luminance sampled in cells of `cell` pixels, row by row:
+ * `luma[r * cols + c]` is 0–255 for the cell at column c, row r.
+ */
+export type LumaGrid = {
+  width: number;
+  height: number;
+  cell: number;
+  cols: number;
+  rows: number;
+  luma: ArrayLike<number>;
+};
+
+/** A cell with an edge in it (text, a border, an icon): its luminance differs from its neighbour's. */
+const EDGE = 24;
+/**
+ * A line is quiet when at most this share of its cells (and at least one) are
+ * busy: a panel edge crossing it doesn't count, the cap tops of a short
+ * heading on a wide crop do.
+ */
+const QUIET_SHARE = 0.02;
+
+/**
+ * Move a crop's edges outward until each sits on a quiet band of the image
+ * (a row or column with no edges in it), so the crop never cuts through text
+ * or a control. Each edge grows by at most `grow` of the crop's size and
+ * stays inside the image; an edge that finds no quiet band stays where it
+ * was. After Scrawl's autocrop, which moves crop edges into white space.
+ */
+export function settleCrop(rect: Rect, grid: LumaGrid, grow = 0.4): Rect {
+  const { cell, cols, rows, luma } = grid;
+  if (cols < 2 || rows < 2 || cell <= 0) return rect;
+  const at = (c: number, r: number) => luma[r * cols + c];
+  const busy = (c: number, r: number) => {
+    const l = at(c, r);
+    const right = c + 1 < cols ? at(c + 1, r) : at(c - 1, r);
+    const below = r + 1 < rows ? at(c, r + 1) : at(c, r - 1);
+    return Math.abs(l - right) >= EDGE || Math.abs(l - below) >= EDGE;
+  };
+  const countBusy = (line: number, from: number, to: number, column: boolean) => {
+    let n = 0;
+    for (let i = from; i < to; i++) if (column ? busy(line, i) : busy(i, line)) n++;
+    return n;
+  };
+  // A line (column or row) is quiet when few of its cells across the span are busy.
+  const quiet = (line: number, from: number, to: number, column: boolean, size: number) => {
+    if (line < 0 || line >= size) return true;
+    const span = Math.max(1, to - from);
+    return countBusy(line, from, to, column) <= Math.max(1, Math.floor(span * QUIET_SHARE));
+  };
+  /**
+   * One edge. `pos` is the boundary (the first line inside for a low edge,
+   * one past the last for a high one), `dir` -1 for a low edge and +1 for a
+   * high one. `gap` quiet lines must sit just inside a clean boundary, so
+   * nothing straddles it and the crop keeps a little space at that edge.
+   */
+  const settle = (
+    pos: number,
+    dir: -1 | 1,
+    limit: number,
+    size: number,
+    gap: number,
+    isQuiet: (line: number) => boolean,
+  ) => {
+    const clean = (b: number) => {
+      for (let k = 0; k < gap; k++) if (!isQuiet(dir < 0 ? b + k : b - 1 - k)) return false;
+      return true;
+    };
+    if (clean(pos)) return pos;
+    for (let d = 1; d <= limit; d++) {
+      const o = pos + dir * d;
+      if (o < 0) return 0;
+      if (o > size) return size;
+      if (clean(o)) return o;
+    }
+    return pos;
+  };
+
+  let c0 = Math.floor(rect.x / cell);
+  let c1 = Math.ceil((rect.x + rect.w) / cell);
+  let r0 = Math.floor(rect.y / cell);
+  let r1 = Math.ceil((rect.y + rect.h) / cell);
+  const limitX = Math.round((grow * rect.w) / cell);
+  const limitY = Math.round((grow * rect.h) / cell);
+  const gapX = Math.max(1, Math.round(8 / cell));
+  const gapY = Math.max(1, Math.round(4 / cell));
+
+  const colQuiet = (c: number) => quiet(c, Math.max(0, r0), Math.min(rows, r1), true, cols);
+  c0 = settle(c0, -1, limitX, cols, gapX, colQuiet);
+  c1 = settle(c1, 1, limitX, cols, gapX, colQuiet);
+  const rowQuiet = (r: number) => quiet(r, Math.max(0, c0), Math.min(cols, c1), false, rows);
+  r0 = settle(r0, -1, limitY, rows, gapY, rowQuiet);
+  r1 = settle(r1, 1, limitY, rows, gapY, rowQuiet);
+
+  const x = Math.max(0, c0 * cell);
+  const y = Math.max(0, r0 * cell);
+  const right = Math.min(grid.width, c1 * cell);
+  const bottom = Math.min(grid.height, r1 * cell);
+  // Never smaller than where it started.
+  return {
+    x: Math.min(x, rect.x),
+    y: Math.min(y, rect.y),
+    w: Math.max(right, rect.x + rect.w) - Math.min(x, rect.x),
+    h: Math.max(bottom, rect.y + rect.h) - Math.min(y, rect.y),
+  };
+}
+
+/** The shape in pixels, for the export. */
+export function shapePixels(shape: Shape, width: number, height: number) {
+  if (shape.kind === 'dot')
+    return { x: Math.round(shape.x * width), y: Math.round(shape.y * height) };
+  if (shape.kind === 'arrow')
+    return {
+      x: Math.round(shape.x * width),
+      y: Math.round(shape.y * height),
+      x2: Math.round(shape.x2 * width),
+      y2: Math.round(shape.y2 * height),
+    };
+  return {
+    x: Math.round(shape.x * width),
+    y: Math.round(shape.y * height),
+    w: Math.round(shape.w * width),
+    h: Math.round(shape.h * height),
+  };
+}
+
+/** A file-safe name from what the user called the image: "Pricing page (v2).png" → "pricing-page-v2". */
+export function slug(name: string): string {
+  const base = name
+    .replace(/\.[a-z0-9]{2,5}$/i, '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return base || 'image';
+}
+
+export const extensionOf = (type: string) =>
+  ({
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  })[type] ?? 'png';
+
+/** The files one asset contributes to the export, named by its place in the batch. */
+export function assetFiles(asset: Asset, index: number, total: number) {
+  const n = String(index + 1).padStart(total > 99 ? 3 : 2, '0');
+  const stem = `${n}-${slug(asset.name)}`;
+  return {
+    number: n,
+    image: `images/${stem}.${extensionOf(asset.type)}`,
+    marked: `marked/${stem}.jpg`,
+    crop: (markIndex: number) => `crops/${stem}-note-${markIndex + 1}.png`,
+  };
+}
+
+/** Files at the root of the export, next to README.md and notes.json. */
+export const SHEET_FILE = 'contact-sheet.jpg';
+export const GUIDE_FILE = 'AGENTS.md';
+
+/** The assets an export carries: those with something written on them. */
+export const exportable = (assets: Asset[]) => assets.filter(hasNotes);
+
+/** The crop an image's note ended up with, in pixels of the original image. */
+export type CropOf = (asset: Asset, mark: Mark) => Rect;
+const plainCrop: CropOf = (a, m) => cropRect(m.shape, a.width, a.height);
+
+/** How an agent should read the export: the same words in the README and in AGENTS.md. */
+const HOW_TO_USE = [
+  `Start with \`${SHEET_FILE}\`: one look at the whole batch. Every image is on it with its notes drawn in, numbered 01, 02, … in the order below.`,
+  'For each note, read its crop in `crops/` first. Open the marked copy in `marked/` when you need to see where the spot sits on the screen, and the original in `images/` only when the crop lacks detail. Each image costs context; the crop is usually enough.',
+  "The notes say what the author saw and why. Don't ask the author to explain again what a note already says; when one is unclear, look closer at its crop and the marked copy first.",
+  'Refer to notes by number, "02.3" for the third note on image 02, so the author can find them.',
+  'A note marked "placed by AI from the note, not checked" sits where an AI put it from the author\'s free text: the words are the author\'s, the position is unconfirmed.',
+  'An arrow points from its tail (where its number sits) to its head. The note is about the two spots and how they relate: "move this there", "align this with that", "this should point to that". Read the tail as "this" and the head as "that".',
+];
+
+const FILES = [
+  `\`${SHEET_FILE}\`: every image's marked copy on one sheet, each with its number.`,
+  '`images/`: each image as it was added. `marked/`: the same image with every note drawn on it: a numbered ring on a dot, a numbered box around an area, a numbered arrow from its tail to its head. `crops/`: a close-up of each note, its marker drawn in, widened to whole lines and controls so nothing is cut through.',
+  'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head.',
+  "Marker colours: green means what works, red what doesn't, amber both.",
+  '"What works" and "What doesn\'t" are the author\'s words.',
+  'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
+  "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Never copy an outside design; take its principle.",
+  `\`notes.json\` has all of this as data. \`${GUIDE_FILE}\` repeats how to use this, for an agent that opens the folder.`,
+];
+
+/** AGENTS.md at the root of the export: the reading rules, for an agent that lands in the folder. */
+export function agentGuide(): string {
+  return `${[
+    '# Pinch export',
+    '',
+    "This folder is a batch of screenshots a designer tagged in Pinch: on each, dots, areas and arrows with a note on what works and what doesn't. `README.md` lists every image and note; read it before the images.",
+    '',
+    '## How to use this',
+    '',
+    ...HOW_TO_USE.map((l) => `- ${l}`),
+    '',
+    '## Files',
+    '',
+    ...FILES.map((l) => `- ${l}`),
+  ].join('\n')}\n`;
+}
+
+const percent = (n: number) => `${(n * 100).toFixed(1)}%`;
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+function describeShape(shape: Shape, width: number, height: number) {
+  const px = shapePixels(shape, width, height);
+  if (shape.kind === 'dot') {
+    return `dot at x ${percent(shape.x)}, y ${percent(shape.y)} (pixel ${px.x}, ${px.y})`;
+  }
+  if (shape.kind === 'arrow') {
+    const l = px as { x: number; y: number; x2: number; y2: number };
+    return `arrow from x ${percent(shape.x)}, y ${percent(shape.y)} to x ${percent(shape.x2)}, y ${percent(shape.y2)} (pixels ${l.x},${l.y} to ${l.x2},${l.y2})`;
+  }
+  const a = px as { x: number; y: number; w: number; h: number };
+  return `area from x ${percent(shape.x)}–${percent(shape.x + shape.w)}, y ${percent(shape.y)}–${percent(shape.y + shape.h)} (pixels ${a.x},${a.y} to ${a.x + a.w},${a.y + a.h})`;
+}
+
+const originText = (m: Mark) =>
+  m.origin === 'user'
+    ? ''
+    : m.confirmed
+      ? ' · placed by AI from the note, checked by the user'
+      : ' · placed by AI from the note, not checked';
+
+function sourceData(s: Source) {
+  return {
+    kind: s.kind,
+    label: sourceLabel(s.kind),
+    ...(s.by.trim() ? { madeBy: s.by.trim() } : {}),
+    ...(s.link.trim() ? { link: s.link.trim() } : {}),
+  };
+}
+
+function suggestedData(m: Mark) {
+  const works = suggestionUse(m, 'good');
+  const doesNotWork = suggestionUse(m, 'bad');
+  if (!works && !doesNotWork) return {};
+  return {
+    aiSuggested: {
+      ...(works ? { works } : {}),
+      ...(doesNotWork ? { doesNotWork } : {}),
+    },
+  };
+}
+
+const suggestedText = (m: Mark, field: 'good' | 'bad') => {
+  const use = suggestionUse(m, field);
+  return use === 'as-is'
+    ? ' (AI suggestion, accepted as is)'
+    : use === 'edited'
+      ? ' (AI suggestion, edited by the author)'
+      : '';
+};
+
+/** One line naming whose design an image is. */
+export function sourceLine(s: Source) {
+  const parts = [`Source: ${sourceLabel(s.kind)}`];
+  if (s.by.trim()) parts.push(`made by ${oneLine(s.by)}`);
+  if (s.link.trim()) parts.push(`<${s.link.trim()}>`);
+  return parts.join(' · ');
+}
+
+/** The structured export: everything the README says, as data. */
+export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = plainCrop) {
+  const list = exportable(assets);
+  return {
+    tool: 'Pinch',
+    version: 2,
+    exportedAt,
+    coordinates:
+      'Fractions of the image: x from the left edge, y from the top, 0 to 1. Pixels are of the original image in images/.',
+    contactSheet: SHEET_FILE,
+    guide: GUIDE_FILE,
+    assets: list.map((a, i) => {
+      const files = assetFiles(a, i, list.length);
+      return {
+        number: files.number,
+        name: a.name,
+        image: files.image,
+        marked: files.marked,
+        width: a.width,
+        height: a.height,
+        note: a.note.trim(),
+        ...(a.source ? { source: sourceData(a.source) } : {}),
+        notes: a.marks
+          .filter((m) => verdictOf(m) !== 'empty')
+          .map((m, j) => ({
+            number: j + 1,
+            verdict: verdictOf(m),
+            label: m.label.trim(),
+            works: m.good.trim(),
+            doesNotWork: m.bad.trim(),
+            shape: m.shape,
+            pixels: shapePixels(m.shape, a.width, a.height),
+            crop: files.crop(j),
+            cropPixels: cropOf(a, m),
+            origin: m.origin,
+            ...(m.origin === 'ai'
+              ? { fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
+              : {}),
+            ...suggestedData(m),
+          })),
+      };
+    }),
+  };
+}
+
+/**
+ * The README an agent reads first. Every note names its crop and where it
+ * sits on the image, so a model that sees the files can match words to pixels.
+ */
+export function readme(assets: Asset[], exportedAt: string): string {
+  const list = exportable(assets);
+  const written = (a: Asset) => a.marks.filter((m) => verdictOf(m) !== 'empty');
+  const all = list.flatMap(written);
+  const count = (v: Verdict) => all.filter((m) => verdictOf(m) === v).length;
+  const lines = [
+    `# Design notes: ${list.length} ${list.length === 1 ? 'image' : 'images'}, ${all.length} ${all.length === 1 ? 'note' : 'notes'}`,
+    '',
+    `Exported from Pinch on ${exportedAt.slice(0, 10)}. ${count('good')} say what works, ${count('bad')} what doesn't, ${count('both')} both.`,
+    '',
+    '## How to use this',
+    '',
+    ...HOW_TO_USE.map((l) => `- ${l}`),
+    '',
+    '## Files',
+    '',
+    ...FILES.map((l) => `- ${l}`),
+  ];
+  list.forEach((a, i) => {
+    const files = assetFiles(a, i, list.length);
+    lines.push(
+      '',
+      `## ${files.number} · ${a.name}`,
+      '',
+      `Image: \`${files.image}\` (${a.width}×${a.height}) · With markers: \`${files.marked}\``,
+    );
+    if (a.source) lines.push(sourceLine(a.source));
+    if (a.note.trim()) lines.push('', `Overall: ${oneLine(a.note)}`);
+    written(a).forEach((m, j) => {
+      const v = verdictOf(m);
+      lines.push(
+        '',
+        `### Note ${files.number}.${j + 1}${m.label.trim() ? ` · ${oneLine(m.label)}` : ''} · ${v === 'both' ? "works and doesn't" : v === 'good' ? 'works' : "doesn't work"}`,
+        '',
+        `Where: ${describeShape(m.shape, a.width, a.height)}${originText(m)}`,
+        `Crop: \`${files.crop(j)}\``,
+      );
+      if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${oneLine(m.good)}`);
+      if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${oneLine(m.bad)}`);
+      if (m.origin === 'ai' && m.quote) lines.push(`From the note: "${oneLine(m.quote)}"`);
+    });
+  });
+  return `${lines.join('\n')}\n`;
+}

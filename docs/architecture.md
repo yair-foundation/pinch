@@ -1,0 +1,37 @@
+# Architecture
+
+Pinch is a Next.js 16 app (App Router, React 19, Tailwind v4, TypeScript, pnpm), deployed on Vercel. One page, three route handlers, no database but a private Vercel Blob store for small JSON documents. It began as the `/pin` route of the GenUI repository and was moved out whole on 2026-10-19; nothing of that site remains here.
+
+## Repo map
+
+- `src/app/layout.tsx`: fonts (Geist, Geist Mono through `next/font`), the page metadata (title "Pinch: tag screenshots for your agent", description, Open Graph, icon `/pin-notes/icon.svg`) and the theme provider. `src/app/page.tsx` renders the app at `/`. `src/app/robots.ts` allows `/` and disallows `/api/`. `src/app/global.css` holds the tokens (light and dark, `@custom-variant dark`), the Base UI state variants, the radius scale and the base layer.
+- `src/components/site/theme-provider.tsx`: next-themes (`attribute="class"`, dark by default, system honoured, storage key `genui-theme`, kept so existing browsers keep their choice) and the `D` hotkey that toggles the theme outside fields. `theme-toggle.tsx` is the header button.
+- `src/components/ui/`: `button.tsx`, `switch.tsx`, `tooltip.tsx` on Base UI, in the shadcn style (the only three Pinch uses).
+- `src/components/pin/`: the app. `pin-app.tsx` (the workspace: header, landing, filmstrip, stage, notes panel, toast, shortcuts dialog, history with undo and redo, the desktop-only screen under 768px, the 100-image cap), `drop-folder.tsx` (the landing's folder animation), `brand.tsx` (the wordmark), `store.ts` (the session in IndexedDB: database `pin-notes`, images as Blobs by id, the assets and marks as one record written on every change) and `render.ts` (canvas work: image preparation, the marked copy of each image, a crop per note, the AI crops, the export zip and download).
+- `src/lib/pin/`: pure code, tested in `__tests__/`. `model.ts` (assets, marks as dots, areas or arrows, sources, suggestions, `settleCrop`, the export's README, `AGENTS.md` and `notes.json` text), `sheet.ts` (contact sheet row planning), `zip.ts` (a stored-entry zip writer), `summary.ts` (the text copied for an agent), `locate.ts` and `suggest.ts` (prompts and Zod output schemas), `notes-log.ts` (what the browser sends and how a day's document takes it), `notes-store.ts` (the day documents in Blob), `notes-tags.ts` (areas, Jev questions, tags, month summary) and `notes-tagger.ts` (the calls to Jev after a save), `ai-budget.ts` (one daily ledger per AI step).
+- `src/lib/`: `blob-doc.ts` (JSON documents in the private Blob store changed by compare-and-swap on the ETag, in memory without Blob credentials), `budget.ts` (prices per model, `costUsd`, `refusal`, `visitorKey` salted by `VISITOR_SALT`), `jev.ts` (`askJevQuestions`, `THRESHOLD`, `JEV_MODEL`, `JEV_ENDPOINT`), `auth.ts` (Basic auth against `ADMIN_PASSWORD`, realm "Pinch admin"; `isSameOriginWrite`), `image.ts` (`sniffImage`), `utils.ts` (`cn`). Tests in `src/lib/__tests__/`.
+- `public/pin-notes/`: `icon.svg` (favicon, the wordmark's "p") and `landing.webp` (the painting behind the landing card).
+- `scripts/`: `jev-stub.mjs` (a local stand-in for Jev) and `format.mjs` (Prettier on named files).
+- `docs/`: this file, [decisions.md](decisions.md), [design.md](design.md), [status.md](status.md).
+
+## How it works
+
+Client side: the session (images as Blobs, assets and marks as one record) lives in IndexedDB and is written on every change; images removed from the session stay until no undo snapshot holds them (`pinch-orphans` in `localStorage` names the ones waiting). The export draws a marked copy of each image, a crop per note (its edges settled on quiet bands of the image, `settleCrop`) and a contact sheet of the batch on canvas and zips them with `README.md`, `AGENTS.md` and `notes.json`. On a dot the number sits beside the point on a leader; on an area just outside its corner; an arrow runs from its numbered tail to its head. Each image may carry a source (Ours, Competitor, Other product, Concept; "made by" and a link stay in the browser). Keys: arrows or J/K move between images, 1–9 open a note, N adds one, A toggles the Arrow tool, S cycles the source, Delete removes the open note, Escape closes it, ⌘Z and ⇧⌘Z undo and redo, ? lists them.
+
+## Routes
+
+- `GET /` the tool. `GET /robots.txt`.
+- `POST /api/pin/locate` (multipart `image`, `width`, `height`, `note`): sends one image (1568px at most) and its note to Claude (`PIN_MODEL`, default `claude-opus-5-5`, effort `PIN_EFFORT`, default `medium`; structured output from `locateSchema`, a server-side fallback model on a decline) and returns the note split into points with pixel boxes. Stores nothing. Off without `ANTHROPIC_API_KEY` or with `PIN_AI=0`; `GET` answers `{ available }`. Its daily ledger `pin-notes/ai/<day>.json` caps it: `PIN_AI_DAILY_USD` (default $3), `PIN_AI_PER_VISITOR` (60), `PIN_AI_CALLS_PER_DAY` (300); a call reserves 8¢ and settles to what it cost (about 2¢, 8 s).
+- `POST /api/pin/suggest` (multipart `image`, `context`, `label?`, `source?`, `shape?`): drafts what works and what doesn't, and a short name for the spot, for an empty note from a close-up and the whole screen (1024px and 768px JPEGs, marked in magenta), on `PIN_SUGGEST_MODEL` (default `claude-haiku-5-5`, no fallback: a refusal just means no suggestion). Stores nothing. Off with `PIN_SUGGEST=0`, `PIN_AI=0` or no key. Ledger `pin-notes/suggest/<day>.json`: `PIN_SUGGEST_DAILY_USD` ($2), `PIN_SUGGEST_PER_VISITOR` (300), `PIN_SUGGEST_CALLS_PER_DAY` (4000). The page asks 450 ms after a new note stops moving; a 429 or 503 stops asking for the visit.
+- `POST /api/pin/notes` (`{ entries }`, same-origin only, 403 otherwise): keeps the text of written notes. The page sends what changed in batches of 40, six seconds after typing stops and when the tab is hidden (fingerprints of what was sent are kept in `localStorage` under `pinch-sent`). Each day's document `pin-notes/text/<day>.json` holds 3,000 notes and 600 new ones per visitor (429 past that); the first write of a day deletes days older than 90. After the response, new or edited notes are tagged by area with Jev (`after()`; ledger `pin-notes/tags/<day>.json`, `PIN_TAG_CALLS_PER_DAY` default 2000; off with `PIN_TAGS=0` or no `JEV_API_KEY`); a failed call leaves the note untagged until its text changes.
+- `GET /api/pin/notes` behind `ADMIN_PASSWORD` (Basic auth; 404 when unset in production, open in `next dev`): the saved days, one day with `?day=YYYY-MM-DD`, or a month's area counts with `?summary=YYYY-MM` (`?day=…&summary=1` for one day).
+- Every `/api` response carries `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store`; `next.config.ts` adds the robots header to any `/api` path as well.
+
+## Storage
+
+- Browser: IndexedDB `pin-notes` (stores `images`, `state`); `localStorage` `pinch-suggestions` (the Suggestions switch), `pinch-sent`, `pinch-orphans`, `genui-theme`.
+- Server: the private Blob store under `pin-notes/` (above). Without `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID`, the same code runs on in-memory documents.
+
+## Deploy
+
+Vercel, from this repository's `main`; the live origin is https://pinch-tool.vercel.app. Steps and the variables are in [README.md](../README.md#deploying-to-vercel). Keeping the origin keeps every visitor's session; connecting the same Blob store keeps the saved notes and the day's ledgers.

@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Base UI marks state with bare data attributes; these variants read them. */
+@custom-variant data-open {
+  &:where([data-open]:not([data-open='false'])) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-closed]:not([data-closed='false'])) {
+    @slot;
+  }
+}
+@custom-variant data-checked {
+  &:where([data-checked]:not([data-checked='false'])) {
+    @slot;
+  }
+}
+@custom-variant data-unchecked {
+  &:where([data-unchecked]:not([data-unchecked='false'])) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled]:not([data-disabled='false'])) {
+    @slot;
+  }
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  /* Small radii stay crisp; containers get chubby. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 0.875rem;
+  --radius-3xl: 1.25rem;
+  --radius-4xl: 2.5rem;
+}
+
+:root {
+  /*
+   * Neutral light page, filled panels a step darker, translucent fills on top
+   * so chips and fields read the same on the page and inside a card.
+   */
+  --background: #fafafa;
+  --foreground: #3d3d3d;
+  --card: #ffffff;
+  --card-foreground: #3d3d3d;
+  --popover: #ffffff;
+  --popover-foreground: #3d3d3d;
+  --primary: #121212;
+  --primary-foreground: #f3f3f3;
+  --secondary: rgb(0 0 0 / 0.06);
+  --secondary-foreground: #3d3d3d;
+  --muted: rgb(0 0 0 / 0.06);
+  --muted-foreground: #5d5d5d;
+  --accent: rgb(0 0 0 / 0.09);
+  --accent-foreground: #3d3d3d;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #e5e5e5;
+  --input: rgb(0 0 0 / 0.14);
+  --ring: #262626;
+  --radius: 1rem;
+}
+
+.dark {
+  /* Neutral near-black with a lift for panels; translucent fills on top. */
+  --background: #000000;
+  --foreground: #d8d8d8;
+  --card: #000000;
+  --card-foreground: #d8d8d8;
+  --popover: #141414;
+  --popover-foreground: #d8d8d8;
+  --primary: #f2f2f2;
+  --primary-foreground: #0e0e0e;
+  --secondary: rgb(255 255 255 / 0.07);
+  --secondary-foreground: #d8d8d8;
+  --muted: rgb(255 255 255 / 0.06);
+  --muted-foreground: #9b9b9b;
+  --accent: rgb(255 255 255 / 0.1);
+  --accent-foreground: #d8d8d8;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #2b2b2b;
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #c4c4c4;
+}
+
+/*
+ * No focus ring on things that only take focus from code or a click (a dialog
+ * frame, a heading focused after an action). They are not keyboard stops
+ * (tabindex -1, no role of their own), so the ring only draws a stray outline.
+ * Real controls (buttons, inputs, pins) keep theirs.
+ */
+:is(
+    p,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    section,
+    div:not([role]),
+    svg,
+    svg *,
+    [role='dialog']
+  )[tabindex='-1']:is(:focus, :focus-visible),
+svg:is(:focus, :focus-visible),
+svg *:is(:focus, :focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

@@ -1,0 +1,16 @@
+# deps
+/node_modules
+
+# test & build
+/.next/
+/out/
+*.tsbuildinfo
+next-env.d.ts
+
+# env (never committed; see .env.example)
+.env*
+!.env.example
+
+# misc
+.DS_Store
+.vercel
