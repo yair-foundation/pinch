@@ -10,6 +10,7 @@ import {
   Globe,
   House,
   Keyboard,
+  Library,
   Lightbulb,
   Loader2,
   Lock,
@@ -32,6 +33,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -60,8 +62,11 @@ import {
   type Source,
   type Suggestion,
   shapeKey,
+  sortTopics,
+  topicLabel,
   verdictOf,
 } from '@/lib/pin/model';
+import { assetsOf, readExport } from '@/lib/pin/import';
 import {
   type Measured,
   measureSpacing,
@@ -75,10 +80,16 @@ import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/no
 import { type Checked, checkRhythm, type Rhythm, rhythmSuggestion } from '@/lib/pin/rhythm';
 import type { SuggestResult } from '@/lib/pin/suggest';
 import { imageSummary } from '@/lib/pin/summary';
+import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
+import { AccessGate, AccountDialog, locked as isLocked, signOut, useMe } from './account';
+import { cloudBackend } from './cloud-store';
+import { CollectionsView } from './collections';
+import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
 import { DropFolder } from './drop-folder';
+import { TopicPicker } from './topic-picker';
 import {
   bitmapOf,
   buildExport,
@@ -274,6 +285,8 @@ const local = {
 };
 const SUGGEST_KEY = 'pinch-suggestions';
 const SENT_KEY = 'pinch-sent';
+/** "off" when the visitor switched off saving their notes' words (D82). */
+const SAVE_NOTES_KEY = 'pinch-save-notes';
 /** Images removed from the session but kept for Undo; deleted on the next visit if still listed. */
 const ORPHANS_KEY = 'pinch-orphans';
 /** The open image's id, so a reload comes back to it. */
@@ -287,6 +300,8 @@ const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|bmp|heic|heif|tiff?)$/i;
 const isSvg = (f: File) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name);
 const isImageFile = (f: File) =>
   f.type.startsWith('image/') || (!f.type && IMAGE_EXT.test(f.name)) || isSvg(f);
+/** A zip: a Pinch export to open, by its type or, when the type is blank or generic, its name. */
+const isZip = (f: File) => /zip/.test(f.type) || /\.zip$/i.test(f.name);
 
 /** Whether this browser says it is a small or touch device: a phone or a tablet, not a narrow window. */
 const isSmallDevice = () =>
@@ -372,7 +387,7 @@ const pinOf = (id: string) =>
 /** One tab's name, so a tab can tell its own saves from another's. */
 const TAB_ID = newId();
 
-type DialogKind = 'shortcuts' | 'privacy' | 'home';
+type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'account';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
 const digestOf = (list: Asset[]) => {
@@ -425,6 +440,27 @@ function Workspace() {
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   // What a drag draws: a dot or area (Pin), or an arrow. Per visit; A toggles it, Esc leaves it.
   const [tool, setTool] = useState<Tool>('pin');
+  // The batch, or the collections in its place (D79). Per visit.
+  const [view, setView] = useState<'batch' | 'collections'>('batch');
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // Who is looking, and whether Pinch is theirs to use (D81). Closed: billing is on, not bought.
+  const { me, refresh: refreshMe } = useMe();
+  const closed = isLocked(me);
+  const closedRef = useRef(closed);
+  closedRef.current = closed;
+  // Collections live in the account once signed in, in this browser otherwise.
+  const cloudKey = me?.user && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
+  const backend = useMemo(() => {
+    if (!cloudKey) return browserBackend;
+    const [mode, folder] = cloudKey.split(' ');
+    return cloudBackend(folder, mode as 'blob' | 'memory');
+  }, [cloudKey]);
+  // Saving the words of notes (D63), on unless the visitor switched it off (D82).
+  const [saveNotes, setSaveNotes] = useState(true);
+  useEffect(() => {
+    setSaveNotes(local.get(SAVE_NOTES_KEY) !== 'off');
+  }, []);
   const history = useRef<History>(null as unknown as History);
   history.current ??= new History();
   // The latest session, kept in step with history so handlers never read a stale render.
@@ -547,6 +583,20 @@ function Workspace() {
     setSuggestPref(local.get(SUGGEST_KEY) !== 'off');
   }, []);
 
+  // Back from Google: say how it went, once, and take the word out of the address.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const signin = url.searchParams.get('signin');
+    if (!signin) return;
+    setStatus(
+      signin === 'off'
+        ? { tone: 'error', text: 'Sign-in isn’t set up on this site yet.' }
+        : { tone: 'error', text: 'Sign-in didn’t finish. Try again.' },
+    );
+    url.searchParams.delete('signin');
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+  }, []);
+
   // An information toast goes by itself, staying longer the more it says; an error stays until
   // dismissed, and so does a sticky one. One with an Undo button stays a little longer.
   useEffect(() => {
@@ -656,6 +706,7 @@ function Workspace() {
   const sent = useRef<Record<string, string> | null>(null);
   const sendingNotes = useRef(false);
   const flushNotes = useCallback((leaving = false) => {
+    if (local.get(SAVE_NOTES_KEY) === 'off') return;
     if (!sent.current) {
       try {
         sent.current = JSON.parse(local.get(SENT_KEY) ?? '{}');
@@ -720,8 +771,63 @@ function Workspace() {
     [commit],
   );
 
+  /**
+   * A Pinch export opens into the session: its images and notes join what is there, as added
+   * images do, so a batch can move between browsers. The zip is read here and kept nowhere.
+   */
+  const openExport = useCallback(
+    async (file: File) => {
+      setStatus({ tone: 'info', text: `Opening ${file.name}…`, sticky: true });
+      let found: ReturnType<typeof assetsOf>;
+      try {
+        const files = await unzip(await file.arrayBuffer());
+        found = assetsOf(readExport(files), files, newId);
+      } catch (e) {
+        setStatus({ tone: 'error', text: `Couldn't open ${file.name}. ${(e as Error).message}` });
+        return;
+      }
+      const room = Math.max(0, MAX_IMAGES - assetsRef.current.length);
+      const added: Asset[] = [];
+      const addedUrls: Record<string, string> = {};
+      let full = false;
+      for (const { asset, image } of found.assets.slice(0, room)) {
+        try {
+          await store.putImage(asset.id, image);
+        } catch (e) {
+          if (store.isQuotaError(e)) full = true;
+          break;
+        }
+        addedUrls[asset.id] = URL.createObjectURL(image);
+        added.push(asset);
+      }
+      setUrls((u) => ({ ...u, ...addedUrls }));
+      urlsRef.current = { ...urlsRef.current, ...addedUrls };
+      const before = assetsRef.current;
+      if (added.length) {
+        if (!before.some(hasMarks)) setIndex(before.length);
+        commit((list) => [...list, ...added]);
+      }
+      const notes = added.reduce((n, a) => n + a.marks.length, 0);
+      const leftOut = found.assets.length - added.length;
+      const lines = [`Opened ${file.name}: ${count(added.length, 'image')}, ${count(notes, 'note')}.`];
+      if (found.missing) lines.push(`${count(found.missing, 'image')} missing from the zip.`);
+      if (full) lines.push('Browser storage is full. Remove images or export, then continue.');
+      else if (leftOut) lines.push(`${count(leftOut, 'image')} left out. ${FULL_MESSAGE}`);
+      const trouble = found.missing > 0 || leftOut > 0;
+      setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
+    },
+    [commit],
+  );
+
   const addFiles = useCallback(
-    async (files: File[]) => {
+    async (dropped: File[]) => {
+      if (closedRef.current) {
+        setStatus({ tone: 'error', text: 'Get Pinch to add images.' });
+        return;
+      }
+      for (const file of dropped.filter(isZip)) await openExport(file);
+      const files = dropped.filter((f) => !isZip(f));
+      if (!files.length) return;
       const all = files.filter(isImageFile);
       const skipped = files.length - all.length;
       const skippedLine = skipped ? `Skipped ${count(skipped, 'file')} that aren't images.` : '';
@@ -806,7 +912,7 @@ function Workspace() {
       if (!trouble && !before.length && added.length) lines.push(HOW_TO_MARK);
       setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
-    [commit],
+    [commit, openExport],
   );
 
   // The site's shell opens a docs search on ⌘K; Pinch is its own site, so that key does nothing here.
@@ -836,7 +942,7 @@ function Workspace() {
       addFiles([...(e.dataTransfer?.files ?? [])]);
     };
     const onPaste = (e: ClipboardEvent) => {
-      if (isTyping(e.target)) return;
+      if (isTyping(e.target) || viewRef.current === 'collections') return;
       const files = [...(e.clipboardData?.files ?? [])];
       if (files.length) addFiles(files);
     };
@@ -1011,8 +1117,8 @@ function Workspace() {
   // the open note (then leaves the Arrow tool), ⌘Z and ⇧⌘Z undo and redo, ? lists them all.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A dialog holds the keyboard; it closes itself on Escape.
-      if (dialog) return;
+      // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys.
+      if (dialog || view === 'collections' || closed) return;
       if (e.key === 'Escape') {
         if (isTyping(e.target)) (e.target as HTMLElement).blur();
         else if (!selected && tool !== 'pin') setTool('pin');
@@ -1136,6 +1242,8 @@ function Workspace() {
     tool,
     undo,
     redo,
+    view,
+    closed,
   ]);
 
   const toggleSuggestions = () => {
@@ -1313,6 +1421,36 @@ function Workspace() {
     });
   };
 
+  /** The batch as its export, for a collection to keep; null when it has no notes yet. */
+  const batchZip = useCallback(async () => {
+    const list = assetsRef.current;
+    if (!list.some(hasMarks)) return null;
+    deselect();
+    try {
+      const made = await buildExport(list, store.getImage, (done, total) =>
+        setStatus({
+          tone: 'info',
+          text: `Preparing ${Math.min(done + 1, total)} of ${total}…`,
+          sticky: true,
+        }),
+      );
+      // Kept in a collection is kept: going home won't ask about this batch.
+      markExported();
+      return made;
+    } finally {
+      setStatus((s) => (s?.sticky ? null : s));
+    }
+  }, [deselect, markExported]);
+
+  /** A batch kept in a collection, opened into the session like any export. */
+  const openStoredBatch = useCallback(
+    (file: File) => {
+      setView('batch');
+      openExport(file);
+    },
+    [openExport],
+  );
+
   /**
    * The logo goes home, which in Pinch means a new batch: straight there when everything was
    * exported since the last change, after a question when something wasn't.
@@ -1324,7 +1462,17 @@ function Workspace() {
   };
 
   // The landing: no image yet, so the header floats over the painting in two glass pills.
-  const landing = loaded && !asset;
+  // Closed to this visitor, the landing stays, with sign-in and buy in place of Add images.
+  const landing = loaded && (!asset || closed) && view === 'batch';
+  // The batch's own controls in the header: its count, suggestions, copy, export and keys.
+  const batchTools = view === 'batch' && assets.length > 0 && !closed;
+
+  const leaveAccount = async (text: string) => {
+    closeDialog();
+    setView('batch');
+    await refreshMe();
+    setStatus({ tone: 'info', text });
+  };
 
   return (
     <div className="relative flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -1350,11 +1498,12 @@ function Workspace() {
             <a
               href={pathname}
               data-home-trigger
-              aria-label="Pinch, start a new batch"
+              aria-label={view === 'collections' ? 'Pinch, back to the batch' : 'Pinch, start a new batch'}
               onClick={(e) => {
                 if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
-                goHome();
+                if (view === 'collections') setView('batch');
+                else goHome();
               }}
               className={cn(
                 hoverFill,
@@ -1373,7 +1522,7 @@ function Workspace() {
               'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
           )}
         >
-          {assets.length > 0 && (
+          {batchTools && (
             <p
               className="m-0 mr-2 text-[13px] text-muted-foreground max-[900px]:hidden"
               aria-live="polite"
@@ -1381,7 +1530,7 @@ function Workspace() {
               {tagged.length} of {assets.length} tagged · {count(allMarks.length, 'note')}
             </p>
           )}
-          {suggestAvailable && assets.length > 0 && (
+          {suggestAvailable && batchTools && (
             <label
               htmlFor="suggestions"
               className="flex min-h-9 items-center gap-2 px-1 text-sm"
@@ -1397,13 +1546,13 @@ function Workspace() {
               Suggestions
             </label>
           )}
-          {suggestAvailable && assets.length > 0 && (
+          {suggestAvailable && batchTools && (
             // The switch's description, outside its label so it doesn't join the name.
             <span id="suggestions-note" className="sr-only">
               Sends the marked area to Anthropic.
             </span>
           )}
-          {assets.length > 0 && (
+          {batchTools && (
             <TooltipProvider>
               <ToolbarButton
                 onClick={copyForAgent}
@@ -1465,8 +1614,44 @@ function Workspace() {
               </Tooltip>
             </TooltipProvider>
           )}
+          {loaded && !closed && (
+            // Between the batch and the collections, which take its place (D79).
+            <button
+              type="button"
+              onClick={() => setView(view === 'batch' ? 'collections' : 'batch')}
+              className={cn(
+                hit,
+                'flex items-center text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                landing
+                  ? 'h-7 gap-1.5 rounded-full px-2.5'
+                  : 'min-h-9 gap-2 rounded-md border border-border px-3',
+              )}
+            >
+              {view === 'batch' ? (
+                <Library className="size-4" aria-hidden />
+              ) : (
+                <ArrowLeft className="size-4" aria-hidden />
+              )}
+              {view === 'batch' ? 'Collections' : assets.length ? 'Back to batch' : 'Back'}
+            </button>
+          )}
+          {me?.user && (
+            <button
+              type="button"
+              aria-label={`Account: ${me.user.email}`}
+              title={me.user.email}
+              aria-expanded={dialog === 'account'}
+              onClick={() => openDialog('account')}
+              className={cn(
+                hit,
+                'flex size-8 items-center justify-center rounded-full bg-muted text-[13px] font-medium uppercase text-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-border',
+              )}
+            >
+              {(me.user.name || me.user.email).charAt(0)}
+            </button>
+          )}
           <ThemeToggle />
-          {assets.length > 0 && (
+          {(assets.length > 0 || view === 'collections') && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
@@ -1495,7 +1680,7 @@ function Workspace() {
         <input
           ref={fileInput}
           type="file"
-          accept="image/*"
+          accept="image/*,.zip,application/zip"
           multiple
           className="sr-only"
           tabIndex={-1}
@@ -1556,10 +1741,48 @@ function Workspace() {
         </div>
       )}
 
-      {!loaded ? null : !asset ? (
+      {!loaded ? null : view === 'collections' ? (
+        <CollectionsView
+          key={cloudKey || 'browser'}
+          inert={dialog !== null}
+          backend={backend}
+          moveFrom={cloudKey ? browserBackend : undefined}
+          openNotes={allMarks.length}
+          batchZip={batchZip}
+          onOpenBatch={openStoredBatch}
+          onStatus={setStatus}
+        />
+      ) : !asset || closed ? (
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
+          price={me?.paywall ? me.price : undefined}
+          gate={
+            !me
+              ? // Until the account is known, the card holds the action's place empty.
+                (buttonClass, hintClass) => (
+                  <>
+                    <span aria-hidden className={cn(buttonClass, 'invisible')}>
+                      Add images
+                    </span>
+                    <span aria-hidden className={cn(hintClass, 'invisible')}>
+                      Or drag images here.
+                    </span>
+                  </>
+                )
+              : closed
+              ? (buttonClass, hintClass) => (
+                  <AccessGate
+                    me={me}
+                    buttonClass={buttonClass}
+                    hintClass={hintClass}
+                    onRefresh={refreshMe}
+                    onSignOut={() => leaveAccount('Signed out.')}
+                    onMessage={(tone, text) => setStatus({ tone, text })}
+                  />
+                )
+              : undefined
+          }
           onChoose={() => fileInput.current?.click()}
           onPrivacy={() => openDialog('privacy')}
         />
@@ -1622,7 +1845,31 @@ function Workspace() {
       {dialog === 'shortcuts' && (
         <ShortcutsDialog mac={mac} opener={opener.current} onClose={closeDialog} />
       )}
-      {dialog === 'privacy' && <PrivacyDialog opener={opener.current} onClose={closeDialog} />}
+      {dialog === 'privacy' && (
+        <PrivacyDialog
+          opener={opener.current}
+          onClose={closeDialog}
+          saveNotes={saveNotes}
+          onSaveNotes={(on) => {
+            setSaveNotes(on);
+            local.set(SAVE_NOTES_KEY, on ? 'on' : 'off');
+          }}
+        />
+      )}
+      {dialog === 'account' && me && (
+        <AccountDialog
+          me={me}
+          opener={opener.current}
+          onClose={closeDialog}
+          onSignOut={async () => {
+            await signOut();
+            await leaveAccount('Signed out.');
+          }}
+          onDeleted={() =>
+            leaveAccount('Your account and its collections were deleted. Your purchase is kept.')
+          }
+        />
+      )}
       {dialog === 'home' && (
         <Dialog
           id="home-title"
@@ -1680,9 +1927,19 @@ function Workspace() {
 }
 
 /** How Pinch uses what the user gives it, said plainly; opened from the landing footer and the header. */
-function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClose: () => void }) {
+function PrivacyDialog({
+  opener,
+  onClose,
+  saveNotes,
+  onSaveNotes,
+}: {
+  opener: HTMLElement | null;
+  onClose: () => void;
+  saveNotes: boolean;
+  onSaveNotes: (on: boolean) => void;
+}) {
   const item = (title: string, body: React.ReactNode) => (
-    <p className="m-0">
+    <p>
       <strong className="font-medium text-foreground">{title}</strong> {body}
     </p>
   );
@@ -1697,7 +1954,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Your images',
-          'stay in this browser, stored in its IndexedDB. They are not uploaded, except for AI suggestions, as below.',
+          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you keep a batch in a collection in your account.',
         )}
         {item(
           'AI suggestions',
@@ -1705,15 +1962,35 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Notes text:',
-          'the words of your notes (what works, what doesn’t and the short name) are saved without your name, images, file names or links, and kept for 90 days, to learn how designers judge screens. This can’t be switched off. A salted hash of your IP address is used only to count daily limits.',
+          'the words of your notes (what works, what doesn’t and the short name) are saved without your name, account, images, file names or links, and kept for 90 days, to learn how designers judge screens. Switch it off and nothing more is saved from this browser; what was saved stays anonymous and goes after 90 days. A salted hash of your IP address is used only to count daily limits.',
         )}
+        <label
+          htmlFor="save-notes"
+          className="flex min-h-9 items-center gap-2 text-sm text-foreground"
+        >
+          <Switch
+            id="save-notes"
+            size="sm"
+            checked={saveNotes}
+            onCheckedChange={(on) => onSaveNotes(Boolean(on))}
+          />
+          Save my notes’ words
+        </label>
         {item(
           'Topic tags:',
           'each saved note’s words are sent to TypeSafe’s Jev to tag its topic (type, colour, layout, and so on). Nothing else goes with them.',
         )}
         {item(
-          'No accounts, no ads, no analytics.',
-          'Your theme and settings are kept in this browser.',
+          'Your account:',
+          'signing in with Google gives Pinch your email and name, kept with your account. Your purchase is kept under a hash of your email; Lemon Squeezy, who sell Pinch, keep the payment details.',
+        )}
+        {item(
+          'Collections',
+          'in your account, with their batches (screenshots included) and rules, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
+        )}
+        {item(
+          'No ads, no analytics.',
+          'One cookie keeps you signed in; your theme and settings are kept in this browser.',
         )}
         {item(
           'Contact:',
@@ -1785,7 +2062,7 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
   {
     group: 'In a field',
     rows: [
-      { combos: [['Tab']], what: 'Take the grey suggestion; the next Tab moves on' },
+      { combos: [['Tab']], what: 'Take the grey suggestion and its topics; the next Tab moves on' },
       { combos: [['Esc']], what: 'Dismiss the grey suggestion' },
       { combos: [['⌘', 'Enter']], what: 'Done with this note; focus returns to its pin' },
     ],
@@ -1879,14 +2156,25 @@ const PARALLAX = { x: 44, y: 28 };
 /** The painting is drawn this much larger, so its edges never show as it drifts. */
 const PARALLAX_SCALE = 1.1;
 
+/** The landing card's main button and the hint under it, shared with the sign-in and buy gate. */
+const LANDING_BUTTON =
+  'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
+const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
+
 function EmptyState({
   dragging,
   inert,
+  price,
+  gate,
   onChoose,
   onPrivacy,
 }: {
   dragging: boolean;
   inert: boolean;
+  /** Pinch's price, once billing is on (D81). */
+  price?: string;
+  /** In place of Add images while Pinch is closed to this visitor: sign in, then buy. */
+  gate?: (buttonClass: string, hintClass: string) => React.ReactNode;
   onChoose: () => void;
   onPrivacy: () => void;
 }) {
@@ -1999,32 +2287,32 @@ function EmptyState({
                   agent.
                 </p>
                 <div className="mt-5 flex flex-col items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={onChoose}
-                    className="flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white"
-                  >
-                    <Plus className="size-4" aria-hidden />
-                    Add images
-                  </button>
-                  <p
-                    className="m-0 text-center text-[13px] leading-relaxed text-current/80"
-                    aria-live="polite"
-                  >
-                    {dragging ? (
-                      <span className="text-current">Drop to add them.</span>
-                    ) : (
-                      'Or drag images here or paste.'
-                    )}
-                  </p>
+                  {gate ? (
+                    gate(LANDING_BUTTON, LANDING_HINT)
+                  ) : (
+                    <>
+                      <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
+                        <Plus className="size-4" aria-hidden />
+                        Add images
+                      </button>
+                      <p className={LANDING_HINT} aria-live="polite">
+                        {dragging ? (
+                          <span className="text-current">Drop to add them.</span>
+                        ) : (
+                          'Or drag images or a Pinch export here, or paste.'
+                        )}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           </div>
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
-              Free, no account. Images stay in this browser; AI suggestions send the marked area to
-              Anthropic.{' '}
+              {price
+                ? `Pinch is ${price} once, with a Google sign-in. Images stay in this browser unless you keep them in a collection; AI suggestions send the marked area to Anthropic.`
+                : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"
                 data-privacy-trigger
@@ -2035,7 +2323,13 @@ function EmptyState({
               </button>
             </span>
             <span className="mx-auto mt-1 block">
-              Created by{' '}
+              <a
+                href="/terms"
+                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                Terms
+              </a>{' '}
+              · Created by{' '}
               <a
                 href="https://yair-works.vercel.app"
                 target="_blank"
@@ -3131,6 +3425,7 @@ function Panel({
 
 function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen: () => void }) {
   const v = verdictOf(mark);
+  const topics = sortTopics(mark.topics ?? []);
   return (
     <button
       type="button"
@@ -3159,6 +3454,9 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
               )}
               {v === 'both' ? 'works and doesn’t' : v === 'good' ? 'works' : 'doesn’t work'}
             </>
+          )}
+          {topics.length > 0 && (
+            <span className="min-w-0 truncate">· {topics.map(topicLabel).join(', ')}</span>
           )}
         </span>
       </span>
@@ -3205,6 +3503,12 @@ function MarkEditor({
   }, []);
   const ghost = (field: SuggestedKey) =>
     dismissed(field) ? undefined : suggestion?.[field] || undefined;
+  // A suggestion's topics come with its words, unless the note already has topics of its own.
+  const ownTopics = mark.topics !== undefined;
+  const showsGhost = Boolean((!mark.good && ghost('works')) || (!mark.bad && ghost('doesNotWork')));
+  const suggestedTopics = !ownTopics && showsGhost ? suggestion?.topics : undefined;
+  const takeTopics = (accepted: boolean) =>
+    accepted && !ownTopics && suggestion?.topics?.length ? { topics: suggestion.topics } : {};
   const doneOnShortcut = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -3214,22 +3518,52 @@ function MarkEditor({
 
   return (
     <section className="space-y-3" aria-label={`Note ${number}`}>
-      <div className="flex items-center gap-2">
-        <h2 className="m-0 text-[13px] font-medium text-muted-foreground">
-          Note {number} · {mark.shape.kind}
-        </h2>
-        <button
-          type="button"
-          onClick={onDone}
-          className={cn(
-            hit,
-            'ml-auto flex min-h-8 items-center gap-1 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-          )}
-        >
-          <Check className="size-4" aria-hidden />
-          Done
-        </button>
-      </div>
+      {/* The note's actions sit by its title, as the image's do; the keys for them are in Done's tooltip. */}
+      <TooltipProvider>
+        <div className="flex items-center gap-2">
+          <h2 className="m-0 text-[13px] font-medium text-muted-foreground">
+            Note {number} · {mark.shape.kind}
+          </h2>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Delete note"
+                  onClick={onRemove}
+                  className={cn(
+                    hit,
+                    'ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+                  )}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                </button>
+              }
+            />
+            <TooltipContent>Delete note</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onDone}
+                  className={cn(
+                    hit,
+                    'flex min-h-8 items-center gap-1 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                  )}
+                >
+                  <Check className="size-4" aria-hidden />
+                  Done
+                </button>
+              }
+            />
+            <TooltipContent>
+              <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </TooltipProvider>
       <SuggestedField
         ref={first}
         id={`works-${mark.id}`}
@@ -3240,7 +3574,11 @@ function MarkEditor({
         suggesting={suggesting}
         example="One big number with nothing competing"
         onChange={(good, accepted) =>
-          onChange({ good, accepted: withAccepted(mark.accepted, 'good', good, accepted) })
+          onChange({
+            good,
+            accepted: withAccepted(mark.accepted, 'good', good, accepted),
+            ...takeTopics(accepted),
+          })
         }
         onDismiss={() => onDismiss('works')}
         onKeyDown={doneOnShortcut}
@@ -3254,29 +3592,21 @@ function MarkEditor({
         suggesting={suggesting}
         example="Six badges compete for attention"
         onChange={(bad, accepted) =>
-          onChange({ bad, accepted: withAccepted(mark.accepted, 'bad', bad, accepted) })
+          onChange({
+            bad,
+            accepted: withAccepted(mark.accepted, 'bad', bad, accepted),
+            ...takeTopics(accepted),
+          })
         }
         onDismiss={() => onDismiss('doesNotWork')}
         onKeyDown={doneOnShortcut}
       />
+      <TopicPicker
+        topics={mark.topics}
+        suggested={suggestedTopics}
+        onChange={(topics) => onChange({ topics })}
+      />
       {children}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onRemove}
-          className={cn(
-            hit,
-            'flex min-h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm whitespace-nowrap text-red-600 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted dark:text-red-400',
-          )}
-        >
-          <Trash2 className="size-4" aria-hidden />
-          Delete note
-        </button>
-        <span className="ml-auto flex items-center gap-1 text-[13px] whitespace-nowrap text-muted-foreground">
-          <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd>
-          <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
-        </span>
-      </div>
     </section>
   );
 }

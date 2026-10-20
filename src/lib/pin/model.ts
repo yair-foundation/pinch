@@ -21,10 +21,60 @@ export type Shape = Dot | Area | Arrow;
 
 export type MarkOrigin = 'user' | 'ai';
 
+/**
+ * What a note is about, so an agent knows whether "this heading" means how it
+ * looks, where it sits or what it says. A note can be about several, or none.
+ */
+export const TOPIC_KINDS = [
+  'visual',
+  'layout',
+  'copy',
+  'interaction',
+  'flow',
+  'accessibility',
+] as const;
+export type Topic = (typeof TOPIC_KINDS)[number];
+
+export const TOPICS: { kind: Topic; label: string; hint: string }[] = [
+  { kind: 'visual', label: 'Visual', hint: 'How it looks: type, colour, icons, imagery' },
+  {
+    kind: 'layout',
+    label: 'Layout',
+    hint: 'Where things sit and what stands out: spacing, alignment, hierarchy, density',
+  },
+  { kind: 'copy', label: 'Copy', hint: 'The words: labels, headings, tone' },
+  {
+    kind: 'interaction',
+    label: 'Interaction',
+    hint: 'How controls behave: states, feedback, motion',
+  },
+  { kind: 'flow', label: 'Flow', hint: 'Steps, navigation and what happens next' },
+  {
+    kind: 'accessibility',
+    label: 'Accessibility',
+    hint: 'Usable by everyone: contrast, target size, keyboard, screen readers',
+  },
+];
+
+export const topicLabel = (kind: Topic) => TOPICS.find((t) => t.kind === kind)?.label ?? kind;
+
+/** A topic's hint inside a sentence: "how it looks: type, colour, icons, imagery". */
+export const topicGloss = (t: { hint: string }) => `${t.hint[0].toLowerCase()}${t.hint.slice(1)}`;
+
+/** Topics in their fixed order, each once; anything that isn't a topic is dropped. */
+export const sortTopics = (list: readonly string[]): Topic[] =>
+  TOPIC_KINDS.filter((k) => list.includes(k));
+
+/** The topics with one switched on or off. */
+export const toggleTopic = (list: readonly Topic[] | undefined, kind: Topic): Topic[] =>
+  list?.includes(kind) ? list.filter((k) => k !== kind) : sortTopics([...(list ?? []), kind]);
+
 /** An AI suggestion for an empty note, shown as grey text the user accepts with Tab. */
 export type Suggestion = {
   works: string;
   doesNotWork: string;
+  /** What the suggested sentences are about; taken with them when the note has no topics yet. */
+  topics?: Topic[];
   /** A short name for the spot, two to five words: "revenue headline". Optional. */
   label?: string;
   /** The shape it was written for (`shapeKey`); a moved or resized note gets a new one. */
@@ -40,6 +90,11 @@ export type Mark = {
   good: string;
   /** What doesn't, and why. */
   bad: string;
+  /**
+   * What the note is about. Unset until the author picks one or takes a suggestion with its
+   * topics; an empty list means they cleared them.
+   */
+  topics?: Topic[];
   /** Placed by the user, or by the AI from the asset's note. */
   origin: MarkOrigin;
   /** For an AI mark: the words of the note it came from. */
@@ -486,12 +541,16 @@ const HOW_TO_USE = [
   'An arrow points from its tail (where its number sits) to its head. The note is about the two spots and how they relate: "move this there", "align this with that", "this should point to that". Read the tail as "this" and the head as "that". An arrow can also show an order or a relation without asking for a change ("this reads before that", "this sits under that"): the note says which, so move nothing the note doesn\'t ask to move.',
 ];
 
+/** Each topic as the README names it: "Visual (how it looks: type, colour, icons, imagery)". */
+const TOPIC_LEGEND = TOPICS.map((t) => `${t.label} (${topicGloss(t)})`).join(', ');
+
 const FILES = [
   `\`${SHEET_FILE}\`: every image on one sheet with its notes drawn on, each with its number.`,
   '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image, scaled down to 1800 px on its long side when it is larger, with every note drawn on it (positions are always in the pixels of `images/`): a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: each note with what is around it and its marker drawn in, at most 1200 px on its long side; for a big area or a long arrow it can show much of the image. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',
+  `About says what a note is about, as the author tagged it: ${TOPIC_LEGEND}. Read a note through its topics: one about Copy is about the words, not how the text looks; one about Visual is about how it looks, not what it says; one with several is about each. A note with no About line was not tagged: go by its words.`,
   'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
   "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Source: not set means the author did not say; don't assume it is Ours, and ask before changing it. Never copy an outside design; take its principle.",
   '`notes.json` has all of this as data.',
@@ -542,6 +601,9 @@ const originText = (m: Mark) =>
       : " · placed by AI from the author's note, position not checked";
 
 const sourceData = (s: Source) => ({ kind: s.kind, label: sourceLabel(s.kind) });
+
+/** A note's topics as exported: in their fixed order, none when unset. */
+const topicsOf = (m: Mark) => sortTopics(m.topics ?? []);
 
 function suggestedData(m: Mark) {
   const works = suggestionUse(m, 'good');
@@ -624,6 +686,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
       'Fractions of the image: x from the left edge, y from the top, 0 to 1. Pixels are of the image in images/.',
     contactSheet: SHEET_FILE,
     guide: 'README.md',
+    topics: Object.fromEntries(TOPICS.map((t) => [t.kind, t.hint])),
     assets: list.map((a, i) => {
       const files = assetFiles(a, i, list.length);
       return {
@@ -643,6 +706,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
             ...(m.label.trim() ? { label: m.label.trim() } : {}),
             works: m.good.trim(),
             doesNotWork: m.bad.trim(),
+            ...(topicsOf(m).length ? { topics: topicsOf(m) } : {}),
             shape: roundShape(m.shape),
             pixels: shapePixels(m.shape, a.width, a.height),
             crop: files.crop(j),
@@ -668,10 +732,18 @@ export function readme(assets: Asset[], exportedAt: string): string {
   const written = (a: Asset) => a.marks.filter((m) => verdictOf(m) !== 'empty');
   const all = list.flatMap(written);
   const count = (v: Verdict) => all.filter((m) => verdictOf(m) === v).length;
+  const byTopic = TOPICS.map((t) => ({
+    label: t.label,
+    n: all.filter((m) => topicsOf(m).includes(t.kind)).length,
+  })).filter((t) => t.n > 0);
+  const untagged = all.filter((m) => !topicsOf(m).length).length;
+  const topicCounts = byTopic.length
+    ? ` Notes by topic: ${[...byTopic.map((t) => `${t.label} ${t.n}`), ...(untagged ? [`${untagged} not tagged`] : [])].join(', ')}.`
+    : '';
   const lines = [
     `# Design notes: ${list.length} ${list.length === 1 ? 'image' : 'images'}, ${all.length} ${all.length === 1 ? 'note' : 'notes'}`,
     '',
-    `Exported from Pinch on ${exportedAt.slice(0, 10)}. Notes by kind: ${count('good')} only what works, ${count('bad')} only what doesn't, ${count('both')} both.`,
+    `Exported from Pinch on ${exportedAt.slice(0, 10)}. Notes by kind: ${count('good')} only what works, ${count('bad')} only what doesn't, ${count('both')} both.${topicCounts}`,
     '',
     '## How to use this',
     '',
@@ -703,6 +775,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
         `Where: ${describeShape(m.shape, a.width, a.height)}${originText(m)}`,
         `Crop: \`${files.crop(j)}\``,
       );
+      if (topicsOf(m).length) lines.push(`About: ${topicsOf(m).map(topicLabel).join(', ')}`);
       if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${oneLine(m.good)}`);
       if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${oneLine(m.bad)}`);
       if (m.origin === 'ai' && m.quote) lines.push(`From the note: "${oneLine(m.quote)}"`);

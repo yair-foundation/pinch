@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 export const metadata: Metadata = {
   title: 'Pinch: tag screenshots for your agent',
   description:
-    'Pin what works and what doesn’t on a batch of screenshots, with a dot, an area or an arrow, then export it all for Claude, ChatGPT or any agent. Free, no account.',
+    'Pin what works and what doesn’t on a batch of screenshots, with a dot, an area or an arrow, keep the rules your notes teach, and export it all for Claude, ChatGPT or any agent.',
   icons: { icon: '/pin-notes/icon.svg', apple: '/pin-notes/icon.svg' },
   openGraph: {
     title: 'Pinch',

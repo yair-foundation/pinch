@@ -66,6 +66,11 @@ describe('clipboard summary', () => {
     assert.match(noteLine(accepted, '01.1'), /works \(AI suggestion\): "Clear\."/);
     const edited = mark({ good: 'Very clear.', accepted: { good: 'Clear.' } });
     assert.match(noteLine(edited, '01.1'), /works \(AI suggestion, edited\): "Very clear\."/);
+    assert.equal(
+      noteLine(mark({ label: 'title', good: 'Short.', topics: ['copy', 'visual'] }), '01.2'),
+      '- 01.2 dot at x 30%, y 33% · title · about: Visual, Copy · works: "Short."',
+    );
+    assert.doesNotMatch(noteLine(mark({ good: 'Short.', topics: [] }), '01.2'), /about/);
   });
 
   it('summarises one image with its header, source, overall note and notes in batch order', () => {

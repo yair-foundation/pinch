@@ -28,7 +28,9 @@ import {
   shapePixels,
   exportName,
   slug,
+  sortTopics,
   suggestionUse,
+  toggleTopic,
   verdictOf,
 } from '../model';
 import { layoutSheet, planSheetRows, SHEET_MAX_EDGE, SHEET_MAX_PIXELS } from '../sheet';
@@ -459,6 +461,42 @@ describe('zip', () => {
   });
 });
 
+describe('Pinch topics', () => {
+  it('keeps topics in their fixed order, each once', () => {
+    assert.deepEqual(sortTopics(['copy', 'visual', 'copy', 'nope']), ['visual', 'copy']);
+    assert.deepEqual(toggleTopic(undefined, 'copy'), ['copy']);
+    assert.deepEqual(toggleTopic(['copy'], 'visual'), ['visual', 'copy']);
+    assert.deepEqual(toggleTopic(['visual', 'copy'], 'visual'), ['copy']);
+    assert.deepEqual(toggleTopic(['copy'], 'copy'), []);
+  });
+
+  it('says what each note is about in the README and notes.json', () => {
+    const a = asset({
+      marks: [
+        mark({ good: 'Says what it does.', topics: ['copy', 'visual'] }),
+        mark({ id: 'm2', bad: 'Too tight.', topics: ['layout'] }),
+        mark({ id: 'm3', good: 'Untagged.' }),
+        mark({ id: 'm4', good: 'Cleared.', topics: [] }),
+      ],
+    });
+    const text = readme([a], '2026-10-20T10:00:00Z');
+    assert.match(text, /Notes by topic: Visual 1, Layout 1, Copy 1, 2 not tagged\./);
+    assert.match(text, /^- About says what a note is about.*Visual \(how it looks: type, colour/m);
+    assert.match(text, /^About: Visual, Copy$/m);
+    assert.match(text, /^About: Layout$/m);
+    assert.equal(text.match(/^About: /gm)?.length, 2);
+    const data = manifest([a], 'x');
+    assert.equal(data.topics.copy, 'The words: labels, headings, tone');
+    const notes = data.assets[0].notes;
+    assert.deepEqual(notes[0].topics, ['visual', 'copy']);
+    assert.deepEqual(notes[1].topics, ['layout']);
+    assert.equal('topics' in notes[2], false);
+    assert.equal('topics' in notes[3], false);
+    // A batch with no topics says nothing about them in its header.
+    assert.doesNotMatch(readme([asset({ marks: [mark({ good: 'x' })] })], 'x'), /Notes by topic/);
+  });
+});
+
 describe('Pinch sources and suggestions', () => {
   it('names the source kind in the README and notes.json, and nothing else', () => {
     const a = asset({
@@ -511,14 +549,33 @@ describe('Pinch sources and suggestions', () => {
   });
 
   it('tidies the model answer and the prompt', () => {
-    assert.deepEqual(cleanSuggestion({ works: '  Big\n number. ', doesNotWork: '' }), {
-      works: 'Big number.',
-      doesNotWork: '',
-    });
     assert.deepEqual(
-      cleanSuggestion({ works: 'Clear title.', doesNotWork: 'The marker covers the label.' }),
-      { works: 'Clear title.', doesNotWork: '' },
+      cleanSuggestion({ works: '  Big\n number. ', doesNotWork: '', topics: ['layout', 'visual'] }),
+      { works: 'Big number.', doesNotWork: '', topics: ['visual', 'layout'] },
     );
+    assert.deepEqual(
+      cleanSuggestion({
+        works: 'Clear title.',
+        doesNotWork: 'The marker covers the label.',
+        topics: ['copy'],
+      }),
+      { works: 'Clear title.', doesNotWork: '', topics: ['copy'] },
+    );
+    // No sentences left, so nothing for topics to be about.
+    assert.deepEqual(
+      cleanSuggestion({ works: '', doesNotWork: 'The ring sits on the icon.', topics: ['visual'] }),
+      { works: '', doesNotWork: '', topics: [] },
+    );
+    assert.deepEqual(
+      cleanSuggestion({
+        works: 'a',
+        doesNotWork: '',
+        topics: ['flow', 'copy', 'copy', 'visual', 'layout'],
+      }).topics,
+      ['visual', 'layout', 'copy'],
+    );
+    assert.match(suggestSystem, /visual \(how it looks/);
+    assert.match(suggestSystem, /accessibility \(usable by everyone/);
     assert.match(suggestPrompt('ours'), /Ours/);
     assert.equal(suggestPrompt(undefined).split('\n').length, 1);
     assert.match(suggestSystem, /Never describe the overlay/);
@@ -576,10 +633,10 @@ describe('Pinch sources and suggestions', () => {
     ];
     for (const s of overlay) assert.ok(aboutTheMarker(s), `about the overlay: ${s}`);
     for (const s of design) assert.ok(!aboutTheMarker(s), `about the design: ${s}`);
-    assert.deepEqual(cleanSuggestion({ works: design[0], doesNotWork: overlay[0] }), {
-      works: design[0],
-      doesNotWork: '',
-    });
+    assert.deepEqual(
+      cleanSuggestion({ works: design[0], doesNotWork: overlay[0], topics: ['visual'] }),
+      { works: design[0], doesNotWork: '', topics: ['visual'] },
+    );
   });
 });
 
