@@ -11,6 +11,13 @@ import { BlobPreconditionFailedError, get, put } from '@vercel/blob';
  * in-memory documents.
  */
 
+/**
+ * The ETag as `put` wants it in `ifMatch`. `get` can hand it back weak
+ * (`W/"abc"`, after the CDN compresses the body); `put` compares strongly and
+ * refuses a weak one every time, so every update after the first would fail.
+ */
+export const strongEtag = (etag: string) => etag.replace(/^W\//, '');
+
 const hasBlob = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 const memory = new Map<string, unknown>();
 
@@ -19,7 +26,7 @@ export async function readDocument<T>(key: string, empty: T): Promise<{ doc: T; 
   const res = await get(key, { access: 'private', useCache: false });
   if (res?.statusCode !== 200 || !res.stream) return { doc: structuredClone(empty) };
   const text = await new Response(res.stream).text();
-  return { doc: JSON.parse(text) as T, etag: res.blob.etag };
+  return { doc: JSON.parse(text) as T, etag: strongEtag(res.blob.etag) };
 }
 
 async function writeDocument<T>(key: string, doc: T, etag?: string) {
@@ -56,8 +63,6 @@ export async function updateDocument<T, R>(
         error instanceof BlobPreconditionFailedError ||
         (!etag && error instanceof Error && /already exists/i.test(error.message));
       if (!conflict) throw error;
-      if (attempt === 0)
-        console.warn('[pin] blob conflict', key, error instanceof Error ? error.name : '', etag);
       await new Promise((r) => setTimeout(r, 40 + Math.random() * 120 * (attempt + 1)));
     }
   }
