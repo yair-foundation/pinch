@@ -9,7 +9,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 | # | Question | Until decided |
 | --- | --- | --- |
 | D96 | **The pack's size, or a credit balance instead.** $19.99 for 500 readings is the hypothesis, about 4 cents a reading. Measured ([cost-bench.md](cost-bench.md)): after D97 it holds when notes are read five or more at a time ($9.09 a pack at most), and loses money on single notes against a large library ($22.67 to $37.20 a pack). A smaller pack can't fix that: a reading costs a fixed part that grows with the library, plus about half a cent a note. Credits charged per update and per note follow that; the user is weighing them against packs of readings. | No pack size is fixed. |
-| D96 | **Whether the reading sees each note's crop.** Benchmark words only against words with the crop, on precise notes, vague ones and ones whose meaning depends on the marked spot. Judge faithfulness to what the author meant and unsupported assumptions, as well as cost: more detailed rules aren't better by themselves. | The reading sees words only, as now. |
+| D96 | **Whether the reading sees each note's crop.** Benchmarked on 2026-10-20 ([rules-bench.md](rules-bench.md#close-ups-in-the-reading-d96)): with close-ups, 5 of 9 vague notes and 12 of 18 spot notes were read right, against 0 and 6 with words alone; precise notes and invented claims didn't change; 3 notes were read wrong where words alone asked instead. About $0.002 to $0.005 more a note. Sending crops to Anthropic for every reader, buyers or not, changes what the privacy dialog promises. | The reading sees words only. |
 
 ## Settled
 

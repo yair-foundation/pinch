@@ -138,6 +138,34 @@ To cut what a reading of a few notes costs, the library now goes one rule a line
 
 As good or better on every tuning count, and within noise on the held-out case's two readings. The cases' libraries hold at most a few rules, so this doesn't test strengthening and conflicts against a large library, where the layout matters most.
 
+### Close-ups in the reading (D96)
+
+Pinch reads only a note's words, so "I like this heading" or "This works" can't tell it what the designer liked. Would the note's close-up help, and at what cost? The script is `scripts/rules-bench/crops.ts`, the cases `scripts/rules-bench/crop-cases.ts`.
+
+**Method.** Three screens drawn in HTML (an analytics dashboard, a pricing page, a settings form), four notes each, with a key the reader never sees:
+
+- **Precise (3):** the words say it all, so a close-up should add nothing, and must not add guesses.
+- **Vague (3):** the words judge something the close-up shows.
+- **Spot (6):** the words mean nothing without the spot.
+
+Each close-up is the window Pinch's own `cropRect` gives for the mark, with the mark drawn on, as a JPEG. Each case was read three times **words only**, the reading as it is, and three times **with close-ups**, the same call with each note's crop after the notes and a line telling the reader to take from it only what the note judges. A judge, playing the designer with the key and not told which way it reads, scored each note. On 2026-10-20: 18 readings and 18 judgements, $1.09.
+
+| Way | Right: precise | Right: vague | Right: spot | Asked, no option right | Wrong | Left out | Unsupported a reading | Input tokens | Per reading |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Words only | 9/9 | 0/9 | 6/18 | 15 | 0 | 6 | 0.1 | 6,845 | $0.035 |
+| With close-ups | 9/9 | 5/9 | 12/18 | 4 | 3 | 3 | 0.1 | 9,068 | $0.041 |
+
+"Right" counts a rule stated right, read right and marked as Pinch's reading, or a question with the right answer among its options.
+
+- **Words alone ask, but can't offer the right answer.** "What do you like about this heading?" came with wording, size or typeface as answers; the designer meant small uppercase, letter-spaced group labels, which no word in the note gives away. With the close-up the reading named that, as a reading or among its answers.
+- **Close-ups sometimes commit too early.** Three of 27 vague and spot notes were read wrong with close-ups, against none with words only, which asked instead. Each wrong reading was right in part: "restrained emphasis" with no tint or label, errors that "say what's wrong" rather than what to do.
+- **No more invented claims:** 0.1 a reading either way.
+- **Precise notes don't change:** 9/9 either way.
+- **Two spot notes stayed hard:** "Good." on a footer and "Easy to scan." on a table. Close-ups helped one in three readings and none, in turn.
+- **Cost:** a close-up added about 550 tokens a note on these 1280px screens, about $0.002 a note. Close-ups of larger screenshots, up to 1,200px on the long side, would be up to about 1,250 tokens, about $0.005 a note.
+
+**Limits.** Three screens and twelve notes, written by hand with their keys; simple rendered screens, not real products; the mark is drawn plainly, without Pinch's numbered disc; one model as reader and judge.
+
 ## What it shows
 
 - **The rules got better, as the designer counts.** Across the tuning cases the foundation needed the fewest corrections every round. In round 3 that was 3.0 a reading, against 4.9 for current Pinch and 5.6 for the plain prompt. It handled vague notes far better than current Pinch (15 of 24 against 4), and kept unsupported assumptions near current Pinch's low (1.8 against 1.5; the plain prompt made 6.8). It kept context apart every time.
