@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D93.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D94.
 
 ## Open (need the user)
 
@@ -11,6 +11,14 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 | – | None open. | |
 
 ## Settled
+
+- **2026-10-20 — D94 A rule's close-ups reach the agent, with where the spot is as numbers (the user: "crops with boxes over MCP").** Since D93 the agent got only a note's words and its image's name, no picture and no position; the batch zip that carried both was gone. Numbers alone mean nothing to an agent that can't see the screenshot, so they come with the picture.
+  - **A third tool, `get_rule_evidence`,** takes a rule's number (R3) and returns its notes, up to eight. Each comes with its crop as a JPEG image, with Pinch's marker drawn in, and a line of JSON saying where the spot is.
+  - **The box** is in pixels from the top-left corner, the convention OpenCV, PIL and COCO share: a dot `{x, y}`, an area `{x, y, w, h}`, an arrow `{x, y, x2, y2}`. It is given in the close-up's own pixels (`closeUp`, with the part of the screenshot the crop shows) and in the screenshot's (`screenshot`, with the same as fractions). The answer says screenshot pixels aren't CSS pixels. CSS positions and HTML image maps were turned down: CSS units claim layout facts a screenshot doesn't hold, and no agent reads image maps.
+  - **Rules keep one number in every pick,** their number among all rules, so the number get_design_rules shows is the one get_rule_evidence takes; get_design_rules says the close-ups are there.
+  - **Only the needed bytes are read.** The crops sit in each batch's zip in the account. The server reads its tail, its directory and the wanted entries by HTTP ranges on a presigned URL (`src/lib/pin/zip-range.ts`), not the whole zip, and the whole zip once if the store ignores ranges.
+  - **Privacy:** a buyer's own screenshots, kept in their account (D81, D87), go to their own agent, which holds their key. The privacy dialog says so. Nothing is logged but the method.
+  - The copied prompt stays words only: a chat paste carries no images.
 
 - **2026-10-20 — D93 One way out, a lighter screen, the account as a menu (the user's 32 iterations).** Pinch had grown two exports, a dialog for the account and controls the user didn't use. In short:
   - **Rules reach the agent one way: Connect agent.** It sits on Your rules, where the export was, and offers the MCP server (D89; the key made there, New key and Disconnect beside it) or the rules copied as a prompt. The batch's "Export for agent" zip and the rules zip are gone: the user expected the agent to connect, not a download. An old export can still be dropped back in, and the batch's notes still go to Your rules as before. Start over offers Open your rules where it offered Export.

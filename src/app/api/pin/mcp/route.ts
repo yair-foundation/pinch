@@ -1,7 +1,7 @@
 import { paidEmail, paywallOn } from '@/lib/access';
 import { readAccount } from '@/lib/account';
 import { userOfAgentKey } from '@/lib/agent-keys';
-import { listCollections } from '@/lib/cloud';
+import { batchFiles, listCollections } from '@/lib/cloud';
 import { answer, type RpcMessage } from '@/lib/pin/agent';
 import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/learnings';
 
@@ -10,8 +10,9 @@ import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/l
  * JSON-RPC message (or a batch) per POST, answered as JSON. The agent sends
  * the account's key as `Authorization: Bearer pk_…`; the account must have
  * bought Pinch. Its tools hand over the account's rules, read from the store
- * at each call, so the agent always has the current ones. No AI runs here,
- * and nothing about the call is logged but its method.
+ * at each call, so the agent always has the current ones, and a rule's
+ * close-ups from the account's own batch zips (D94). No AI runs here, and
+ * nothing about the call is logged but its method.
  */
 
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,9 @@ export async function POST(request: Request) {
   for (const m of messages.slice(0, 20)) {
     if (m && typeof m === 'object' && typeof m.method === 'string')
       console.log(`[pin] mcp ${m.method}`);
-    const r = await answer(m && typeof m === 'object' ? m : {}, rules);
+    const r = await answer(m && typeof m === 'object' ? m : {}, rules, (id, paths) =>
+      batchFiles(user, id, paths),
+    );
     if (r) replies.push(r);
   }
   // Notifications only: accepted, nothing to say.

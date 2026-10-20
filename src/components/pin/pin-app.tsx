@@ -1661,7 +1661,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Account',
-          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Your agent’s key is kept only as a hash. Deleting your account deletes your rules.',
+          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Your agent’s key is kept only as a hash; with it your agent gets your rules and their close-ups. Deleting your account deletes your rules.',
         )}
         {item(
           'No ads, no analytics.',

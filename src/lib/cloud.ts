@@ -1,5 +1,6 @@
 import { del, issueSignedToken, presignUrl } from '@vercel/blob';
 import { userFolder } from './account';
+import { readZipEntries, TAIL_BYTES } from './pin/zip-range';
 import { deleteDocuments, hasBlob, listDocuments, putDocument, readDocument } from './blob-doc';
 
 /*
@@ -93,3 +94,41 @@ export const uploadToken = (pathname: string) =>
     allowedContentTypes: ['application/zip'],
     maximumSizeInBytes: MAX_BATCH_BYTES,
   });
+
+/**
+ * Some files of one of the account's batch zips (D94), read by byte ranges: from the store on a
+ * presigned URL when it takes ranges (the whole zip once when it doesn't), from memory locally.
+ * An empty map when the batch isn't there.
+ */
+export async function batchFiles(
+  user: string,
+  id: string,
+  paths: string[],
+): Promise<Map<string, Uint8Array>> {
+  if (!validId(id)) return new Map();
+  if (!hasBlob()) {
+    const bytes = memoryBatch.get(user, id);
+    if (!bytes) return new Map();
+    return readZipEntries(async (s, e) => bytes.subarray(s, e), bytes.length, paths);
+  }
+  const url = await batchDownloadUrl(user, id);
+  const tail = await fetch(url, { headers: { Range: `bytes=-${TAIL_BYTES}` } });
+  if (tail.status === 404) return new Map();
+  if (!tail.ok) throw new Error(`The store answered ${tail.status}.`);
+  const first = new Uint8Array(await tail.arrayBuffer());
+  const size = Number(tail.headers.get('content-range')?.match(/\/(\d+)$/)?.[1] ?? NaN);
+  // No ranges: the store sent the whole zip.
+  if (tail.status !== 206 || !Number.isFinite(size))
+    return readZipEntries(async (s, e) => first.subarray(s, e), first.length, paths);
+  const tailStart = size - first.length;
+  return readZipEntries(
+    async (s, e) => {
+      if (s >= tailStart) return first.subarray(s - tailStart, e - tailStart);
+      const r = await fetch(url, { headers: { Range: `bytes=${s}-${e - 1}` } });
+      if (r.status !== 206) throw new Error(`The store answered ${r.status}.`);
+      return new Uint8Array(await r.arrayBuffer());
+    },
+    size,
+    paths,
+  );
+}
