@@ -728,14 +728,7 @@ export function CollectionsView({
           {byTopic(shown).map((g) => (
             <section key={g.label} aria-labelledby={`group-${g.label}`} className="space-y-3">
               <h3 id={`group-${g.label}`} className="flex items-center gap-2 text-sm font-medium">
-                {/* A heading, not a tag: the filters above are the tags; a dot in the topic's tint. */}
-                <span
-                  aria-hidden
-                  className={cn(
-                    'size-2 rounded-full bg-current',
-                    g.topic ? TOPIC_TONES[g.topic].ink : 'text-muted-foreground',
-                  )}
-                />
+                {/* A plain heading, not a tag: the filters above are the tags. */}
                 {g.label}
                 <span className="font-mono text-[13px] font-normal text-muted-foreground">
                   {g.rules.length}
@@ -1198,6 +1191,7 @@ function ExportDialog({
       <div className="space-y-4 text-[13px]">
         <p className="text-muted-foreground">
           Your rules, with the notes and close-ups they come from. Pick what this task needs.
+          Your agent can also fetch them itself, always current: connect it in Account.
         </p>
         <fieldset className="min-w-0 border-0 p-0">
           <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">About</legend>

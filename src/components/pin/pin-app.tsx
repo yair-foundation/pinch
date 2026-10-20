@@ -1929,6 +1929,10 @@ function PrivacyDialog({
           'are kept in this browser, and once you buy Pinch, privately in your account in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. When you open Your rules, the words of the notes it hasn’t read (what works, what doesn’t, the short name, their topics and whose design it is) and the words of your rules are sent to Anthropic’s API (Claude) to find the patterns. Never the images or file names, and we don’t store them.',
         )}
         {item(
+          'Your agent',
+          'connects with a key you make in Account, kept only as a hash. With it, your agent fetches your rules and their notes’ words from your account; never your images. A new key, Disconnect or deleting your account stops it.',
+        )}
+        {item(
           'No ads, no analytics.',
           'One cookie keeps you signed in; your theme and settings are kept in this browser.',
         )}
