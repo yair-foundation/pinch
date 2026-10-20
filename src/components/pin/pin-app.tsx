@@ -1783,9 +1783,9 @@ function ToolbarButton({ children, className, ...props }: React.ComponentProps<'
 
 /*
  * The landing: the painting fills the page (dusk in dark mode, night in light mode, crossfading
- * when the theme changes), and a dark glass card sits in the middle. The card is always dark, so
- * its text colours are fixed, not the theme's: #f5f5f5 and #c4c4c4 on the card's near-black keep
- * 4.5:1 with the painting showing through.
+ * when the theme changes), and a glass card sits in the middle, light in light mode and dark in
+ * dark mode. The card sets its own text colour (#1a1a1a on white 90%, #f5f5f5 on near-black 90%)
+ * and its secondary text is 80% of it, which keeps 4.5:1 with the painting showing through.
  */
 /** How far the painting drifts against the pointer, in px at the screen's edge. */
 const PARALLAX = { x: 44, y: 28 };
@@ -1899,7 +1899,7 @@ function EmptyState({
                   mask: 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)',
                 }}
               />
-              <div className="overflow-hidden rounded-[1.625rem] bg-[#0e0e10]/90 px-7 pt-7 pb-6 text-[#f5f5f5] ring-1 ring-black/40">
+              <div className="overflow-hidden rounded-[1.625rem] bg-white/90 px-7 pt-7 pb-6 text-[#1a1a1a] ring-1 ring-black/10 transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! dark:bg-[#0e0e10]/90 dark:text-[#f5f5f5] dark:ring-black/40">
                 <DropFolder
                   active={dragging}
                   className="mx-auto -mt-2 mb-5 w-52 [@media(max-height:760px)]:w-44"
@@ -1907,7 +1907,7 @@ function EmptyState({
                 <h1 className="m-0 text-center text-[1.4rem] leading-snug font-normal tracking-tight text-balance">
                   Your taste, in everything your agent creates.
                 </h1>
-                <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-[#c4c4c4] text-balance">
+                <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
                   Mark what you like and dislike on screenshots. Export your guidance for any AI
                   agent.
                 </p>
@@ -1915,17 +1915,17 @@ function EmptyState({
                   <button
                     type="button"
                     onClick={onChoose}
-                    className="flex h-10 items-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-neutral-900 hover:bg-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    className="flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white"
                   >
                     <Plus className="size-4" aria-hidden />
                     Add images
                   </button>
                   <p
-                    className="m-0 text-center text-[13px] leading-relaxed text-[#c4c4c4]"
+                    className="m-0 text-center text-[13px] leading-relaxed text-current/80"
                     aria-live="polite"
                   >
                     {dragging ? (
-                      <span className="text-[#f5f5f5]">Drop to add them.</span>
+                      <span className="text-current">Drop to add them.</span>
                     ) : (
                       'Or drag images here or paste.'
                     )}

@@ -36,6 +36,8 @@ const CSS = `
   60% { transform: scale(1.025); }
   70%, 100% { transform: scale(1); }
 }
+.pin-folder { --fold: #fff; --glow-a: #fff; --glow-b: #dfe6ff; --glow-c: #c7d2ff; }
+html:not(.dark) .pin-folder { --fold: #000; --glow-a: #a5b4ff; --glow-b: #818cf8; --glow-c: #6366f1; }
 .pin-folder .pin-chip,
 .pin-folder .pin-cursor,
 .pin-folder .pin-glow,
@@ -80,21 +82,21 @@ export function DropFolder({ active, className }: { active?: boolean; className?
       <svg viewBox="30 0 184 158" aria-hidden className="h-auto w-full overflow-visible">
         <defs>
           <linearGradient id="pin-back" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#fff" stopOpacity="0.14" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0.05" />
+            <stop offset="0" style={{ stopColor: 'var(--fold)' }} stopOpacity="0.14" />
+            <stop offset="1" style={{ stopColor: 'var(--fold)' }} stopOpacity="0.05" />
           </linearGradient>
           <linearGradient id="pin-front" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#fff" stopOpacity="0.24" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0.09" />
+            <stop offset="0" style={{ stopColor: 'var(--fold)' }} stopOpacity="0.24" />
+            <stop offset="1" style={{ stopColor: 'var(--fold)' }} stopOpacity="0.09" />
           </linearGradient>
           <linearGradient id="pin-edge" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#fff" stopOpacity="0.55" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0.12" />
+            <stop offset="0" style={{ stopColor: 'var(--fold)' }} stopOpacity="0.55" />
+            <stop offset="1" style={{ stopColor: 'var(--fold)' }} stopOpacity="0.12" />
           </linearGradient>
           <radialGradient id="pin-light" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0" stopColor="#fff" stopOpacity="1" />
-            <stop offset="0.45" stopColor="#dfe6ff" stopOpacity="0.6" />
-            <stop offset="1" stopColor="#c7d2ff" stopOpacity="0" />
+            <stop offset="0" style={{ stopColor: 'var(--glow-a)' }} stopOpacity="1" />
+            <stop offset="0.45" style={{ stopColor: 'var(--glow-b)' }} stopOpacity="0.6" />
+            <stop offset="1" style={{ stopColor: 'var(--glow-c)' }} stopOpacity="0" />
           </radialGradient>
           <filter id="pin-blur" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="7" />
@@ -105,7 +107,7 @@ export function DropFolder({ active, className }: { active?: boolean; className?
           <path
             d="M66 26H110Q115 26 118 30L122 34Q124 36 128 36H194Q199 36 199 41V129Q199 134 194 134H65Q60 134 60 129V32Q60 26 66 26Z"
             fill="url(#pin-back)"
-            stroke="#fff"
+            style={{ stroke: 'var(--fold)' }}
             strokeOpacity="0.16"
           />
           {/* The light inside the folder. */}
