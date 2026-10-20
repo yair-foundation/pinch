@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { answer, PROTOCOL_VERSIONS, pickOf, TOOLS, topicsText } from '../agent';
+import { answer, PROTOCOL_VERSIONS, pickOf, type TOOLS, topicsText } from '../agent';
 import { type Collection, newCollection, type Rule } from '../learnings';
 
 const rule = (id: string, text: string, extra: Partial<Rule> = {}): Rule => ({
