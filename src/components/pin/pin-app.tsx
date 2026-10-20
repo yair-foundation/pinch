@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Accessibility,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -9,15 +10,20 @@ import {
   Globe,
   House,
   Keyboard,
+  LayoutGrid,
   Lightbulb,
   Loader2,
   Lock,
   MapPin,
+  MousePointerClick,
   MoveUpRight,
+  Palette,
   Plus,
   RotateCcw,
+  Route,
   SquareDashed,
   Swords,
+  TextQuote,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -3032,10 +3038,47 @@ function MarkEditor({
   );
 }
 
+/** One icon per topic. */
+const TOPIC_ICONS = {
+  visual: Palette,
+  layout: LayoutGrid,
+  copy: TextQuote,
+  interaction: MousePointerClick,
+  flow: Route,
+  accessibility: Accessibility,
+};
+
 /**
- * What a note is about: six toggle chips, any number on, none needed. While a grey suggestion
- * shows and the note has no topics yet, the suggestion's topics have a dashed border: taking the
- * suggestion turns them on. Pills 36px tall and 8px apart, so their 44px hit areas tile.
+ * One tint per topic: `ink` colours the icon always and the label when on, `fill` is the chip
+ * when on. No red, which means "doesn't work" and delete. Text is at least 5.4:1 on its fill in
+ * light (teal, orange and green take the 800 shade for it) and 9.6:1 in dark.
+ */
+const TOPIC_TONES: Record<Topic, { ink: string; fill: string }> = {
+  visual: {
+    ink: 'text-fuchsia-700 dark:text-fuchsia-300',
+    fill: 'bg-fuchsia-100 dark:bg-fuchsia-400/15',
+  },
+  layout: { ink: 'text-blue-700 dark:text-blue-300', fill: 'bg-blue-100 dark:bg-blue-400/15' },
+  copy: { ink: 'text-teal-800 dark:text-teal-300', fill: 'bg-teal-100 dark:bg-teal-400/15' },
+  interaction: {
+    ink: 'text-violet-700 dark:text-violet-300',
+    fill: 'bg-violet-100 dark:bg-violet-400/15',
+  },
+  flow: {
+    ink: 'text-orange-800 dark:text-orange-300',
+    fill: 'bg-orange-100 dark:bg-orange-400/15',
+  },
+  accessibility: {
+    ink: 'text-green-800 dark:text-green-300',
+    fill: 'bg-green-100 dark:bg-green-400/15',
+  },
+};
+
+/**
+ * What a note is about: six toggle tags, any number on, none needed. Off, a tag is outlined with
+ * its icon in its tint; on, it is filled with the tint. While a grey suggestion shows and the note
+ * has no topics yet, the suggestion's topics have a dashed border: taking the suggestion turns
+ * them on. Tags are 28px tall with rows 16px apart, so their 44px hit areas tile.
  */
 function TopicPicker({
   topics,
@@ -3049,10 +3092,12 @@ function TopicPicker({
   return (
     <fieldset className="m-0 min-w-0 border-0 p-0 text-[13px] text-muted-foreground">
       <legend className="mb-1 p-0 text-[13px] leading-7 font-medium">About</legend>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-x-1.5 gap-y-4">
         {TOPICS.map((t) => {
           const on = Boolean(topics?.includes(t.kind));
           const hinted = !on && Boolean(suggested?.includes(t.kind));
+          const tone = TOPIC_TONES[t.kind];
+          const Icon = TOPIC_ICONS[t.kind];
           return (
             <button
               key={t.kind}
@@ -3062,14 +3107,15 @@ function TopicPicker({
               onClick={() => onChange(toggleTopic(topics, t.kind))}
               className={cn(
                 hit,
-                'flex min-h-9 items-center rounded-full border px-3 text-[13px] leading-tight transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                'flex h-7 items-center gap-1.5 rounded-md border px-2 text-[13px] leading-none transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50',
                 on
-                  ? 'border-primary bg-primary font-medium text-primary-foreground'
+                  ? cn('border-transparent', tone.fill, tone.ink)
                   : hinted
                     ? 'border-dashed border-foreground/50 text-foreground hover:bg-muted'
                     : 'border-border hover:bg-muted hover:text-foreground',
               )}
             >
+              <Icon aria-hidden className={cn('size-3.5 shrink-0', tone.ink)} />
               {t.label}
               {hinted && <span className="sr-only">, suggested</span>}
             </button>
