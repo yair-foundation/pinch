@@ -572,31 +572,47 @@ function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, label: s
   ctx.fillText(label, bx + inset + capW / 2, by + badgeH / 2 + 0.5 * k);
 }
 
-/** Every marked copy on one dark sheet, in batch order, each with its number. */
-export async function contactSheet(marked: { blob: Blob; number: string }[]) {
-  const bitmaps = await Promise.all(marked.map((m) => bitmapOf(m.blob)));
-  try {
-    const layout = layoutSheet(bitmaps.map((b) => ({ width: b.width, height: b.height })));
-    const { canvas, ctx } = canvasOf(layout.width, layout.height);
-    ctx.fillStyle = SHEET_BG;
-    ctx.fillRect(0, 0, layout.width, layout.height);
-    ctx.imageSmoothingQuality = 'high';
-    for (const cell of layout.cells) {
-      const b = bitmaps[cell.index];
+/**
+ * The contact sheet, drawn one image at a time while the export walks the
+ * batch: each image is scaled into its cell and its notes drawn on at that
+ * size, so the numbers stay legible however small the cell (the 1800px marked
+ * copies, shrunk, made them a few pixels high). Laid out up front from the
+ * images' sizes; an image whose file is missing leaves its cell empty.
+ */
+function contactSheet(sizes: { width: number; height: number }[]) {
+  const layout = layoutSheet(sizes);
+  const { canvas, ctx } = canvasOf(layout.width, layout.height);
+  ctx.fillStyle = SHEET_BG;
+  ctx.fillRect(0, 0, layout.width, layout.height);
+  return {
+    add(index: number, bitmap: ImageBitmap, asset: Asset, number: string, grid?: LumaGrid) {
+      const cell = layout.cells.find((c) => c.index === index);
+      if (!cell) return;
       // The cell has the image's aspect, give or take rounding; a very tall or wide image
       // (its aspect clamped by the planner) is fitted whole, with the sheet showing beside it.
-      const s = Math.min(cell.w / b.width, cell.h / b.height);
-      const dw = Math.round(b.width * s);
-      const dh = Math.round(b.height * s);
+      const s = Math.min(cell.w / bitmap.width, cell.h / bitmap.height);
+      const dw = Math.max(1, Math.round(bitmap.width * s));
+      const dh = Math.max(1, Math.round(bitmap.height * s));
+      // Its own canvas, so a number disc looks for room inside this image, never in its neighbour.
+      const tile = canvasOf(dw, dh);
+      tile.ctx.imageSmoothingQuality = 'high';
+      tile.ctx.drawImage(bitmap, 0, 0, dw, dh);
+      const unit = Math.max(1, Math.max(dw, dh) / 1200);
+      // The image's number badge sits in the tile's top-left corner: a disc there would hide under it.
+      const k = layout.badgeScale;
+      const badge = { w: 7 * k + 64 * k, h: 7 * k + 32 * k };
+      const onImage = busyOn(grid, s, null);
+      const busy: Busy = (x, y, r) =>
+        x - r < badge.w && y - r < badge.h ? 1 : (onImage?.(x, y, r) ?? 0);
+      for (const [i, m] of written(asset).entries())
+        drawMark(tile.ctx, m, i + 1, (x, y) => [x * dw, y * dh], unit, undefined, busy);
       const dx = cell.x + Math.round((cell.w - dw) / 2);
       const dy = cell.y + Math.round((cell.h - dh) / 2);
-      ctx.drawImage(b, 0, 0, b.width, b.height, dx, dy, dw, dh);
-      drawBadge(ctx, dx, dy, marked[cell.index].number, layout.badgeScale);
-    }
-    return toBlob(canvas, 'image/jpeg', 0.86);
-  } finally {
-    for (const b of bitmaps) b.close();
-  }
+      ctx.drawImage(tile.canvas, dx, dy);
+      drawBadge(ctx, dx, dy, number, layout.badgeScale);
+    },
+    blob: () => toBlob(canvas, 'image/jpeg', 0.86),
+  };
 }
 
 const bytes = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer());
@@ -618,7 +634,8 @@ export async function buildExport(
   const encoder = new TextEncoder();
   const files: ZipEntry[] = [];
   const crops = new Map<string, Rect>();
-  const marked: { blob: Blob; number: string }[] = [];
+  const sheet = contactSheet(list.map((a) => ({ width: a.width, height: a.height })));
+  let sheetUsed = false;
   for (const [i, asset] of list.entries()) {
     onProgress(i, list.length);
     const blob = await imageOf(asset.id);
@@ -628,7 +645,8 @@ export async function buildExport(
     const grid = lumaGrid(bitmap);
     files.push({ name: root + names.image, data: await bytes(blob) });
     const markedBlob = await markedImage(bitmap, asset, undefined, grid);
-    marked.push({ blob: markedBlob, number: names.number });
+    sheet.add(i, bitmap, asset, names.number, grid);
+    sheetUsed = true;
     files.push({ name: root + names.marked, data: await bytes(markedBlob) });
     for (const [j, mark] of written(asset).entries()) {
       const rect = settledCrop(bitmap, mark, grid);
@@ -650,11 +668,7 @@ export async function buildExport(
       data: encoder.encode(`${JSON.stringify(manifest(assets, stamp, cropOf), null, 2)}\n`),
     },
   ];
-  if (marked.length)
-    entries.push({
-      name: root + SHEET_FILE,
-      data: await bytes(await contactSheet(marked)),
-    });
+  if (sheetUsed) entries.push({ name: root + SHEET_FILE, data: await bytes(await sheet.blob()) });
   entries.push(...files);
   onProgress(list.length, list.length);
   return {

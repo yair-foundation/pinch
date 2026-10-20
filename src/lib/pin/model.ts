@@ -456,7 +456,7 @@ const plainCrop: CropOf = (a, m) => cropRect(m.shape, a.width, a.height);
 
 /** How an agent should read the export: the same words in the README and in AGENTS.md. */
 const HOW_TO_USE = [
-  `Start with \`${SHEET_FILE}\`: thumbnails of the whole batch, numbered 01, 02, … in the order below, to see what is in it. Its markers are small: take positions from the notes below, not from the sheet.`,
+  `Start with \`${SHEET_FILE}\`: thumbnails of the whole batch, numbered 01, 02, … in the order below, each with its notes drawn on and numbered, to see what is in it and roughly where each note sits. Take exact positions from the notes below.`,
   'For each note, read its crop in `crops/` first. Open the marked copy in `marked/` when the crop seems cut off or you need to see where the spot sits on the screen, and the original in `images/` only when you need more detail. Each image costs context; the crop is usually enough.',
   "The notes say what the author saw and why. Don't ask the author to explain again what a note already says; when one is unclear, look closer at its crop and the marked copy first.",
   'Refer to notes by number, "02.3" for the third note on image 02, so the author can find them.',
@@ -464,7 +464,7 @@ const HOW_TO_USE = [
 ];
 
 const FILES = [
-  `\`${SHEET_FILE}\`: every image's marked copy on one sheet, each with its number.`,
+  `\`${SHEET_FILE}\`: every image on one sheet with its notes drawn on, each with its number.`,
   '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image, scaled to 1800 px on its long side, with every note drawn on it (positions are always in the pixels of `images/`): a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: a close-up of each note with its marker drawn in. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
