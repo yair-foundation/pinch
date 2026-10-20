@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D90.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D92.
 
 ## Open (need the user)
 
@@ -11,6 +11,20 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 | – | None open. | |
 
 ## Settled
+
+- **2026-10-20 — D92 Setup for more agents (the user: "add Setup for more agents", after typeui was reviewed).** Connect your agent, in Account, now offers Claude Code, Cursor, VS Code, Codex, Gemini CLI, Windsurf and "Other". Each gets the same address and bearer key in that agent's own format (`src/lib/pin/agent-setup.ts`), checked against its documentation on 2026-10-20.
+  - **Commands:** Claude Code and Gemini CLI get a command with `--header`.
+  - **Settings entries:** Cursor gets an `mcpServers` entry with `url` and `headers`; VS Code a `servers` entry with `type: "http"`; Windsurf an `mcpServers` entry with `serverUrl`.
+  - **Codex:** a `[mcp_servers.pinch]` entry with `bearer_token_env_var`, and the key in the shell, since Codex's docs ask to keep secrets out of its config file.
+  - **Other:** the address and the header, for any agent that speaks MCP.
+
+  Each step has its own Copy button. The key still shows only once, with a line to keep it in the person's own settings, not a shared project. Bottom-up growth means working where people already build. From the same review: typeui's own numbered house rules (a hero offset, a content width, heading margins) stay out of the foundation, which never adds sizes of its own.
+- **2026-10-20 — D91 Every interpretation waits for the author (the goal: "users should approve that interpretation before it becomes saved guidance"; the user kept the card to the pencil, D88).** Since D90 a reading of vague words went to the agent at once, marked as Pinch's reading, unless it came with a question. In the benchmark such readings were wrong five times in one round. Now every interpretation waits, in the same box as a question: "Is this what you meant?" with Yes, or "Something else", which opens the pencil.
+  - Until then, as with a question, no export or agent gets the rule. The page counts what waits ("2 waiting for you").
+  - Confirming makes the rule the author's own; the principles that explain it stay.
+  - A visitor's preview shows the notes' own words first, then readings, then questions. Rules taken from the notes' own words are guidance at once, as before.
+  - Exports no longer carry "Pinch's reading", since every rule they hold is the author's.
+  - The cost is a click per reading, and the model sometimes marks a fairly concrete note as a reading ("these borders feel heavy").
 
 - **2026-10-20 — D90 Pinch reads notes with an expert design foundation, kept apart from the rules, and asks when it can't tell (the assessment: "keep the expert foundation … the foundation doesn't resolve ambiguity by itself … Pinch should preserve that uncertainty or ask a focused question"; the user: "for every retained principle, define when it applies, its exceptions, and what evidence would justify using it … keep that foundation separate from the collection: expert knowledge helps explain the observation; the user's annotations establish the preference").** Notes are shorthand ("quiet", "heavy", "I like this heading"). Before this, the reading dropped such notes without a word, or guessed.
   - **The foundation.** `src/lib/pin/foundation.ts` holds sixteen principles in Pinch's own words. Each says where it applies, where it gives way, the evidence in notes that justifies reading a note through it, and its sources. With them comes the shorthand designers use and the principles each word points at.

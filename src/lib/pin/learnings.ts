@@ -353,6 +353,17 @@ export function applyReading(
 }
 
 /**
+ * A rule waits for its author (D91): on its question, or, read from vaguer words, until they
+ * confirm Pinch's reading. Until then no export or agent gets it.
+ */
+export const waiting = (r: Pick<Rule, 'question' | 'basis'>) =>
+  Boolean(r.question) || r.basis === 'interpreted';
+
+/** The author confirms Pinch's reading of a rule: it is theirs now, and their agent gets it. */
+export const confirmRule = (c: Collection, id: string, now: string): Collection =>
+  withRule(c, id, ownWords({}), now);
+
+/**
  * The author answers a rule's question: the rule becomes that answer's, as if they had said it
  * (D90), and their agent gets it from now on.
  */
@@ -454,7 +465,7 @@ export type ExportedRule = { id: string; rule: Rule; notes: ExportedNote[] };
 
 /**
  * The rules an export carries: the ones the pick takes (never a dismissed or locked one, nor one
- * waiting on its question), by topic, then oldest
+ * waiting for its author), by topic, then oldest
  * first. Numbered R1, R2, … in that order; each note's close-up is `evidence/r01-1.jpg` and on.
  */
 export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
@@ -465,7 +476,7 @@ export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
   const chosen = c.rules
     .filter(
       (r) =>
-        r.status === 'approved' && !r.locked && !r.question && r.text.trim() && picked(r, pick),
+        r.status === 'approved' && !r.locked && !waiting(r) && r.text.trim() && picked(r, pick),
     )
     .sort((a, b) => topicOrder(a) - topicOrder(b) || a.createdAt.localeCompare(b.createdAt));
   const width = chosen.length > 99 ? 3 : 2;
@@ -494,7 +505,6 @@ const said = (n: BatchNote) =>
 const HOW_TO_USE = [
   'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
   'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
-  'A rule with "Pinch\'s reading" is Pinch\'s interpretation of vaguer words, not the author\'s own: follow it, and lean on its notes where it doesn\'t fit the task.',
   '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule lists the notes it comes from and their close-ups in `evidence/`. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
@@ -520,8 +530,6 @@ export function rulesMarkdown(c: Collection, rules: ExportedRule[], exportedAt: 
       const others = rule.topics.slice(1).map(topicLabel);
       lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
       if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
-      if (rule.basis === 'interpreted' && rule.reading?.trim())
-        lines.push('', `Pinch's reading: ${oneLine(rule.reading)}`);
       if (principlesOf(rule).length) lines.push('', `Explained by: ${principlesOf(rule).join(', ')}.`);
       if (others.length || rule.tags.length)
         lines.push(
@@ -556,10 +564,6 @@ export function rulesManifest(c: Collection, rules: ExportedRule[], exportedAt: 
       topics: r.rule.topics,
       tags: r.rule.tags,
       origin: originOf(r.rule),
-      basis: r.rule.basis ?? 'stated',
-      ...(r.rule.basis === 'interpreted' && r.rule.reading?.trim()
-        ? { reading: oneLine(r.rule.reading) }
-        : {}),
       ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
       notes: r.notes.map((n) => ({
         evidence: n.file,
@@ -588,8 +592,6 @@ export function rulesText(c: Collection, rules: ExportedRule[]): string {
       '',
       `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}`,
     );
-    if (r.rule.basis === 'interpreted' && r.rule.reading?.trim())
-      lines.push(`   Pinch's reading: ${oneLine(r.rule.reading)}`);
     if (principlesOf(r.rule).length)
       lines.push(`   Explained by: ${principlesOf(r.rule).join(', ')}.`);
     for (const n of r.notes) lines.push(`   - ${fromLine(n)}: ${said(n.note)}`);

@@ -2,6 +2,7 @@
 
 import { ClipboardCopy, LogOut, PlugZap, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { AGENT_SETUPS } from '@/lib/pin/agent-setup';
 import { cn } from '@/lib/utils';
 import { Dialog, hit } from './dialog';
 
@@ -254,15 +255,15 @@ function AgentConnect() {
   const [made, setMade] = useState<{ key: string; url: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [agent, setAgent] = useState(AGENT_SETUPS[0].id);
   useEffect(() => {
     fetch('/api/pin/agent-key', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { key: null }))
       .then((r: { key: { createdAt: string } | null }) => setSince(r.key?.createdAt ?? null))
       .catch(() => setSince(null));
   }, []);
-  const command = made
-    ? `claude mcp add --transport http pinch ${made.url} --header "Authorization: Bearer ${made.key}"`
-    : '';
+  const setup = AGENT_SETUPS.find((a) => a.id === agent) ?? AGENT_SETUPS[0];
+  const steps = made ? setup.steps(made.url, made.key) : [];
   const run = async (method: 'POST' | 'DELETE') => {
     setBusy(true);
     setNote(null);
@@ -284,12 +285,12 @@ function AgentConnect() {
       setBusy(false);
     }
   };
-  const copy = async () => {
+  const copy = async (code: string) => {
     try {
-      await navigator.clipboard.writeText(command);
-      setNote('Copied. Paste it in your terminal.');
+      await navigator.clipboard.writeText(code);
+      setNote('Copied.');
     } catch {
-      setNote('The browser didn’t allow copying; select the command and copy it.');
+      setNote('The browser didn’t allow copying; select it and copy it.');
     }
   };
   return (
@@ -298,16 +299,52 @@ function AgentConnect() {
         Connect your agent
       </h3>
       <p>
-        Claude Code fetches your rules for each task, always the current ones. Connect it once with
-        your key.
+        Your agent fetches your rules for each task, always the current ones: Claude Code, Cursor,
+        VS Code, Codex and others. Connect it once with your key.
       </p>
       {made ? (
         <>
-          <p>Run this in your terminal. The key is shown only now.</p>
-          <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-all text-foreground select-all">
-            {command}
-          </pre>
-          <p>Then ask Claude Code to use your Pinch rules.</p>
+          <p>The key is shown only now. Keep it in your own settings, not a shared project.</p>
+          <fieldset className="min-w-0 border-0 p-0">
+            <legend className="sr-only">Your agent</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {AGENT_SETUPS.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-pressed={a.id === agent}
+                  onClick={() => {
+                    setAgent(a.id);
+                    setNote(null);
+                  }}
+                  className={cn(
+                    hit,
+                    'flex h-7 items-center rounded-md border px-2 text-[13px] transition-colors duration-150 motion-reduce:transition-none',
+                    a.id === agent
+                      ? 'border-foreground bg-muted text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+                  )}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          {steps.map((s) => (
+            <div key={s.where} className="space-y-1.5">
+              <p>{s.where}</p>
+              <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-all text-foreground select-all">
+                {s.code}
+              </pre>
+              <button type="button" onClick={() => copy(s.code)} className={button}>
+                <ClipboardCopy className="size-4" aria-hidden />
+                Copy
+              </button>
+            </div>
+          ))}
+          <p>
+            Then ask {setup.id === 'other' ? 'your agent' : setup.name} to use your Pinch rules.
+          </p>
         </>
       ) : since ? (
         <p>Connected since {new Date(since).toLocaleDateString()}.</p>
@@ -318,12 +355,7 @@ function AgentConnect() {
         </p>
       )}
       <div className="flex flex-wrap gap-2 pt-1">
-        {made ? (
-          <button type="button" onClick={copy} className={button}>
-            <ClipboardCopy className="size-4" aria-hidden />
-            Copy command
-          </button>
-        ) : (
+        {!made && (
           <button
             type="button"
             onClick={() => run('POST')}

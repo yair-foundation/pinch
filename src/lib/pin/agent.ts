@@ -1,4 +1,4 @@
-import { type Collection, type RulePick, rulesOf, rulesText, tagsOf } from './learnings';
+import { type Collection, type RulePick, rulesOf, rulesText, tagsOf, waiting } from './learnings';
 import { TOPIC_KINDS, TOPICS, type Topic } from './model';
 
 /*
@@ -85,7 +85,7 @@ export function pickOf(args: unknown): RulePick {
 /** What the rules are about, counted: the answer to list_rule_topics. */
 export function topicsText(c: Collection | null): string {
   const live = (c?.rules ?? []).filter(
-    (r) => r.status === 'approved' && !r.locked && !r.question && r.text,
+    (r) => r.status === 'approved' && !r.locked && !waiting(r) && r.text,
   );
   if (!live.length) return 'No rules yet.';
   const lines = [`${live.length} ${live.length === 1 ? 'rule' : 'rules'}.`, 'Topics:'];
