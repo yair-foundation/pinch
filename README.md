@@ -4,7 +4,7 @@ Tag screenshots for your agent. Add a batch of screens, mark what works and what
 
 Pinch is one paid tool (D81): $19 once, with a Google sign-in, sold through Lemon Squeezy. A buyer's collections are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose collections stay in the browser.
 
-Live at https://pinch-tool.vercel.app. Desktop only (under 768px wide it shows one message), up to 100 images a session.
+Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message), up to 100 images a session.
 
 Optional, with keys: AI drafts for empty notes (suggestions), AI drafts of the rule each note in a collection teaches, anonymous saving of the text of notes, and tagging of those notes by design area with Jev (TypeSafe).
 
@@ -73,7 +73,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 - **Anthropic.** Put `ANTHROPIC_API_KEY` in `.env.local` and run `pnpm dev`; the header shows the Suggestions switch, and a collection with notes to review shows Draft. Each step keeps its own daily ledger (in memory locally).
 - **Jev, without a key.** `pnpm jev-stub` starts a stand-in on port 3999 that answers the area questions from keywords in the note. In a second terminal: `JEV_API_KEY=stub JEV_ENDPOINT=http://localhost:3999 pnpm dev`. Write a note, wait about six seconds for it to be saved, and read it back (below) to see its `tags`. The stub tests the plumbing, never the tagging quality.
 - **Paid mode, locally.** Set the Google and Lemon Squeezy variables to any test values, plus `AUTH_SECRET` and `PINCH_TEST_LOGIN=1`, then `pnpm build && pnpm start`. Sign in with `POST /api/pin/auth/test` (`{"email": "you@example.com"}`, same origin), and mark the purchase by sending the webhook route an `order_created` body signed with the webhook secret (HMAC-SHA256 of the raw body, hex, in `X-Signature`). Without a Blob store, the account's collections live in the server's memory.
-- **Reading saved notes.** `GET /api/pin/notes` lists the saved days; `?day=YYYY-MM-DD` returns a day's document (each note under its random id, with `at` and, once tagged, `tags`); `?summary=YYYY-MM` counts a month's notes by area. In production send the password: `curl -u admin:$ADMIN_PASSWORD "https://pinch-tool.vercel.app/api/pin/notes?summary=2026-10"`. In `next dev` without `ADMIN_PASSWORD` the route is open.
+- **Reading saved notes.** `GET /api/pin/notes` lists the saved days; `?day=YYYY-MM-DD` returns a day's document (each note under its random id, with `at` and, once tagged, `tags`); `?summary=YYYY-MM` counts a month's notes by area. In production send the password: `curl -u admin:$ADMIN_PASSWORD "https://get-pinch.io/api/pin/notes?summary=2026-10"`. In `next dev` without `ADMIN_PASSWORD` the route is open.
 
 ## Project structure
 
@@ -111,7 +111,7 @@ More in [docs/architecture.md](docs/architecture.md). Agents start with [AGENTS.
    - **Lemon Squeezy:** create the store and a product, Pinch, $19, single payment, and copy its checkout link into `PINCH_BUY_URL`; the store and product ids go in `LEMONSQUEEZY_STORE_ID` and `LEMONSQUEEZY_PRODUCT_ID`. Under Settings, Webhooks, add `https://<your domain>/api/pin/billing/webhook` with the events `order_created` and `order_refunded`, and put its signing secret in `LEMONSQUEEZY_WEBHOOK_SECRET`. Optionally create an API key for `LEMONSQUEEZY_API_KEY`. In the product's confirmation settings, send buyers back to `https://<your domain>/`.
    - **Blob:** the connected store already provides `BLOB_STORE_ID` and `BLOB_WEBHOOK_PUBLIC_KEY`; the account's collections use them.
    - Redeploy, then sign in, buy with a test-mode product, and check the landing opens.
-6. **Domain.** Settings, Domains: add the domain (the live one is `pinch-tool.vercel.app`; a custom domain needs its DNS pointed at Vercel as the dialog says). Keeping the same origin keeps every visitor's session: images and notes live in their browser's IndexedDB (`pin-notes`) and `localStorage` under that origin.
+6. **Domain.** Settings, Domains: add the domain (the live one is `get-pinch.io`, bought through Vercel; `pinch-tool.vercel.app` serves the same deployment. A domain bought elsewhere needs its DNS pointed at Vercel as the dialog says. Google's redirect URI and the Lemon Squeezy webhook name the domain, so change them with it). Keeping the same origin keeps every visitor's session: images and notes live in their browser's IndexedDB (`pin-notes`) and `localStorage` under that origin.
 7. Check `/robots.txt` (allows `/`, disallows `/api/`), `/api/pin/suggest` and `/api/pin/learn` (`{"available":true}` with a key) and `GET /api/pin/notes` with the password.
 
 ## Privacy

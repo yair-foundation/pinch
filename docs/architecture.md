@@ -36,4 +36,4 @@ Client side: the session (images as Blobs, assets and marks as one record) lives
 
 ## Deploy
 
-Vercel, from this repository's `main`; the live origin is https://pinch-tool.vercel.app. Steps and the variables are in [README.md](../README.md#deploying-to-vercel). Keeping the origin keeps every visitor's session; connecting the same Blob store keeps the saved notes and the day's ledgers.
+Vercel, from this repository's `main`; the live origin is https://get-pinch.io (`pinch-tool.vercel.app` serves the same deployment; sign-in and the browser's session belong to each origin, so the vercel.app ones are to redirect to it at launch). Steps and the variables are in [README.md](../README.md#deploying-to-vercel). Keeping the origin keeps every visitor's session; connecting the same Blob store keeps the saved notes and the day's ledgers.
