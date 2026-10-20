@@ -1,8 +1,8 @@
 # Pinch
 
-Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why and what it's about (visual, layout, copy, interaction, flow, accessibility), and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Then open Your rules: Pinch reads your notes, finds the patterns across images and keeps them as one taste library of rules, each with the notes and close-ups it draws on. Overlapping notes become one rule, notes that pull different ways keep where each holds, and a new batch strengthens a rule, adds one or flags a conflict. Edit any rule, slice them by topic or your own tags, and export them as a rules file with their evidence, or copy them as text for one task.
+Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, and say why and what it's about (visual, layout, copy, interaction, flow, accessibility). Then open Your rules: Pinch reads your notes, finds the patterns across images and keeps them as one taste library of rules, each with the notes and close-ups it draws on. Overlapping notes become one rule, notes that pull different ways keep where each holds, and a new batch strengthens a rule, adds one or flags a conflict. Edit or remove any rule, slice them by topic, and connect your agent: over MCP it fetches the current rules for each task, or copy them as a prompt for one chat (D93).
 
-Pinch is $19 once, with a Google sign-in, sold through Lemon Squeezy (D81, D87). Marking images needs no account, and Your rules shows the first two rules Pinch finds; every rule, exports of any kind and AI suggestions come with buying. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose rules stay in the browser.
+Pinch is $19 once, with a Google sign-in, sold through Lemon Squeezy (D81, D87). Marking images needs no account, and Your rules shows the first two rules Pinch finds; every rule, connecting an agent and AI suggestions come with buying. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose rules stay in the browser.
 
 Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message), up to 100 images a session.
 
@@ -73,7 +73,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 
 ## Testing the AI steps and Jev locally
 
-- **Anthropic.** Put `ANTHROPIC_API_KEY` in `.env.local` and run `pnpm dev`; the header shows the Suggestions switch, and Your rules reads new notes into rules on its own. Each step keeps its own daily ledger (in memory locally).
+- **Anthropic.** Put `ANTHROPIC_API_KEY` in `.env.local` and run `pnpm dev`; the account menu shows the Suggestions switch, and Your rules reads new notes into rules on its own. Each step keeps its own daily ledger (in memory locally).
 - **Jev, without a key.** `pnpm jev-stub` starts a stand-in on port 3999 that answers the area questions from keywords in the note. In a second terminal: `JEV_API_KEY=stub JEV_ENDPOINT=http://localhost:3999 pnpm dev`. Write a note, wait about six seconds for it to be saved, and read it back (below) to see its `tags`. The stub tests the plumbing, never the tagging quality.
 - **Paid mode, locally.** Set the Google and Lemon Squeezy variables to any test values, plus `AUTH_SECRET` and `PINCH_TEST_LOGIN=1`, then `pnpm build && pnpm start`. Sign in with `POST /api/pin/auth/test` (`{"email": "you@example.com"}`, same origin), and mark the purchase by sending the webhook route an `order_created` body signed with the webhook secret (HMAC-SHA256 of the raw body, hex, in `X-Signature`). Without a Blob store, the account's rules live in the server's memory. Signed in but not bought, Your rules gets the preview: two rules in full, the rest hidden.
 - **The rules benchmark.** `ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/run.ts <out-dir> [runs] [builds] [held-out]` reads the cases in `scripts/rules-bench/cases.ts` with a plain prompt, with Pinch before the foundation and with Pinch as it is, has a judge score each against the case's key, then puts each one's guidance to work on a fresh task (D90). A few dollars a run; results in [docs/rules-bench.md](docs/rules-bench.md).
@@ -87,8 +87,9 @@ src/app/api/pin/         suggest, learn, notes; me, auth/ (google, callback, sig
                          restore), account, cloud/ (collections, batches, upload)
 src/app/terms/           the terms page
 src/components/pin/      the app (pin-app.tsx), collections (collections.tsx; kept in the browser, collections-store.ts,
-                         or the account, cloud-store.ts), the account and its gate (account.tsx), landing folder
-                         animation, wordmark, IndexedDB store, canvas and zip rendering, topic tags and their picker
+                         or the account, cloud-store.ts), Connect agent (connect-agent.tsx), the account menu and its
+                         gate (account.tsx), shimmer, landing folder, wordmark, IndexedDB store, canvas and zip
+                         rendering, topic tags and their picker
 src/components/site/     theme provider and toggle
 src/components/ui/       button, switch, tooltip (Base UI)
 src/lib/pin/             the pure model, suggestion prompt and filter, export summary, contact sheet, zip writer and

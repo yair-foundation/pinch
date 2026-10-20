@@ -2,21 +2,18 @@
 
 import {
   Check,
-  ClipboardCopy,
+  ChevronDown,
   Cloud,
-  Download,
-  HardDrive,
-  LoaderCircle,
   Lock,
   Pencil,
+  PlugZap,
   RotateCcw,
   ThumbsDown,
   ThumbsUp,
   Trash2,
   TriangleAlert,
-  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
 import { MAX_LEARN_NOTES, MAX_LEARN_RULES } from '@/lib/pin/learn';
@@ -28,8 +25,6 @@ import {
   byTopic,
   confirmRule,
   type Collection,
-  cleanTag,
-  collectionSlug,
   evidenceOf,
   imagesOf,
   knownNotes,
@@ -44,8 +39,6 @@ import {
   type Reading,
   type Rule,
   type RulePick,
-  rulesManifest,
-  rulesMarkdown,
   rulesOf,
   rulesText,
   tagsOf,
@@ -58,11 +51,11 @@ import {
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
 import { unzip } from '@/lib/pin/unzip';
-import { type ZipEntry, zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import type { CollectionsBackend } from './collections-backend';
+import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
-import { download } from './render';
+import { RuleSkeleton, ShimmerText } from './shimmer';
 import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
@@ -74,9 +67,9 @@ import { TOPIC_TONES, tagHit } from './topic-style';
  * strengthens rules, writes new ones or flags a conflict. Rules are guidance
  * as soon as they are written; the pencil edits one. Each rule opens to the
  * notes it draws on, with their close-ups. Rules can be sliced by topic and
- * by the author's own tags, and export as a rules file or as text. Before
- * Pinch is bought, the first rules show in full and the rest as
- * placeholders, and nothing exports. Kept in this browser, or in the account
+ * by the author's own tags. They reach the agent by Connect agent (D93):
+ * over MCP, or copied as a prompt. Before Pinch is bought, the first rules
+ * show in full and the rest as placeholders, and nothing leaves. Kept in this browser, or in the account
  * once bought (D81), where this browser's move on their own.
  */
 
@@ -137,6 +130,7 @@ export function CollectionsView({
   openPrints,
   batchZip,
   paid,
+  account,
   price,
   onPay,
   onBack,
@@ -153,6 +147,8 @@ export function CollectionsView({
   batchZip: () => Promise<{ blob: Blob; name: string } | null>;
   /** Whether every rule shows and the rules export: Pinch is bought, or not for sale here. */
   paid: boolean;
+  /** Signed in, can sign in, or neither: what connecting an agent needs first. */
+  account: 'in' | 'out' | 'none';
   price: string;
   /** Ask the visitor to get Pinch, for what they just tried. */
   onPay: (why: 'rules' | 'export') => void;
@@ -165,7 +161,9 @@ export function CollectionsView({
   const [reading, setReading] = useState<{ done: number; total: number } | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  // The rule the author asked to remove, waiting on "are you sure".
+  const [removing, setRemoving] = useState<string | null>(null);
   const [movable, setMovable] = useState<Collection[]>([]);
   const [slice, setSlice] = useState<Slice>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -519,54 +517,18 @@ export function CollectionsView({
     if (learnAvailable && unread > 0 && !reading && !readError && busy !== 'add') readAll();
   }, [learnAvailable, unread, reading, readError, busy, readAll]);
 
-  /** The approved rules the pick takes, as a zip: design-rules.md, rules.json and the close-ups. */
-  const exportRules = async (pick: RulePick) => {
+  /** Every rule the agent gets, as a prompt for one chat. */
+  const copyRules = async () => {
     const now = ref.current;
     if (!now) return;
-    const rules = rulesOf(now, pick);
-    if (!rules.length) return;
-    setBusy('export');
-    try {
-      const stamp = nowIso();
-      const root = `pinch-rules-${collectionSlug(now.name)}-${stamp.slice(0, 10)}/`;
-      const encode = (s: string) => new TextEncoder().encode(s);
-      const entries: ZipEntry[] = [
-        { name: `${root}design-rules.md`, data: encode(rulesMarkdown(now, rules, stamp)) },
-        {
-          name: `${root}rules.json`,
-          data: encode(`${JSON.stringify(rulesManifest(now, rules, stamp), null, 2)}\n`),
-        },
-      ];
-      for (const r of rules)
-        for (const n of r.notes) {
-          const bytes = (await filesOf(n.batch.id))?.get(n.batch.root + n.note.crop);
-          if (bytes) entries.push({ name: root + n.file, data: bytes });
-        }
-      download(
-        new Blob(zip(entries) as BlobPart[], { type: 'application/zip' }),
-        `${root.slice(0, -1)}.zip`,
-      );
-      onStatus({
-        tone: 'info',
-        text: `Exported ${count(rules.length, 'rule')}. Put design-rules.md where your agent reads its instructions, with the evidence folder beside it.`,
-      });
-      setExporting(false);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const copyRules = async (pick: RulePick) => {
-    const now = ref.current;
-    if (!now) return;
-    const rules = rulesOf(now, pick);
+    const rules = rulesOf(now);
     try {
       await navigator.clipboard.writeText(rulesText(now, rules));
       onStatus({
         tone: 'info',
-        text: `Copied ${count(rules.length, 'rule')} as text. Paste them into your agent’s chat for this task.`,
+        text: `Copied ${count(rules.length, 'rule')}. Paste them into your agent’s chat for this task.`,
       });
-      setExporting(false);
+      setConnecting(false);
     } catch {
       onStatus({ tone: 'error', text: "The browser didn't allow copying." });
     }
@@ -594,39 +556,56 @@ export function CollectionsView({
     }
   };
 
-  if (!c) return <main className="flex-1" />;
-  const Where = backend.kind === 'account' ? Cloud : HardDrive;
+  if (!c)
+    return (
+      <main className="min-h-0 flex-1 overflow-hidden" aria-busy="true">
+        <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+          <div className="space-y-2">
+            <h2 className="text-[1.4rem] leading-snug font-normal tracking-tight">Your rules</h2>
+            <p className="text-[13px]">
+              <ShimmerText>Loading your rules…</ShimmerText>
+            </p>
+          </div>
+          <div className="space-y-3">
+            <RuleSkeleton />
+            <RuleSkeleton wide={false} />
+            <RuleSkeleton />
+          </div>
+        </div>
+      </main>
+    );
   const live = c.rules.filter((r) => !r.locked && r.status !== 'dismissed');
   const shown = live.filter((r) => picked(r, pickOf(slice)));
   const locked = c.rules.filter((r) => r.locked);
   const waits = live.filter(waiting).length;
-  const noteCount = c.batches.reduce((n, b) => n + b.notes.length, 0);
-  const imageCount = new Set(c.batches.flatMap((b) => b.notes.map((n) => `${b.id}/${n.image}`)))
-    .size;
   const textOf = (id: string) => c.rules.find((r) => r.id === id)?.text ?? '';
+  // Removed, a rule is kept as dismissed: out of sight and the agent's reach, never written again.
+  const remove = (id: string) => {
+    setRemoving(null);
+    change((c) => withRule(c, id, { status: 'dismissed' }, nowIso()), true);
+    onStatus({
+      tone: 'info',
+      text: 'Rule removed. Pinch won’t write it again.',
+      action: {
+        label: 'Undo',
+        run: () => change((c) => withRule(c, id, { status: 'approved' }, nowIso()), true),
+      },
+    });
+  };
   const card = (r: Rule) => (
     <li key={r.id}>
       <RuleCard
         rule={r}
         collection={c}
         crops={crops}
-        allTags={tagsOf(c.rules)}
         pullsAgainst={r.conflict ? textOf(r.conflict.ruleId) : ''}
         isNew={r.createdAt >= since.current}
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
         onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
         onConfirm={() => change((c) => confirmRule(c, r.id, nowIso()), true)}
         onRemove={() => {
-          // Removed, a rule is kept as dismissed: out of sight and exports, never written again.
-          change((c) => withRule(c, r.id, { status: 'dismissed' }, nowIso()), true);
-          onStatus({
-            tone: 'info',
-            text: 'Rule removed. Pinch won’t write it again.',
-            action: {
-              label: 'Undo',
-              run: () => change((c) => withRule(c, r.id, { status: 'approved' }, nowIso()), true),
-            },
-          });
+          opener.current = document.activeElement as HTMLElement | null;
+          setRemoving(r.id);
         }}
       />
     </li>
@@ -634,7 +613,7 @@ export function CollectionsView({
 
   return (
     <>
-      <main inert={inert || exporting} className="min-h-0 flex-1 overflow-y-auto">
+      <main inert={inert || connecting || removing !== null} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
           <header className="space-y-3">
             <div className="flex flex-wrap items-start gap-3">
@@ -643,17 +622,11 @@ export function CollectionsView({
                   Your rules
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {noteCount
-                    ? `What Pinch understands about your taste, from ${count(noteCount, 'note')} on ${count(imageCount, 'image')}.`
-                    : 'What Pinch understands about your taste, from the notes you write on images.'}
+                  What Pinch understands about your taste.
                 </p>
                 <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
-                  <span>{count(live.length, 'rule')} ·</span>
-                  {waits > 0 && <span>{waits} waiting for you ·</span>}
-                  <span className="flex items-center gap-1.5">
-                    <Where className="size-3.5" aria-hidden />
-                    {backend.kind === 'account' ? 'Kept in your account' : 'Kept in this browser'}
-                  </span>
+                  <span>{count(live.length, 'rule')}</span>
+                  {waits > 0 && <span>· {waits} waiting for you</span>}
                 </p>
               </div>
               <button
@@ -661,31 +634,27 @@ export function CollectionsView({
                 onClick={() => {
                   if (!paid) return onPay('export');
                   opener.current = document.activeElement as HTMLElement | null;
-                  setExporting(true);
+                  setConnecting(true);
                 }}
-                disabled={paid && (!live.length || busy !== null)}
-                title={paid && !live.length ? 'No rules to export yet' : undefined}
                 className={primary}
               >
                 {paid ? (
-                  <Download className="size-4" aria-hidden />
+                  <PlugZap className="size-4" aria-hidden />
                 ) : (
                   <Lock className="size-4" aria-hidden />
                 )}
-                Export rules
+                Connect agent
               </button>
             </div>
 
             <div aria-live="polite" className="empty:hidden">
               {(reading || busy === 'add') && (
-                <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                  <LoaderCircle
-                    className="size-4 animate-spin motion-reduce:animate-none"
-                    aria-hidden
-                  />
-                  {reading
-                    ? `Reading ${count(reading.total, 'new note')} for patterns…${reading.done ? ` ${reading.done} done.` : ''}`
-                    : 'Adding your new notes…'}
+                <p className="text-[13px]">
+                  <ShimmerText>
+                    {reading
+                      ? `Reading ${count(reading.total, 'new note')} for patterns…${reading.done ? ` ${reading.done} done.` : ''}`
+                      : 'Adding your new notes…'}
+                  </ShimmerText>
                 </p>
               )}
             </div>
@@ -752,7 +721,18 @@ export function CollectionsView({
 
           {live.length > 0 && <SliceBar collection={c} slice={slice} onSlice={setSlice} />}
 
-          {!c.batches.length && !c.rules.length ? (
+          {(reading || busy === 'add') && !live.length && (
+            <ol className="list-none space-y-3 p-0" aria-hidden>
+              <li>
+                <RuleSkeleton />
+              </li>
+              <li>
+                <RuleSkeleton wide={false} />
+              </li>
+            </ol>
+          )}
+
+          {!c.batches.length && !c.rules.length && busy !== 'add' ? (
             <div className="space-y-3 rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
               <p>
                 Mark what works and what doesn’t on your images. Pinch reads your notes here, finds
@@ -783,15 +763,48 @@ export function CollectionsView({
         </div>
       </main>
 
-      {exporting && (
-        <ExportDialog
-          collection={c}
+      {connecting && (
+        <ConnectDialog
+          account={account}
+          rules={rulesOf(c).length}
           opener={opener.current}
-          busy={busy === 'export'}
-          onClose={() => setExporting(false)}
-          onDownload={exportRules}
+          onClose={() => setConnecting(false)}
           onCopy={copyRules}
         />
+      )}
+      {removing !== null && (
+        <Dialog
+          id="remove-title"
+          title="Remove this rule?"
+          opener={opener.current}
+          onClose={() => setRemoving(null)}
+        >
+          <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
+            “{textOf(removing).replace(/[.\s]+$/, '')}”. Your agent stops getting it, and Pinch
+            won’t write it again.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              data-autofocus
+              onClick={() => setRemoving(null)}
+              className={button}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => remove(removing)}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center gap-2 rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
+              )}
+            >
+              <Trash2 className="size-4" aria-hidden />
+              Remove
+            </button>
+          </div>
+        </Dialog>
       )}
     </>
   );
@@ -907,7 +920,6 @@ function RuleCard({
   rule: r,
   collection: c,
   crops,
-  allTags,
   pullsAgainst,
   isNew,
   onChange,
@@ -918,7 +930,6 @@ function RuleCard({
   rule: Rule;
   collection: Collection;
   crops: Record<string, string>;
-  allTags: string[];
   pullsAgainst: string;
   /** Written while the page is open. */
   isNew: boolean;
@@ -928,29 +939,22 @@ function RuleCard({
   onAnswer: (option: number) => void;
   /** The author confirms Pinch's reading of a rule (D91). */
   onConfirm: () => void;
-  /** The author removes an outdated rule. */
+  /** The author asks to remove an outdated rule; the page asks "are you sure" first. */
   onRemove: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const started = useRef('');
   const [open, setOpen] = useState(false);
-  const [tag, setTag] = useState('');
   const notes = evidenceOf(c, r);
   const images = imagesOf(c, r);
   const id = `rule-${r.id}`;
   const origin = originOf(r);
   const why = (r.principles ?? []).flatMap((p) => PRINCIPLES.find((x) => x.id === p) ?? []);
-  const addTag = () => {
-    const t = cleanTag(tag);
-    if (t && !r.tags.includes(t)) onChange({ tags: [...r.tags, t] }, true);
-    setTag('');
-  };
   const edit = () => {
     started.current = r.text;
     setEditing(true);
   };
   const done = () => {
-    addTag();
     // An emptied rule goes back to Pinch's words. A rewritten one is the author's own: no longer
     // Pinch's reading, nor waiting on its question (D90). Either way, what was typed is written now.
     const back = !r.text.trim() && r.drafted ? { text: r.drafted } : {};
@@ -1027,84 +1031,11 @@ function RuleCard({
               className={cn(field, 'resize-y')}
             />
           </div>
-          <div className="space-y-1">
-            <label
-              htmlFor={`${id}-where`}
-              className="text-[13px] font-medium text-muted-foreground"
-            >
-              Where it holds
-            </label>
-            <input
-              id={`${id}-where`}
-              value={r.context}
-              maxLength={80}
-              placeholder="Everywhere"
-              onChange={(e) => onChange({ context: e.target.value })}
-              className={field}
-            />
-          </div>
           <TopicPicker
             legend="This rule is about"
             topics={r.topics}
             onChange={(topics) => onChange({ topics }, true)}
           />
-          <div className="space-y-1">
-            <label htmlFor={`${id}-tag`} className="text-[13px] font-medium text-muted-foreground">
-              Your tags
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              {r.tags.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => onChange({ tags: r.tags.filter((x) => x !== t) }, true)}
-                  aria-label={`Remove tag ${t}`}
-                  className={cn(tagHit, chip, 'border-border text-foreground hover:bg-muted')}
-                >
-                  #{t}
-                  <X className="size-3" aria-hidden />
-                </button>
-              ))}
-              <input
-                id={`${id}-tag`}
-                value={tag}
-                list={`${id}-tags`}
-                maxLength={30}
-                placeholder="A project, a client"
-                onChange={(e) => setTag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addTag();
-                  }
-                }}
-                onBlur={addTag}
-                className={cn(field, 'h-8 w-44 py-1 text-[13px]')}
-              />
-              <datalist id={`${id}-tags`}>
-                {allTags
-                  .filter((t) => !r.tags.includes(t))
-                  .map((t) => (
-                    <option key={t} value={t} />
-                  ))}
-              </datalist>
-            </div>
-            <p className="text-[13px] text-muted-foreground">
-              A tag keeps a rule to that project or client. A rule with no tag is your own taste,
-              for every project.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onRemove}
-            className={cn(
-              small,
-              'text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
-            )}
-          >
-            <Trash2 className="size-4" aria-hidden />
-            Remove rule
-          </button>
         </div>
       ) : (
         <div className="space-y-1.5 pr-10">
@@ -1117,9 +1048,6 @@ function RuleCard({
           >
             {r.text}
           </p>
-          {r.context.trim() && (
-            <p className="text-[13px] text-muted-foreground">Where: {r.context.trim()}</p>
-          )}
           {r.basis === 'interpreted' && r.reading && !r.question && (
             <p className="text-[13px] text-muted-foreground">Pinch’s reading: {r.reading}</p>
           )}
@@ -1197,25 +1125,48 @@ function RuleCard({
             {r.conflict.why ? ` ${r.conflict.why}` : ''}
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-200/90">
-            Both are kept. If each holds in its own place, say where with the pencil.
+            Both are kept. Edit or remove one with the pencil.
           </p>
         </div>
       )}
 
       <div>
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={`${id}-notes`}
-          onClick={() => {
-            setOpen(!open);
-            if (!open && r.fresh) onChange({ fresh: 0 }, true);
-          }}
-          className={small}
-        >
-          From {count(notes.length, 'note')} on {count(images, 'image')}
-          <span aria-hidden>{open ? '−' : '+'}</span>
-        </button>
+        {/* The notes a rule draws on, and, while editing, removing it: one row. */}
+        <div className="-mx-2 -mb-1 flex items-center gap-2">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={`${id}-notes`}
+            title={`${count(notes.length, 'note')} on ${count(images, 'image')}`}
+            onClick={() => {
+              setOpen(!open);
+              if (!open && r.fresh) onChange({ fresh: 0 }, true);
+            }}
+            className={small}
+          >
+            Source
+            <ChevronDown
+              aria-hidden
+              className={cn(
+                'size-3.5 transition-transform duration-150 motion-reduce:transition-none',
+                open && 'rotate-180',
+              )}
+            />
+          </button>
+          {editing && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className={cn(
+                small,
+                'ml-auto text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
+              )}
+            >
+              <Trash2 className="size-4" aria-hidden />
+              Remove
+            </button>
+          )}
+        </div>
         {open && (
           <div id={`${id}-notes`} className="mt-2 space-y-2">
             {why.length > 0 && (
@@ -1288,121 +1239,5 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * What goes out: the approved rules about the topics and tags a task needs (all of them at
- * first), as a zip with the close-ups or as text for a chat.
- */
-function ExportDialog({
-  collection: c,
-  opener,
-  busy,
-  onClose,
-  onDownload,
-  onCopy,
-}: {
-  collection: Collection;
-  opener: HTMLElement | null;
-  busy: boolean;
-  onClose: () => void;
-  onDownload: (pick: RulePick) => void;
-  onCopy: (pick: RulePick) => void;
-}) {
-  const all = useMemo(() => rulesOf(c).map((r) => r.rule), [c]);
-  // Only the topics and tags some approved rule has, and "none" when a rule has none.
-  const presentTopics = useMemo(() => {
-    const topics: (Topic | null)[] = TOPICS.map((t) => t.kind).filter((k) =>
-      all.some((r) => r.topics.includes(k)),
-    );
-    if (all.some((r) => !r.topics.length)) topics.push(null);
-    return topics;
-  }, [all]);
-  const presentTags = useMemo(() => {
-    const tags: (string | null)[] = tagsOf(all);
-    if (tags.length && all.some((r) => !r.tags.length)) tags.push(null);
-    return tags;
-  }, [all]);
-  const [topics, setTopics] = useState<(Topic | null)[]>(presentTopics);
-  const [tags, setTags] = useState<(string | null)[]>(presentTags);
-  const pick: RulePick = { topics, ...(presentTags.length ? { tags } : {}) };
-  const n = rulesOf(c, pick).length;
-  const toggle = <T,>(list: T[], v: T) =>
-    list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
-  const chipOf = (on: boolean, topic?: Topic | null) =>
-    cn(
-      tagHit,
-      chip,
-      on
-        ? topic
-          ? cn('border-transparent', TOPIC_TONES[topic].fill, TOPIC_TONES[topic].ink)
-          : 'border-foreground bg-muted text-foreground'
-        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
-    );
-  return (
-    <Dialog id="export-title" title="Export rules" opener={opener} onClose={onClose}>
-      <div className="space-y-4 text-[13px]">
-        <p className="text-muted-foreground">
-          Your rules, with the notes and close-ups they come from. Pick what this task needs.
-          Your agent can also fetch them itself, always current: connect it in Account.
-        </p>
-        <fieldset className="min-w-0 border-0 p-0">
-          <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">About</legend>
-          <div className="flex flex-wrap gap-2">
-            {presentTopics.map((t) => (
-              <button
-                key={t ?? 'none'}
-                type="button"
-                aria-pressed={topics.includes(t)}
-                onClick={() => setTopics((x) => toggle(x, t))}
-                className={chipOf(topics.includes(t), t)}
-              >
-                {t ? topicLabel(t) : 'Not tagged'}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        {presentTags.length > 0 && (
-          <fieldset className="min-w-0 border-0 p-0">
-            <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">
-              Your tags
-            </legend>
-            <div className="flex flex-wrap gap-2">
-              {presentTags.map((t) => (
-                <button
-                  key={t ?? 'none'}
-                  type="button"
-                  aria-pressed={tags.includes(t)}
-                  onClick={() => setTags((x) => toggle(x, t))}
-                  className={chipOf(tags.includes(t))}
-                >
-                  {t ? `#${t}` : 'No tag'}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        )}
-        <p className="text-sm" aria-live="polite">
-          {count(n, 'rule')} for this export.
-        </p>
-      </div>
-      <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={() => onCopy(pick)} disabled={!n} className={button}>
-          <ClipboardCopy className="size-4" aria-hidden />
-          Copy as text
-        </button>
-        <button
-          type="button"
-          data-autofocus
-          onClick={() => onDownload(pick)}
-          disabled={!n || busy}
-          className={primary}
-        >
-          <Download className="size-4" aria-hidden />
-          {busy ? 'Exporting…' : 'Download zip'}
-        </button>
-      </div>
-    </Dialog>
   );
 }

@@ -51,7 +51,20 @@ export function authUrl(o: {
   return url.toString();
 }
 
-export type GoogleUser = { sub: string; email: string; name: string };
+export type GoogleUser = { sub: string; email: string; name: string; picture: string };
+
+/** The account's profile picture, when Google gives one on its own image host; '' otherwise. */
+export function pictureOf(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 500) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.endsWith('.googleusercontent.com')
+      ? url.toString()
+      : '';
+  } catch {
+    return '';
+  }
+}
 
 /** Who the ID token says signed in, after checking it is Google's, for us, current and verified. */
 export function claimsOf(idToken: string, clientId: string, now = Date.now()): GoogleUser {
@@ -76,6 +89,7 @@ export function claimsOf(idToken: string, clientId: string, now = Date.now()): G
     sub: c.sub,
     email: c.email.trim().toLowerCase(),
     name: typeof c.name === 'string' ? c.name.slice(0, 100) : '',
+    picture: pictureOf(c.picture),
   };
 }
 

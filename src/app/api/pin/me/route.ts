@@ -22,7 +22,9 @@ export async function GET(request: Request) {
       paywall,
       signIn: googleConfigured(),
       testLogin: testLoginOn(),
-      user: session ? { email: session.email, name: session.name } : null,
+      user: session
+        ? { email: session.email, name: session.name, picture: session.picture ?? '' }
+        : null,
       allowed,
       price: config?.price ?? '$19',
       buyUrl:

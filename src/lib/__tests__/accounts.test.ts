@@ -24,7 +24,7 @@ import {
   webhookOutcome,
 } from '../billing';
 import { listDocuments, putDocument } from '../blob-doc';
-import { authUrl, claimsOf, pkcePair } from '../google';
+import { authUrl, claimsOf, pictureOf, pkcePair } from '../google';
 import { cookieOf, readSession, SESSION_COOKIE, signSession } from '../session';
 
 const SECRET = 'test-secret';
@@ -35,6 +35,13 @@ describe('sessions', () => {
     const s = readSession(token, SECRET, 2000);
     assert.equal(s?.user, 'g1');
     assert.equal(s?.email, 'a@b.co');
+    assert.equal(s?.picture, '', 'a session from before pictures has none');
+    const withPicture = signSession(
+      { user: 'g1', email: 'a@b.co', name: 'A', picture: 'https://lh3.googleusercontent.com/a' },
+      SECRET,
+      1000,
+    );
+    assert.equal(readSession(withPicture, SECRET, 2000)?.picture, 'https://lh3.googleusercontent.com/a');
     assert.equal(readSession(token, 'other', 2000), null);
     assert.equal(readSession(`${token}x`, SECRET, 2000), null);
     const [payload, sig] = token.split('.');
@@ -73,7 +80,15 @@ describe('Google sign-in', () => {
       sub: '123',
       email: 'ada@example.com',
       name: 'Ada',
+      picture: '',
     });
+    assert.equal(
+      claimsOf(idToken({ ...good, picture: 'https://lh3.googleusercontent.com/a/x=s96-c' }), 'client-1', 1_000_000_000_000).picture,
+      'https://lh3.googleusercontent.com/a/x=s96-c',
+    );
+    assert.equal(pictureOf('https://evil.example/a.png'), '', 'only Google’s image host');
+    assert.equal(pictureOf('http://lh3.googleusercontent.com/a'), '', 'https only');
+    assert.equal(pictureOf(42), '');
     const bad = (over: Record<string, unknown>) => () =>
       claimsOf(idToken({ ...good, ...over }), 'client-1', 1_000_000_000_000);
     assert.throws(bad({ iss: 'https://evil.example' }), /isn’t from Google/);

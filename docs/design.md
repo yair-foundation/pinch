@@ -42,8 +42,8 @@ Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-mu
 
 ## Motion
 
-- Short and purposeful: a 300 ms transition on the landing card's drag state, the folder animation on the landing, the 700 ms crossfade of the landing painting between themes, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, the pointer parallax on the painting, `animate-in` fades on tooltips. No decorative motion.
-- **Reduced motion is honoured.** The painting, the theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the parallax and the folder animation stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
+- Short and purposeful: a 300 ms transition on the landing card's drag state, the side folder on the landing (affectUI's Side Folder, turned landscape), the shimmer while rules load, the 700 ms crossfade of the landing painting between themes, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, the pointer parallax on the painting, `animate-in` fades on tooltips. No decorative motion.
+- **Reduced motion is honoured.** The painting, the theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the parallax, the folder and the shimmer stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
 
 ## Icons
 
