@@ -10,6 +10,7 @@ import {
   arrowFrom,
   assetFiles,
   busyShare,
+  inkShare,
   centreOf,
   cropRect,
   currentSuggestion,
@@ -104,23 +105,24 @@ describe('cropRect', () => {
 
   it('crops an area with a margin, never beyond the image', () => {
     const r = cropRect({ kind: 'area', x: 0.1, y: 0.1, w: 0.5, h: 0.2 }, 1600, 1000);
-    assert.deepEqual(r, { x: 96, y: 36, w: 928, h: 328 });
+    // A quarter of the long side on every edge, so what sits beside the area shows.
+    assert.deepEqual(r, { x: 0, y: 0, w: 1200, h: 600 });
     const full = cropRect({ kind: 'area', x: 0, y: 0, w: 1, h: 1 }, 1600, 1000);
     assert.deepEqual(full, { x: 0, y: 0, w: 1600, h: 1000 });
   });
 
-  it('crops an arrow around both ends with a wide margin, and at least 320px', () => {
+  it('crops a window around each end of an arrow, never a thin strip', () => {
     // 1600 × 1000: the arrow spans x 192–1280 (1088px), y 400–410.
     const r = cropRect({ kind: 'arrow', x: 0.12, y: 0.4, x2: 0.8, y2: 0.41 }, 1600, 1000);
     // 30% of the long side on every edge, so what each end points at shows; the width reaches the image's edges.
-    assert.deepEqual(r, { x: 0, y: 0, w: 1600, h: 1000 });
+    assert.deepEqual(r, { x: 0, y: 0, w: 1600, h: 989 });
     // A near-vertical arrow gets a crop at least 60% as wide as it is tall, not a strip.
     const tall = cropRect({ kind: 'arrow', x: 0.5, y: 0.2, x2: 0.52, y2: 0.8 }, 1600, 1000);
     assert.ok(tall.w >= tall.h * 0.6 - 1, `${tall.w}x${tall.h}`);
     assert.ok(r.x <= 192 && r.x + r.w >= 1280, 'both ends inside');
     // A short arrow in a corner: the floor size, kept inside the image.
     const short = cropRect({ kind: 'arrow', x: 0.98, y: 0.02, x2: 0.95, y2: 0.05 }, 1600, 1000);
-    assert.deepEqual(short, { x: 1280, y: 0, w: 320, h: 320 });
+    assert.deepEqual(short, { x: 992, y: 0, w: 608, h: 478 });
   });
 });
 
@@ -209,6 +211,25 @@ describe('busyShare', () => {
     assert.ok(half > 0.3 && half < 0.7, `${half}`);
     // Outside the image: nothing to cover.
     assert.equal(busyShare(g, { x: -50, y: -50, w: 20, h: 20 }), 0);
+  });
+});
+
+describe('inkShare', () => {
+  /** A white 200×200 image with one solid dark block: the inside of a big glyph. */
+  const solid = (): LumaGrid => {
+    const cols = 200;
+    const rows = 200;
+    const luma = new Uint8Array(cols * rows).fill(250);
+    for (let y = 80; y < 140; y++) for (let x = 80; x < 140; x++) luma[y * cols + x] = 30;
+    return { width: cols, height: rows, cell: 1, cols, rows, luma };
+  };
+  it('sees the inside of big type, which edges alone miss', () => {
+    const g = solid();
+    const inside = { x: 95, y: 95, w: 20, h: 20 };
+    assert.equal(busyShare(g, inside), 0);
+    assert.equal(inkShare(g, inside), 1);
+    assert.equal(inkShare(g, { x: 10, y: 10, w: 20, h: 20 }), 0);
+    assert.equal(inkShare(g, { x: -50, y: -50, w: 20, h: 20 }), 0);
   });
 });
 

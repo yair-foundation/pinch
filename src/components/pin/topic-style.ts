@@ -2,12 +2,12 @@ import type { Topic } from '@/lib/pin/model';
 
 /*
  * How topic tags look, wherever they show: the note's tags in the notes panel
- * and a collection's learnings, grouped by topic (D72, D74).
+ * and a collection's learnings, grouped by topic (D74, D76).
  */
 
 /**
  * A topic tag's hit area: as wide as the tag and 36px tall, under the usual 44px so that rows
- * 8px apart, the same as the columns, tile without overlapping (D74).
+ * 8px apart, the same as the columns, tile without overlapping (D76).
  */
 export const tagHit =
   'relative after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-9 after:min-w-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[""]';
