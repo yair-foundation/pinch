@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Copy,
   Download,
   Globe,
   House,
@@ -50,6 +49,7 @@ import {
   currentRhythm,
   currentSpacing,
   currentSuggestion,
+  exportName,
   isTinyArea,
   type LumaGrid,
   isTinyArrow,
@@ -67,6 +67,7 @@ import {
   verdictOf,
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
+import { noteFingerprint } from '@/lib/pin/learnings';
 import {
   type Measured,
   measureSpacing,
@@ -79,11 +80,10 @@ import {
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import { type Checked, checkRhythm, type Rhythm, rhythmSuggestion } from '@/lib/pin/rhythm';
 import type { SuggestResult } from '@/lib/pin/suggest';
-import { imageSummary } from '@/lib/pin/summary';
 import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
-import { AccessGate, AccountDialog, locked as isLocked, signOut, useMe } from './account';
+import { AccessGate, AccountDialog, signOut, useMe } from './account';
 import { cloudBackend } from './cloud-store';
 import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
@@ -97,7 +97,6 @@ import {
   contextForAi,
   cropForAi,
   download,
-  markedImage,
   ODD_COLOR,
   prepareImage,
   SPACING_COLOR,
@@ -308,27 +307,6 @@ const isSmallDevice = () =>
   window.matchMedia('(pointer: coarse)').matches ||
   window.screen.width * window.devicePixelRatio < 768;
 
-/** Whether the clipboard takes images as well as text here. */
-const canCopyImages = () =>
-  typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function';
-
-/** The marked copies are JPEG; the clipboard wants PNG. */
-async function toPng(blob: Blob): Promise<Blob> {
-  if (blob.type === 'image/png') return blob;
-  const bitmap = await bitmapOf(blob);
-  const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('Could not draw the image.'))),
-      'image/png',
-    ),
-  );
-}
-
 /** The next source when S is pressed: through the four kinds, then none. */
 function nextSource(source: Source | undefined): Source | undefined {
   const at = source ? SOURCES.findIndex((s) => s.kind === source.kind) : -1;
@@ -387,7 +365,7 @@ const pinOf = (id: string) =>
 /** One tab's name, so a tab can tell its own saves from another's. */
 const TAB_ID = newId();
 
-type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'account';
+type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'account' | 'pay';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
 const digestOf = (list: Asset[]) => {
@@ -414,7 +392,6 @@ function Workspace() {
   const [suggesting, setSuggesting] = useState<string | null>(null);
   const suggestStopped = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
   // The one dialog open, and what had focus before it, so closing it puts focus back.
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -444,13 +421,15 @@ function Workspace() {
   const [view, setView] = useState<'batch' | 'collections'>('batch');
   const viewRef = useRef(view);
   viewRef.current = view;
-  // Who is looking, and whether Pinch is theirs to use (D81). Closed: billing is on, not bought.
+  // Who is looking, and whether Pinch is theirs (D81, D87). Anyone marks images; seeing every
+  // rule, exporting and AI suggestions are for buyers, once billing is on.
   const { me, refresh: refreshMe } = useMe();
-  const closed = isLocked(me);
-  const closedRef = useRef(closed);
-  closedRef.current = closed;
-  // Collections live in the account once signed in, in this browser otherwise.
-  const cloudKey = me?.user && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
+  const paid = !me?.paywall || Boolean(me?.allowed);
+  // What the visitor tried that asked them to get Pinch.
+  const [payWhy, setPayWhy] = useState<'rules' | 'export'>('export');
+  // The rules live in the account once bought, in this browser otherwise.
+  const cloudKey =
+    me?.user && paid && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
   const backend = useMemo(() => {
     if (!cloudKey) return browserBackend;
     const [mode, folder] = cloudKey.split(' ');
@@ -607,13 +586,6 @@ function Workspace() {
     );
     return () => clearTimeout(timer);
   }, [status]);
-
-  // "Copied" on the button, then back to its name.
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1400);
-    return () => clearTimeout(timer);
-  }, [copied]);
 
   // Save on every change. One write at a time; changes made meanwhile go in the next one, so
   // closing the tab right after an edit loses nothing. Once another tab has saved, this one
@@ -821,10 +793,6 @@ function Workspace() {
 
   const addFiles = useCallback(
     async (dropped: File[]) => {
-      if (closedRef.current) {
-        setStatus({ tone: 'error', text: 'Get Pinch to add images.' });
-        return;
-      }
       for (const file of dropped.filter(isZip)) await openExport(file);
       const files = dropped.filter((f) => !isZip(f));
       if (!files.length) return;
@@ -1118,7 +1086,7 @@ function Workspace() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys.
-      if (dialog || view === 'collections' || closed) return;
+      if (dialog || view === 'collections') return;
       if (e.key === 'Escape') {
         if (isTyping(e.target)) (e.target as HTMLElement).blur();
         else if (!selected && tool !== 'pin') setTool('pin');
@@ -1243,7 +1211,6 @@ function Workspace() {
     undo,
     redo,
     view,
-    closed,
   ]);
 
   const toggleSuggestions = () => {
@@ -1344,57 +1311,6 @@ function Workspace() {
     }
   };
 
-  /**
-   * The open image with its notes drawn on, as PNG, and a short summary as text, in one
-   * clipboard item: pasted into a chat, the agent gets both. A browser that takes only text
-   * gets the summary, and the toast says so.
-   */
-  const copyForAgent = async () => {
-    if (!asset) return;
-    const target = asset;
-    const text = imageSummary(target, index, assets.length);
-    const notes = target.marks.filter((m) => verdictOf(m) !== 'empty').length;
-    const image = async () => {
-      const blob = await store.getImage(target.id);
-      if (!blob) throw new Error('The image is missing.');
-      if (!notes) return toPng(blob);
-      const bitmap = await bitmapOf(blob);
-      try {
-        return await toPng(await markedImage(bitmap, target));
-      } finally {
-        bitmap.close();
-      }
-    };
-    try {
-      if (!canCopyImages()) throw new Error('text only');
-      // Promises keep the write inside the click, which Safari asks for.
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'image/png': image(),
-          'text/plain': Promise.resolve(new Blob([text], { type: 'text/plain' })),
-        }),
-      ]);
-      setCopied(true);
-      setStatus({
-        tone: 'info',
-        text: notes
-          ? `Copied the image with ${count(notes, 'note')} drawn on, and the notes as text. Paste both into the agent.`
-          : 'Copied the image and its name as text; it has no notes yet.',
-      });
-    } catch {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setStatus({
-          tone: 'info',
-          text: "Copied the notes as text; this browser didn't allow copying the image with them.",
-        });
-      } catch {
-        setStatus({ tone: 'error', text: "The browser didn't allow copying." });
-      }
-    }
-  };
-
   /** The image leaves the session; its file stays in the browser while Undo can bring it back. */
   const removeAsset = (id: string) => {
     const name = assets.find((a) => a.id === id)?.name ?? 'image';
@@ -1442,15 +1358,6 @@ function Workspace() {
     }
   }, [deselect, markExported]);
 
-  /** A batch kept in a collection, opened into the session like any export. */
-  const openStoredBatch = useCallback(
-    (file: File) => {
-      setView('batch');
-      openExport(file);
-    },
-    [openExport],
-  );
-
   /**
    * The logo goes home, which in Pinch means a new batch: straight there when everything was
    * exported since the last change, after a question when something wasn't.
@@ -1462,10 +1369,30 @@ function Workspace() {
   };
 
   // The landing: no image yet, so the header floats over the painting in two glass pills.
-  // Closed to this visitor, the landing stays, with sign-in and buy in place of Add images.
-  const landing = loaded && (!asset || closed) && view === 'batch';
-  // The batch's own controls in the header: its count, suggestions, copy, export and keys.
-  const batchTools = view === 'batch' && assets.length > 0 && !closed;
+  const landing = loaded && !asset && view === 'batch';
+  // The batch's own controls in the header: its count, suggestions, export and keys.
+  const batchTools = view === 'batch' && assets.length > 0;
+  // Bought, in this tab or another: the ask goes, and says so.
+  useEffect(() => {
+    if (dialog === 'pay' && me?.paywall && me.allowed) {
+      closeDialog();
+      setStatus({ tone: 'info', text: 'Pinch is yours. Every rule and export is open.' });
+    }
+  }, [dialog, me, closeDialog]);
+  const openPay = (why: 'rules' | 'export') => {
+    setPayWhy(why);
+    openDialog('pay');
+  };
+  // The open notes as the rules know them, to tell whether coming to the rules brings new ones.
+  const openPrints = useMemo(
+    () =>
+      assets.flatMap((a) =>
+        a.marks
+          .filter((m) => verdictOf(m) !== 'empty')
+          .map((m) => noteFingerprint(exportName(a), m.good, m.bad)),
+      ),
+    [assets],
+  );
 
   const leaveAccount = async (text: string) => {
     closeDialog();
@@ -1498,7 +1425,7 @@ function Workspace() {
             <a
               href={pathname}
               data-home-trigger
-              aria-label={view === 'collections' ? 'Pinch, back to the batch' : 'Pinch, start a new batch'}
+              aria-label={view === 'collections' ? 'Pinch, back to your images' : 'Pinch, start over'}
               onClick={(e) => {
                 if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
@@ -1530,7 +1457,7 @@ function Workspace() {
               {tagged.length} of {assets.length} tagged · {count(allMarks.length, 'note')}
             </p>
           )}
-          {suggestAvailable && batchTools && (
+          {suggestAvailable && paid && batchTools && (
             <label
               htmlFor="suggestions"
               className="flex min-h-9 items-center gap-2 px-1 text-sm"
@@ -1546,7 +1473,7 @@ function Workspace() {
               Suggestions
             </label>
           )}
-          {suggestAvailable && batchTools && (
+          {suggestAvailable && paid && batchTools && (
             // The switch's description, outside its label so it doesn't join the name.
             <span id="suggestions-note" className="sr-only">
               Sends the marked area to Anthropic.
@@ -1554,33 +1481,21 @@ function Workspace() {
           )}
           {batchTools && (
             <TooltipProvider>
-              <ToolbarButton
-                onClick={copyForAgent}
-                title="Copy the open image with its notes drawn on, plus the notes as text."
-                aria-live="polite"
-                className="justify-center min-[900px]:min-w-[8.75rem]"
-              >
-                {copied ? (
-                  <Check className="size-4" aria-hidden />
-                ) : (
-                  <Copy className="size-4" aria-hidden />
-                )}
-                {/* One element, so the button's gap doesn't open a second space after "Copy". */}
-                <span>
-                  {copied ? 'Copied' : 'Copy'}
-                  {!copied && <span className="max-[900px]:hidden"> for agent</span>}
-                </span>
-              </ToolbarButton>
               <button
                 type="button"
-                onClick={exportZip}
+                onClick={() => (paid ? exportZip() : openPay('export'))}
                 disabled={Boolean(exporting)}
+                title={paid ? undefined : 'Exporting is part of Pinch'}
                 className={cn(
                   hit,
-                  'flex min-h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-60',
+                  'flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-60',
                 )}
               >
-                <Download className="size-4" aria-hidden />
+                {paid ? (
+                  <Download className="size-4" aria-hidden />
+                ) : (
+                  <Lock className="size-4" aria-hidden />
+                )}
                 {/* One element, so the button's gap doesn't open a second space after "Export". */}
                 <span>
                   {exporting ?? (
@@ -1614,17 +1529,20 @@ function Workspace() {
               </Tooltip>
             </TooltipProvider>
           )}
-          {loaded && !closed && (
-            // Between the batch and the collections, which take its place (D79).
+          {loaded && (
+            // Between the images and the rules, which take their place (D79). With images open
+            // it is the batch's main step (D87): the notes go to the rules, which read them.
             <button
               type="button"
               onClick={() => setView(view === 'batch' ? 'collections' : 'batch')}
               className={cn(
                 hit,
-                'flex items-center text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                'flex items-center text-sm transition-colors duration-150 motion-reduce:transition-none',
                 landing
-                  ? 'h-7 gap-1.5 rounded-full px-2.5'
-                  : 'min-h-9 gap-2 rounded-md border border-border px-3',
+                  ? 'h-7 gap-1.5 rounded-full px-2.5 hover:bg-muted'
+                  : batchTools
+                    ? 'min-h-9 gap-2 rounded-md bg-foreground px-3 font-medium text-background hover:bg-foreground/85'
+                    : 'min-h-9 gap-2 rounded-md border border-border px-3 hover:bg-muted',
               )}
             >
               {view === 'batch' ? (
@@ -1632,8 +1550,21 @@ function Workspace() {
               ) : (
                 <ArrowLeft className="size-4" aria-hidden />
               )}
-              {view === 'batch' ? 'Collections' : assets.length ? 'Back to batch' : 'Back'}
+              {view === 'batch' ? 'Your rules' : 'Back'}
             </button>
+          )}
+          {me?.paywall && me.signIn && !me.user && (
+            // For buyers on another device; anyone else signs in when they get Pinch.
+            <a
+              href="/api/pin/auth/google"
+              className={cn(
+                hit,
+                'flex items-center text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                landing ? 'h-7 rounded-full px-2.5' : 'min-h-9 rounded-md px-2.5',
+              )}
+            >
+              Sign in
+            </a>
           )}
           {me?.user && (
             <button
@@ -1747,42 +1678,19 @@ function Workspace() {
           inert={dialog !== null}
           backend={backend}
           moveFrom={cloudKey ? browserBackend : undefined}
-          openNotes={allMarks.length}
+          openPrints={openPrints}
           batchZip={batchZip}
-          onOpenBatch={openStoredBatch}
+          paid={paid}
+          price={me?.price ?? '$19'}
+          onPay={openPay}
+          onBack={() => setView('batch')}
           onStatus={setStatus}
         />
-      ) : !asset || closed ? (
+      ) : !asset ? (
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
           price={me?.paywall ? me.price : undefined}
-          gate={
-            !me
-              ? // Until the account is known, the card holds the action's place empty.
-                (buttonClass, hintClass) => (
-                  <>
-                    <span aria-hidden className={cn(buttonClass, 'invisible')}>
-                      Add images
-                    </span>
-                    <span aria-hidden className={cn(hintClass, 'invisible')}>
-                      Or drag images here.
-                    </span>
-                  </>
-                )
-              : closed
-              ? (buttonClass, hintClass) => (
-                  <AccessGate
-                    me={me}
-                    buttonClass={buttonClass}
-                    hintClass={hintClass}
-                    onRefresh={refreshMe}
-                    onSignOut={() => leaveAccount('Signed out.')}
-                    onMessage={(tone, text) => setStatus({ tone, text })}
-                  />
-                )
-              : undefined
-          }
           onChoose={() => fileInput.current?.click()}
           onPrivacy={() => openDialog('privacy')}
         />
@@ -1866,34 +1774,66 @@ function Workspace() {
             await leaveAccount('Signed out.');
           }}
           onDeleted={() =>
-            leaveAccount('Your account and its collections were deleted. Your purchase is kept.')
+            leaveAccount('Your account and its rules were deleted. Your purchase is kept.')
           }
         />
+      )}
+      {dialog === 'pay' && me && (
+        <Dialog id="pay-title" title="Get Pinch" opener={opener.current} onClose={closeDialog}>
+          <div className="space-y-3 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="m-0">
+              {payWhy === 'export'
+                ? 'Exporting is part of Pinch: your notes and close-ups as a zip, and your rules as a file your agent follows.'
+                : 'See every rule Pinch found in your notes, and give them to your agent.'}{' '}
+              {me.price} once, no subscription. Marking images stays free.
+            </p>
+            <div className="flex flex-col items-start gap-2">
+              <AccessGate
+                me={me}
+                buttonClass={cn(
+                  hit,
+                  'flex min-h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background',
+                )}
+                hintClass="m-0 text-[13px] text-muted-foreground"
+                onRefresh={refreshMe}
+                onSignOut={async () => {
+                  await signOut();
+                  await leaveAccount('Signed out.');
+                }}
+                onMessage={(tone, text) => setStatus({ tone, text })}
+              />
+            </div>
+          </div>
+        </Dialog>
       )}
       {dialog === 'home' && (
         <Dialog
           id="home-title"
-          title="Start a new batch?"
+          title="Start over?"
           opener={opener.current}
           onClose={closeDialog}
         >
           <p className="m-0 text-muted-foreground">
             Your {count(assets.length, 'image')} and {count(allMarks.length, 'note')} are kept in
-            this browser until you start over. Export them first if you want to keep them.
+            this browser until you start over.{' '}
+            {paid
+              ? 'Export them first if you want to keep them.'
+              : 'Open Your rules first to keep what your notes teach.'}
           </p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={async () => {
                 closeDialog();
-                if (await exportZip()) startOver();
+                if (!paid) setView('collections');
+                else if (await exportZip()) startOver();
               }}
               className={cn(
                 hit,
                 'flex min-h-9 items-center rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
               )}
             >
-              Export and start over
+              {paid ? 'Export and start over' : 'Open your rules'}
             </button>
             <button
               type="button"
@@ -1954,11 +1894,11 @@ function PrivacyDialog({
       <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Your images',
-          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you keep a batch in a collection in your account.',
+          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and, once you have bought Pinch, with your rules in your account.',
         )}
         {item(
           'AI suggestions',
-          'are on by default; the switch is in the header. Only AI suggestions send anything to Anthropic: when you open an empty note, a 768px copy of the screenshot and a crop around the marked spot are sent to Anthropic’s API (Claude Haiku) to write a suggestion. We don’t store them. Turn suggestions off and nothing is sent.',
+          'come with Pinch once bought, on by default; the switch is in the header. They are the only thing that sends images to Anthropic: when you open an empty note, a 768px copy of the screenshot and a crop around the marked spot are sent to Anthropic’s API (Claude Haiku) to write a suggestion. We don’t store them. Turn suggestions off and nothing is sent.',
         )}
         {item(
           'Notes text:',
@@ -1985,8 +1925,12 @@ function PrivacyDialog({
           'signing in with Google gives Pinch your email and name, kept with your account. Your purchase is kept under a hash of your email; Lemon Squeezy, who sell Pinch, keep the payment details.',
         )}
         {item(
-          'Collections',
-          'in your account, with their batches (screenshots included) and rules, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
+          'Your rules',
+          'are kept in this browser, and once you buy Pinch, privately in your account in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. When you open Your rules, the words of the notes it hasn’t read (what works, what doesn’t, the short name, their topics and whose design it is) and the words of your rules are sent to Anthropic’s API (Claude) to find the patterns. Never the images or file names, and we don’t store them.',
+        )}
+        {item(
+          'Your agent',
+          'connects with a key you make in Account, kept only as a hash. With it, your agent fetches your rules and their notes’ words from your account; never your images. A new key, Disconnect or deleting your account stops it.',
         )}
         {item(
           'No ads, no analytics.',
@@ -2129,22 +2073,6 @@ function ShortcutsDialog({
   );
 }
 
-function ToolbarButton({ children, className, ...props }: React.ComponentProps<'button'>) {
-  return (
-    <button
-      type="button"
-      {...props}
-      className={cn(
-        hit,
-        'flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-50',
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /*
  * The landing: the painting fills the page (dusk in dark mode, night in light mode, crossfading
  * when the theme changes), and a glass card sits in the middle, light in light mode and dark in
@@ -2156,7 +2084,7 @@ const PARALLAX = { x: 44, y: 28 };
 /** The painting is drawn this much larger, so its edges never show as it drifts. */
 const PARALLAX_SCALE = 1.1;
 
-/** The landing card's main button and the hint under it, shared with the sign-in and buy gate. */
+/** The landing card's main button and the hint under it. */
 const LANDING_BUTTON =
   'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
 const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
@@ -2165,7 +2093,6 @@ function EmptyState({
   dragging,
   inert,
   price,
-  gate,
   onChoose,
   onPrivacy,
 }: {
@@ -2173,8 +2100,6 @@ function EmptyState({
   inert: boolean;
   /** Pinch's price, once billing is on (D81). */
   price?: string;
-  /** In place of Add images while Pinch is closed to this visitor: sign in, then buy. */
-  gate?: (buttonClass: string, hintClass: string) => React.ReactNode;
   onChoose: () => void;
   onPrivacy: () => void;
 }) {
@@ -2283,27 +2208,21 @@ function EmptyState({
                   Your taste, in everything your agent creates.
                 </h1>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  Mark what you like and dislike on screenshots. Export your guidance for any AI
-                  agent.
+                  Mark what you like and dislike on screenshots. Pinch turns your notes into rules
+                  for any AI agent.
                 </p>
                 <div className="mt-5 flex flex-col items-center gap-3">
-                  {gate ? (
-                    gate(LANDING_BUTTON, LANDING_HINT)
-                  ) : (
-                    <>
-                      <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
-                        <Plus className="size-4" aria-hidden />
-                        Add images
-                      </button>
-                      <p className={LANDING_HINT} aria-live="polite">
-                        {dragging ? (
-                          <span className="text-current">Drop to add them.</span>
-                        ) : (
-                          'Or drag images or a Pinch export here, or paste.'
-                        )}
-                      </p>
-                    </>
-                  )}
+                  <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
+                    <Plus className="size-4" aria-hidden />
+                    Add images
+                  </button>
+                  <p className={LANDING_HINT} aria-live="polite">
+                    {dragging ? (
+                      <span className="text-current">Drop to add them.</span>
+                    ) : (
+                      'Or drag images or a Pinch export here, or paste.'
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
@@ -2311,7 +2230,7 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {price
-                ? `Pinch is ${price} once, with a Google sign-in. Images stay in this browser unless you keep them in a collection; AI suggestions send the marked area to Anthropic.`
+                ? `Marking images is free. Seeing all your rules and exporting is ${price} once, with a Google sign-in. Images stay in this browser until you buy; the words of your notes go to Anthropic to find your rules.`
                 : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"

@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Trash2 } from 'lucide-react';
+import { ClipboardCopy, LogOut, PlugZap, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Dialog, hit } from './dialog';
@@ -187,13 +187,14 @@ export function AccountDialog({
         </p>
         <p className="m-0">
           {me.allowed
-            ? 'Pinch is yours. Your collections are kept in your account, on every device you sign in on.'
+            ? 'Pinch is yours. Your rules are kept in your account, on every device you sign in on.'
             : `You haven’t bought Pinch yet. It is ${me.price} once.`}
         </p>
+        {me.allowed && !confirming && <AgentConnect />}
         {confirming && (
           <p className="m-0 text-foreground" role="alert">
-            Delete your account, your collections and their screenshots for good? Your purchase is
-            kept, so signing in again still finds it.
+            Delete your account, your rules and their screenshots for good? Your purchase is kept,
+            so signing in again still finds it.
           </p>
         )}
         {error && (
@@ -240,5 +241,105 @@ export function AccountDialog({
         )}
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * Connect your agent (D89): a key for the account, shown once inside the command that adds
+ * Pinch to Claude Code as an MCP server; from then on the agent fetches the current rules
+ * itself. A new key stops the old one; Disconnect stops it too.
+ */
+function AgentConnect() {
+  const [since, setSince] = useState<string | null | undefined>(undefined);
+  const [made, setMade] = useState<{ key: string; url: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/api/pin/agent-key', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { key: null }))
+      .then((r: { key: { createdAt: string } | null }) => setSince(r.key?.createdAt ?? null))
+      .catch(() => setSince(null));
+  }, []);
+  const command = made
+    ? `claude mcp add --transport http pinch ${made.url} --header "Authorization: Bearer ${made.key}"`
+    : '';
+  const run = async (method: 'POST' | 'DELETE') => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch('/api/pin/agent-key', { method });
+      if (!res.ok) throw new Error();
+      if (method === 'POST') {
+        const next = (await res.json()) as { key: string; url: string };
+        setMade(next);
+        setSince(new Date().toISOString());
+      } else {
+        setMade(null);
+        setSince(null);
+        setNote('Disconnected. Your agent can’t fetch your rules any more.');
+      }
+    } catch {
+      setNote('That didn’t work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setNote('Copied. Paste it in your terminal.');
+    } catch {
+      setNote('The browser didn’t allow copying; select the command and copy it.');
+    }
+  };
+  return (
+    <section aria-labelledby="agent-title" className="space-y-2 border-t border-border pt-3">
+      <h3 id="agent-title" className="text-sm font-medium text-foreground">
+        Connect your agent
+      </h3>
+      <p>
+        Claude Code fetches your rules for each task, always the current ones. Connect it once with
+        your key.
+      </p>
+      {made ? (
+        <>
+          <p>Run this in your terminal. The key is shown only now.</p>
+          <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-all text-foreground select-all">
+            {command}
+          </pre>
+          <p>Then ask Claude Code to use your Pinch rules.</p>
+        </>
+      ) : since ? (
+        <p>Connected since {new Date(since).toLocaleDateString()}.</p>
+      ) : null}
+      {note && (
+        <p className="text-foreground" role="status">
+          {note}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 pt-1">
+        {made ? (
+          <button type="button" onClick={copy} className={button}>
+            <ClipboardCopy className="size-4" aria-hidden />
+            Copy command
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => run('POST')}
+            disabled={busy || since === undefined}
+            className={button}
+          >
+            <PlugZap className="size-4" aria-hidden />
+            {since ? 'Make a new key' : 'Make a key'}
+          </button>
+        )}
+        {since && (
+          <button type="button" onClick={() => run('DELETE')} disabled={busy} className={button}>
+            Disconnect
+          </button>
+        )}
+      </div>
+    </section>
   );
 }

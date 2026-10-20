@@ -1,12 +1,12 @@
 # Pinch
 
-Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why and what it's about (visual, layout, copy, interaction, flow, accessibility), and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Batches are kept in collections, where each note becomes a rule it teaches (drafted by AI or written by hand; edit or delete the ones that miss), marked personal taste or this project, and exported as a rules file with its evidence, or copied as text for one task.
+Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why and what it's about (visual, layout, copy, interaction, flow, accessibility), and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Then open Your rules: Pinch reads your notes, finds the patterns across images and keeps them as one taste library of rules, each with the notes and close-ups it draws on. Overlapping notes become one rule, notes that pull different ways keep where each holds, and a new batch strengthens a rule, adds one or flags a conflict. Edit any rule, slice them by topic or your own tags, and export them as a rules file with their evidence, or copy them as text for one task.
 
-Pinch is one paid tool (D81): $19 once, with a Google sign-in, sold through Lemon Squeezy. A buyer's collections are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose collections stay in the browser.
+Pinch is $19 once, with a Google sign-in, sold through Lemon Squeezy (D81, D87). Marking images needs no account, and Your rules shows the first two rules Pinch finds; every rule, exports of any kind and AI suggestions come with buying. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose rules stay in the browser.
 
 Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message), up to 100 images a session.
 
-Optional, with keys: AI drafts for empty notes (suggestions), AI drafts of the rule each note in a collection teaches, anonymous saving of the text of notes, and tagging of those notes by design area with Jev (TypeSafe).
+Optional, with keys: AI drafts for empty notes (suggestions), the AI reading of notes into rules, anonymous saving of the text of notes, and tagging of those notes by design area with Jev (TypeSafe).
 
 ## Quick start
 
@@ -41,11 +41,14 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 | `PIN_SUGGEST_DAILY_USD` | `2` | Suggestions: USD cap per day. |
 | `PIN_SUGGEST_PER_VISITOR` | `300` | Suggestions per visitor per day; a visitor also gets at most a third of the day's dollars. |
 | `PIN_SUGGEST_CALLS_PER_DAY` | `4000` | Suggestions per day, all visitors. |
-| `PIN_LEARN` | unset | `0` turns rule drafts off. |
-| `PIN_LEARN_MODEL` | `claude-opus-5-5` | Model for rule drafts (`/api/pin/learn`). |
-| `PIN_LEARN_DAILY_USD` | `2` | Rule drafts: USD cap per day. |
-| `PIN_LEARN_PER_VISITOR` | `60` | Draft requests (up to 12 notes each) per visitor per day; a visitor also gets at most a third of the day's dollars. |
-| `PIN_LEARN_CALLS_PER_DAY` | `600` | Draft requests per day, all visitors. |
+| `PIN_LEARN` | unset | `0` turns reading notes into rules off. |
+| `PIN_LEARN_MODEL` | `claude-opus-5-5` | Model that reads notes into rules (`/api/pin/learn`). |
+| `PIN_LEARN_DAILY_USD` | `10` | Reading notes into rules for buyers: USD cap per day. |
+| `PIN_LEARN_PER_VISITOR` | `60` | Readings (up to 30 notes each) per visitor per day; a visitor also gets at most a third of the day's dollars. |
+| `PIN_LEARN_CALLS_PER_DAY` | `600` | Readings per day, all buyers. |
+| `PIN_LEARN_PREVIEW_DAILY_USD` | `3` | The preview readings of visitors who haven't bought: USD cap per day, on its own ledger. |
+| `PIN_LEARN_PREVIEW_PER_VISITOR` | `4` | Preview readings per visitor per day. |
+| `PIN_LEARN_PREVIEW_CALLS_PER_DAY` | `200` | Preview readings per day, all visitors. |
 | `BLOB_READ_WRITE_TOKEN` | unset | Vercel Blob store for the daily ledgers and saved note text. Either this or `BLOB_STORE_ID` turns it on; without both, everything is in memory and lost on restart. Required in production if saved notes should persist. |
 | `BLOB_STORE_ID` | unset | See above (set by Vercel when a store is connected). |
 | `ADMIN_PASSWORD` | unset | HTTP Basic password (any user name) for `GET /api/pin/notes`. Unset: 404 in production, open in `next dev`. Required to read saved notes in production. |
@@ -70,9 +73,10 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 
 ## Testing the AI steps and Jev locally
 
-- **Anthropic.** Put `ANTHROPIC_API_KEY` in `.env.local` and run `pnpm dev`; the header shows the Suggestions switch, and a collection with notes to review shows Draft. Each step keeps its own daily ledger (in memory locally).
+- **Anthropic.** Put `ANTHROPIC_API_KEY` in `.env.local` and run `pnpm dev`; the header shows the Suggestions switch, and Your rules reads new notes into rules on its own. Each step keeps its own daily ledger (in memory locally).
 - **Jev, without a key.** `pnpm jev-stub` starts a stand-in on port 3999 that answers the area questions from keywords in the note. In a second terminal: `JEV_API_KEY=stub JEV_ENDPOINT=http://localhost:3999 pnpm dev`. Write a note, wait about six seconds for it to be saved, and read it back (below) to see its `tags`. The stub tests the plumbing, never the tagging quality.
-- **Paid mode, locally.** Set the Google and Lemon Squeezy variables to any test values, plus `AUTH_SECRET` and `PINCH_TEST_LOGIN=1`, then `pnpm build && pnpm start`. Sign in with `POST /api/pin/auth/test` (`{"email": "you@example.com"}`, same origin), and mark the purchase by sending the webhook route an `order_created` body signed with the webhook secret (HMAC-SHA256 of the raw body, hex, in `X-Signature`). Without a Blob store, the account's collections live in the server's memory.
+- **Paid mode, locally.** Set the Google and Lemon Squeezy variables to any test values, plus `AUTH_SECRET` and `PINCH_TEST_LOGIN=1`, then `pnpm build && pnpm start`. Sign in with `POST /api/pin/auth/test` (`{"email": "you@example.com"}`, same origin), and mark the purchase by sending the webhook route an `order_created` body signed with the webhook secret (HMAC-SHA256 of the raw body, hex, in `X-Signature`). Without a Blob store, the account's rules live in the server's memory. Signed in but not bought, Your rules gets the preview: two rules in full, the rest hidden.
+- **The rules benchmark.** `ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/run.ts <out-dir> [runs] [builds] [held-out]` reads the cases in `scripts/rules-bench/cases.ts` with a plain prompt, with Pinch before the foundation and with Pinch as it is, has a judge score each against the case's key, then puts each one's guidance to work on a fresh task (D90). A few dollars a run; results in [docs/rules-bench.md](docs/rules-bench.md).
 - **Reading saved notes.** `GET /api/pin/notes` lists the saved days; `?day=YYYY-MM-DD` returns a day's document (each note under its random id, with `at` and, once tagged, `tags`); `?summary=YYYY-MM` counts a month's notes by area. In production send the password: `curl -u admin:$ADMIN_PASSWORD "https://get-pinch.io/api/pin/notes?summary=2026-10"`. In `next dev` without `ADMIN_PASSWORD` the route is open.
 
 ## Project structure
@@ -94,7 +98,7 @@ src/lib/                 session, google, account, billing, access, cloud (sign-
                          account's collections); blob-doc (JSON documents in Blob), budget (prices, refusal, visitor
                          key), jev (one request to Jev), auth (admin Basic auth, same-origin check), image (sniffing)
 public/pin-notes/        icon.svg (favicon), landing.webp, landing-night.webp (the paintings)
-scripts/                 jev-stub.mjs, format.mjs
+scripts/                 jev-stub.mjs, format.mjs, rules-bench/ (the rules benchmark: cases, the baseline, the runner)
 docs/                    architecture, decisions, design, status
 ```
 
@@ -116,8 +120,10 @@ More in [docs/architecture.md](docs/architecture.md). Agents start with [AGENTS.
 
 ## Privacy
 
-Images stay in the browser (IndexedDB) until a signed-in buyer keeps a batch in a collection: collections, their batches (screenshots included) and rules are then stored privately in the Blob store under the account's folder, and deleted with the account. Without an account they stay in the browser. An account keeps the email and name Google gives; purchases are kept under a hash of the email, and Lemon Squeezy keeps the payment details. One cookie (`pinch-session`) keeps the sign-in. Suggestions send a close-up of the marked spot and a scaled-down screen to Anthropic, not stored. Rule drafts send only the words of a collection's notes (what works, what doesn't, the short name, their topics and whose design it is), not stored. The text of written notes (what works, what doesn't, the short name; never images, file names, links, the account or IP addresses) is saved anonymously for 90 days and tagged by area with Jev, unless the visitor switches it off in the privacy dialog (D82). The landing footer says so in one line, and the "How Pinch uses your data" dialog (footer and header) says it in full.
+Images stay in the browser (IndexedDB) until a signed-in buyer's rules move into their account: the rules, their notes and screenshots are then stored privately in the Blob store under the account's folder, and deleted with the account. Without a purchase they stay in the browser. An account keeps the email and name Google gives; purchases are kept under a hash of the email, and Lemon Squeezy keeps the payment details. One cookie (`pinch-session`) keeps the sign-in. Suggestions send a close-up of the marked spot and a scaled-down screen to Anthropic, not stored. Reading notes into rules sends only words: the new notes' (what works, what doesn't, the short name, their topics and whose design it is) and the existing rules', not stored. It happens when anyone opens Your rules, bought or not. The text of written notes (what works, what doesn't, the short name; never images, file names, links, the account or IP addresses) is saved anonymously for 90 days and tagged by area with Jev, unless the visitor switches it off in the privacy dialog (D82). The landing footer says so in one line, and the "How Pinch uses your data" dialog (footer and header) says it in full.
 
 ## License
 
 No license chosen yet. All rights reserved until one is.
+
+The expert foundation (`src/lib/pin/foundation.ts`) is written in Pinch's own words, drawing on GenUI's design foundations (the Yair Foundation's), Anthropic's [frontend-design skill](https://github.com/anthropics/skills/tree/main/skills/frontend-design) (Apache License 2.0) and Vercel's [Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines) (MIT, © Vercel Labs). No text of theirs is copied.

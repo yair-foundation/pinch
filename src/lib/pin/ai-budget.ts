@@ -2,8 +2,7 @@ import { updateDocument } from '@/lib/blob-doc';
 import { type DayLedger, refusal } from '@/lib/budget';
 
 /*
- * Pinch's AI steps are free and need no account, so each has its own daily
- * cap: one ledger per UTC day in the private
+ * Each of Pinch's AI steps has its own daily cap: one ledger per UTC day in the private
  * Blob store, changed by compare-and-swap. A call reserves its worst case
  * and settles to what it really cost. Besides the day's dollars, calls and
  * calls per visitor, no visitor may spend more than a share of the day's
@@ -88,16 +87,16 @@ export const reserveSuggestion = suggestLedger.reserve;
 export const settleSuggestion = suggestLedger.settle;
 
 /**
- * Learnings: a few notes' words to a larger model, a few calls per batch. The reservation is
- * the worst case, a full answer of 8,000 tokens with its thinking, so the cap holds; a call
- * settles to far less.
+ * Reading notes into rules (D87): a few dozen notes' words and the library's rules to a larger
+ * model, a call or two per batch. The reservation is the worst case, a full answer of 16,000
+ * tokens with its thinking and a long library, so the cap holds; a call settles to far less.
  */
 export const LEARN_CAPS: PinCaps = {
-  usd: Number(process.env.PIN_LEARN_DAILY_USD ?? 2),
+  usd: Number(process.env.PIN_LEARN_DAILY_USD ?? 10),
   perVisitor: Number(process.env.PIN_LEARN_PER_VISITOR ?? 60),
   requests: Number(process.env.PIN_LEARN_CALLS_PER_DAY ?? 600),
 };
-export const LEARN_RESERVE_USD = 0.17;
+export const LEARN_RESERVE_USD = 0.4;
 const learnLedger = dailyLedger(
   (day) => `pin-notes/learn/${day}.json`,
   LEARN_RESERVE_USD,
@@ -105,3 +104,20 @@ const learnLedger = dailyLedger(
 );
 export const reserveLearning = learnLedger.reserve;
 export const settleLearning = learnLedger.settle;
+
+/**
+ * The same reading for visitors who haven't bought Pinch, to show them the first rules (D87):
+ * its own, smaller ledger, so previews never spend what buyers' rules need.
+ */
+export const PREVIEW_CAPS: PinCaps = {
+  usd: Number(process.env.PIN_LEARN_PREVIEW_DAILY_USD ?? 3),
+  perVisitor: Number(process.env.PIN_LEARN_PREVIEW_PER_VISITOR ?? 4),
+  requests: Number(process.env.PIN_LEARN_PREVIEW_CALLS_PER_DAY ?? 200),
+};
+const previewLedger = dailyLedger(
+  (day) => `pin-notes/learn-preview/${day}.json`,
+  LEARN_RESERVE_USD,
+  PREVIEW_CAPS,
+);
+export const reservePreview = previewLedger.reserve;
+export const settlePreview = previewLedger.settle;
