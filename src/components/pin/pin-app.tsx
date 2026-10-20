@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Accessibility,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -10,20 +9,15 @@ import {
   Globe,
   House,
   Keyboard,
-  LayoutGrid,
   Lightbulb,
   Loader2,
   Lock,
   MapPin,
-  MousePointerClick,
   MoveUpRight,
-  Palette,
   Plus,
   RotateCcw,
-  Route,
   SquareDashed,
   Swords,
-  TextQuote,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -3051,19 +3045,15 @@ function MarkEditor({
   );
 }
 
-/** One icon per topic. */
-const TOPIC_ICONS = {
-  visual: Palette,
-  layout: LayoutGrid,
-  copy: TextQuote,
-  interaction: MousePointerClick,
-  flow: Route,
-  accessibility: Accessibility,
-};
+/**
+ * A topic tag's hit area: as wide as the tag and 36px tall, under the usual 44px so that rows
+ * 8px apart, the same as the columns, tile without overlapping (D74).
+ */
+const tagHit =
+  'relative after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-9 after:min-w-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[""]';
 
 /**
- * One tint per topic: `ink` colours the icon always and the label when on, `fill` is the chip
- * when on. No red, which means "doesn't work" and delete. Text is at least 5.4:1 on its fill in
+ * One tint per topic: `ink` is the label and `fill` the tag when it is on. No red, which means "doesn't work" and delete. Text is at least 5.4:1 on its fill in
  * light (teal, orange and green take the 800 shade for it) and 9.6:1 in dark.
  */
 const TOPIC_TONES: Record<Topic, { ink: string; fill: string }> = {
@@ -3088,10 +3078,9 @@ const TOPIC_TONES: Record<Topic, { ink: string; fill: string }> = {
 };
 
 /**
- * What a note is about: six toggle tags, any number on, none needed. Off, a tag is outlined with
- * its icon in its tint; on, it is filled with the tint. While a grey suggestion shows and the note
- * has no topics yet, the suggestion's topics have a dashed border: taking the suggestion turns
- * them on. Tags are 28px tall with rows 16px apart, so their 44px hit areas tile.
+ * What a note is about: six toggle tags, any number on, none needed. Off, a tag is outlined; on,
+ * it is filled with its tint. While a grey suggestion shows and the note has no
+ * topics yet, the suggestion's topics have a dashed border: taking the suggestion turns them on.
  */
 function TopicPicker({
   topics,
@@ -3105,13 +3094,12 @@ function TopicPicker({
   return (
     <fieldset className="m-0 min-w-0 border-0 p-0 text-[13px] text-muted-foreground">
       <legend className="mb-1 p-0 text-[13px] leading-7 font-medium">This note is about</legend>
-      {/* Columns as wide as their widest tag, so the rows line up: three on the wide panel, two on the narrow one. */}
-      <div className="grid grid-cols-[repeat(2,auto)] justify-start gap-x-2 gap-y-4 min-[900px]:grid-cols-[repeat(3,auto)]">
+      {/* Each tag as wide as its label, 8px apart both ways. */}
+      <div className="flex flex-wrap gap-2">
         {TOPICS.map((t) => {
           const on = Boolean(topics?.includes(t.kind));
           const hinted = !on && Boolean(suggested?.includes(t.kind));
           const tone = TOPIC_TONES[t.kind];
-          const Icon = TOPIC_ICONS[t.kind];
           return (
             <button
               key={t.kind}
@@ -3120,8 +3108,8 @@ function TopicPicker({
               title={hinted ? `${t.hint}. Suggested: Tab takes it with the text` : t.hint}
               onClick={() => onChange(toggleTopic(topics, t.kind))}
               className={cn(
-                hit,
-                'flex h-7 items-center gap-1.5 rounded-md border px-2 text-[13px] leading-none transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                tagHit,
+                'flex h-7 items-center rounded-md border px-2 text-[13px] leading-none whitespace-nowrap transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50',
                 on
                   ? cn('border-transparent', tone.fill, tone.ink)
                   : hinted
@@ -3129,7 +3117,6 @@ function TopicPicker({
                     : 'border-border hover:bg-muted hover:text-foreground',
               )}
             >
-              <Icon aria-hidden className={cn('size-3.5 shrink-0', tone.ink)} />
               {t.label}
               {hinted && <span className="sr-only">, suggested</span>}
             </button>
