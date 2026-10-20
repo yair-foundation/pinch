@@ -10,6 +10,7 @@ import {
   arrowFrom,
   assetFiles,
   busyShare,
+  inkShare,
   centreOf,
   cropRect,
   currentSuggestion,
@@ -207,6 +208,25 @@ describe('busyShare', () => {
     assert.ok(half > 0.3 && half < 0.7, `${half}`);
     // Outside the image: nothing to cover.
     assert.equal(busyShare(g, { x: -50, y: -50, w: 20, h: 20 }), 0);
+  });
+});
+
+describe('inkShare', () => {
+  /** A white 200×200 image with one solid dark block: the inside of a big glyph. */
+  const solid = (): LumaGrid => {
+    const cols = 200;
+    const rows = 200;
+    const luma = new Uint8Array(cols * rows).fill(250);
+    for (let y = 80; y < 140; y++) for (let x = 80; x < 140; x++) luma[y * cols + x] = 30;
+    return { width: cols, height: rows, cell: 1, cols, rows, luma };
+  };
+  it('sees the inside of big type, which edges alone miss', () => {
+    const g = solid();
+    const inside = { x: 95, y: 95, w: 20, h: 20 };
+    assert.equal(busyShare(g, inside), 0);
+    assert.equal(inkShare(g, inside), 1);
+    assert.equal(inkShare(g, { x: 10, y: 10, w: 20, h: 20 }), 0);
+    assert.equal(inkShare(g, { x: -50, y: -50, w: 20, h: 20 }), 0);
   });
 });
 

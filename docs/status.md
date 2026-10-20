@@ -10,7 +10,7 @@ Built and live: the landing with the painting (dusk and a dark card in dark mode
 
 ## Not built
 
-- **Marker legibility in the export** (D69): the numbered disc and the arrow line sometimes sit on the text they describe, and the contact sheet's note numbers are small on small images. A rendering pass on `drawMark` and the sheet.
+- **Contact sheet note numbers** (D69): legible on large plain screenshots, too small on small or busy ones.
 - **Import of an export**, to carry a session to another browser.
 - **Rules from notes**: drafting design rules from what people write.
 - **A notes page.** The owner reads saved notes as JSON only (`GET /api/pin/notes`); a page was not wanted.

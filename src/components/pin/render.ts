@@ -3,6 +3,7 @@ import {
   type Asset,
   assetFiles,
   busyShare,
+  inkShare,
   type CropOf,
   cropRect,
   exportable,
@@ -118,17 +119,26 @@ function drawRing(
 
 /**
  * How much text or control a disc of radius `r` centred at canvas (x, y)
- * would cover, 0 to 1; from the image's luma grid (`busyShare`).
+ * would cover, 0 to 1; from the image's luma grid (`busyShare`, `inkShare`).
  */
 type Busy = (x: number, y: number, r: number) => number;
 
-/** A disc counts as sitting on nothing when at most this share of the cells under it has an edge. */
-const QUIET_DISC = 0.03;
+/**
+ * A disc counts as sitting on nothing when at most this share of the cells under it has ink or
+ * an edge. Near zero on purpose: at 3% a disc's rim already touches a label's letters.
+ */
+const QUIET_DISC = 0.005;
 /** Leader lengths tried, in radii of the disc: the short default, then longer to clear what the point sits on. */
 const LEADERS = [1.7, 2.15, 2.6];
 /** When no preferred direction has room: every 22.5°, with one longer leader as the last stretch. */
 const FAN = Array.from({ length: 16 }, (_, i) => (i * Math.PI) / 8);
 const FAN_LEADERS = [...LEADERS, 3.2];
+/**
+ * Longer leaders tried only after every short one in every direction, for a point in the middle
+ * of text where no place beside it is quiet: a number a little further off, on a line, covers
+ * nothing; a short one sits on the words it marks.
+ */
+const FAR_LEADERS = [3.4, 4.4, 5.6];
 
 /**
  * The numbered disc beside a ring, on a leader. It sits off the point in
@@ -188,6 +198,11 @@ function drawLeaderDisc(
     cx = best.x;
     cy = best.y;
   } else {
+    for (const k of FAR_LEADERS)
+      for (const [ux, uy] of prefer) {
+        const s = at(ux, uy, k);
+        if (fits(s.x, s.y)) spots.push(s);
+      }
     if (avoid) spots = [...spots.filter((s) => !avoid(s.x, s.y)), ...spots.filter((s) => avoid(s.x, s.y))];
     const scored = spots.map((s) => ({ ...s, score: busy ? busy(s.x, s.y, r + 3 * unit) : 0 }));
     const quiet = scored.find((s) => s.score <= QUIET_DISC);
@@ -213,12 +228,14 @@ function busyOn(grid: LumaGrid | undefined, scale: number, origin: Rect | null):
   if (!grid) return undefined;
   return (x, y, r) => {
     const R = r / scale;
-    return busyShare(grid, {
+    const rect = {
       x: (origin?.x ?? 0) + x / scale - R,
       y: (origin?.y ?? 0) + y / scale - R,
       w: 2 * R,
       h: 2 * R,
-    });
+    };
+    // Edges catch small text and outlines; ink catches the inside of big type and filled badges.
+    return Math.max(busyShare(grid, rect), inkShare(grid, rect));
   };
 }
 
@@ -228,8 +245,8 @@ function busyOn(grid: LumaGrid | undefined, scale: number, origin: Rect | null):
  * on a disc up and left of it on a short leader, so the number never covers
  * what the dot marks; near an edge, or when it would sit on text or a
  * control (`busy`, from the image's luma grid), the disc moves to another
- * corner or further out. An area is a box with the number just outside its
- * top-left corner when there is room, else nudged inside it. An arrow is a
+ * corner or further out. An area is a box with the number just outside the
+ * first corner that covers nothing (top-left first), else nudged inside it. An arrow is a
  * line from its tail to a filled head, a small ring at the tail and the disc
  * behind the tail or beside it, off the line and off what the tail marks.
  * (After Scrawl's `draw_mark_numbers`.)
@@ -253,10 +270,25 @@ function drawMark(
     ctx.beginPath();
     ctx.rect(x0, y0, x1 - x0, y1 - y0);
     strokeHalo(ctx, color, 3 * unit);
+    // The number just outside a corner: top-left first, then the other corners, the first that
+    // covers no text or control (`busy`), else the one covering least; inside the box only when
+    // no corner outside has room.
     const out = 0.9 * r;
-    const room = x0 - out - edge >= 0 && y0 - out - edge >= 0;
-    const cx = room ? x0 - out : Math.max(edge, x0);
-    const cy = room ? y0 - out : Math.max(edge, y0);
+    const { width: W, height: H } = ctx.canvas;
+    const fits = (x: number, y: number) => x >= edge && x <= W - edge && y >= edge && y <= H - edge;
+    const corners = [
+      [x0 - out, y0 - out],
+      [x1 + out, y0 - out],
+      [x0 - out, y1 + out],
+      [x1 + out, y1 + out],
+    ].filter(([x, y]) => fits(x, y));
+    let cx = Math.max(edge, x0);
+    let cy = Math.max(edge, y0);
+    if (corners.length) {
+      const scored = corners.map(([x, y]) => ({ x, y, score: busy ? busy(x, y, r + 3 * unit) : 0 }));
+      const quiet = scored.find((c) => c.score <= QUIET_DISC);
+      ({ x: cx, y: cy } = quiet ?? scored.reduce((a, b) => (b.score < a.score ? b : a)));
+    }
     drawDisc(ctx, cx, cy, r, unit, number, color);
     return;
   }
@@ -266,15 +298,20 @@ function drawMark(
     const ux = (x1 - x0) / len;
     const uy = (y1 - y0) / len;
     // The head: a filled triangle, no longer than a third of the arrow.
-    const head = Math.min(16 * unit, len / 3);
+    const head = Math.min(13 * unit, len / 3);
     const half = head * 0.42;
     const bx = x1 - ux * head;
     const by = y1 - uy * head;
     const ring = 4 * unit;
+    // The shaft is thin and a little see-through: it crosses what it points between, and that
+    // text has to stay readable under it.
+    ctx.save();
+    ctx.globalAlpha = 0.8;
     ctx.beginPath();
     ctx.moveTo(x0 + ux * (ring + 1.5 * unit), y0 + uy * (ring + 1.5 * unit));
     ctx.lineTo(bx + ux * head * 0.3, by + uy * head * 0.3);
-    strokeHalo(ctx, color, 3 * unit);
+    strokeHalo(ctx, color, 2 * unit);
+    ctx.restore();
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(bx - uy * half, by + ux * half);

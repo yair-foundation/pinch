@@ -272,6 +272,37 @@ export function busyShare(grid: LumaGrid, rect: Rect): number {
 }
 
 /**
+ * The share of a rectangle (pixels) covered by ink, 0 to 1: cells whose
+ * luminance differs from the background around it, the median of a window
+ * seven times the rectangle's size, so a disc inside a big glyph still finds the page around it. Unlike `busyShare`, which counts edges
+ * only, this sees the inside of large type and a filled badge, so a number
+ * disc measured with it doesn't land on a big figure. 0 outside the image.
+ */
+export function inkShare(grid: LumaGrid, rect: Rect): number {
+  const { cell, cols, rows, luma } = grid;
+  if (cols < 1 || rows < 1 || cell <= 0) return 0;
+  const span = (lo: number, hi: number, size: number) =>
+    [Math.max(0, Math.floor(lo / cell)), Math.min(size - 1, Math.floor(hi / cell))] as const;
+  const [c0, c1] = span(rect.x, rect.x + rect.w, cols);
+  const [r0, r1] = span(rect.y, rect.y + rect.h, rows);
+  if (c0 > c1 || r0 > r1) return 0;
+  const [b0, b1] = span(rect.x - 3 * rect.w, rect.x + 4 * rect.w, cols);
+  const [t0, t1] = span(rect.y - 3 * rect.h, rect.y + 4 * rect.h, rows);
+  const around: number[] = [];
+  for (let r = t0; r <= t1; r++) for (let c = b0; c <= b1; c++) around.push(luma[r * cols + c]);
+  around.sort((a, b) => a - b);
+  const background = around[Math.floor(around.length / 2)];
+  let n = 0;
+  let ink = 0;
+  for (let r = r0; r <= r1; r++)
+    for (let c = c0; c <= c1; c++) {
+      n++;
+      if (Math.abs(luma[r * cols + c] - background) >= EDGE) ink++;
+    }
+  return n ? ink / n : 0;
+}
+
+/**
  * Move a crop's edges outward until each sits on a quiet band of the image
  * (a row or column with no edges in it), so the crop never cuts through text
  * or a control. Each edge grows by at most `grow` of the crop's size and
