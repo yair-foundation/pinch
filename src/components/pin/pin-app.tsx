@@ -1359,15 +1359,6 @@ function Workspace() {
     }
   }, [deselect, markExported]);
 
-  /** A batch kept in a collection, opened into the session like any export. */
-  const openStoredBatch = useCallback(
-    (file: File) => {
-      setView('batch');
-      openExport(file);
-    },
-    [openExport],
-  );
-
   /**
    * The logo goes home, which in Pinch means a new batch: straight there when everything was
    * exported since the last change, after a question when something wasn't.
@@ -1415,7 +1406,7 @@ function Workspace() {
             <a
               href={pathname}
               data-home-trigger
-              aria-label={view === 'collections' ? 'Pinch, back to the batch' : 'Pinch, start a new batch'}
+              aria-label={view === 'collections' ? 'Pinch, back to your images' : 'Pinch, start over'}
               onClick={(e) => {
                 if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
@@ -1532,7 +1523,7 @@ function Workspace() {
               ) : (
                 <ArrowLeft className="size-4" aria-hidden />
               )}
-              {view === 'batch' ? 'Collections' : assets.length ? 'Back to batch' : 'Back'}
+              {view === 'batch' ? 'Collections' : 'Back'}
             </button>
           )}
           {me?.user && (
@@ -1649,7 +1640,6 @@ function Workspace() {
           moveFrom={cloudKey ? browserBackend : undefined}
           openNotes={allMarks.length}
           batchZip={batchZip}
-          onOpenBatch={openStoredBatch}
           onStatus={setStatus}
         />
       ) : !asset || closed ? (
@@ -1773,7 +1763,7 @@ function Workspace() {
       {dialog === 'home' && (
         <Dialog
           id="home-title"
-          title="Start a new batch?"
+          title="Start over?"
           opener={opener.current}
           onClose={closeDialog}
         >
@@ -1854,7 +1844,7 @@ function PrivacyDialog({
       <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Your images',
-          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you keep a batch in a collection in your account.',
+          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you add their notes to a collection in your account.',
         )}
         {item(
           'AI suggestions',
@@ -1886,7 +1876,7 @@ function PrivacyDialog({
         )}
         {item(
           'Collections',
-          'in your account, with their batches (screenshots included) and rules, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
+          'in your account, with their screenshots and rules, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
         )}
         {item(
           'No ads, no analytics.',

@@ -1,11 +1,9 @@
 'use client';
 
 import {
-  Archive,
   ClipboardCopy,
   Cloud,
   Download,
-  FolderOpen,
   HardDrive,
   Library,
   Plus,
@@ -25,7 +23,6 @@ import {
   byTopic,
   COLLECTION_FILE,
   type Collection,
-  collectionManifest,
   collectionSlug,
   type Learning,
   newCollection,
@@ -40,7 +37,6 @@ import {
   unwritten,
   withBatch,
   withLearning,
-  withoutBatch,
   withoutLearning,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic } from '@/lib/pin/model';
@@ -122,9 +118,7 @@ const iconButton = cn(
 const field =
   'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm placeholder:text-[#737373] dark:placeholder:text-[#7a7a7a] focus-visible:outline-2 focus-visible:outline-ring';
 
-type Confirm =
-  | { kind: 'batch'; collection: Collection; batch: Batch }
-  | { kind: 'collection'; collection: Collection };
+type Confirm = { kind: 'collection'; collection: Collection };
 
 export function CollectionsView({
   inert,
@@ -132,7 +126,6 @@ export function CollectionsView({
   moveFrom,
   openNotes,
   batchZip,
-  onOpenBatch,
   onStatus,
 }: {
   inert: boolean;
@@ -140,12 +133,10 @@ export function CollectionsView({
   backend: CollectionsBackend;
   /** Collections kept elsewhere that can move here: this browser's, once signed in. */
   moveFrom?: CollectionsBackend;
-  /** Notes in the batch that is open, which "Add open batch" would keep. */
+  /** Notes on the open images, which "Add notes" would keep. */
   openNotes: number;
-  /** The open batch as its export, or null when it has no notes. */
+  /** The open images as an export, or null when they have no notes. */
   batchZip: () => Promise<{ blob: Blob; name: string } | null>;
-  /** Open a kept batch in the batch view. */
-  onOpenBatch: (file: File) => void;
   onStatus: (notice: Notice) => void;
 }) {
   const [collections, setCollections] = useState<Collection[] | null>(null);
@@ -159,7 +150,6 @@ export function CollectionsView({
   const [fresh, setFresh] = useState<string | null>(null);
   const [movable, setMovable] = useState<Collection[]>([]);
   const opener = useRef<HTMLElement | null>(null);
-  const exportInput = useRef<HTMLInputElement>(null);
   const collectionInput = useRef<HTMLInputElement>(null);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -335,7 +325,7 @@ export function CollectionsView({
           text:
             backend.kind === 'account'
               ? `${name} didn’t upload. ${(e as Error).message}`
-              : 'Browser storage is full. Remove a batch, then try again.',
+              : 'Browser storage is full. Delete a collection, then try again.',
         });
         return;
       }
@@ -404,16 +394,16 @@ export function CollectionsView({
       const lost = collection.batches.length - kept.length;
       onStatus({
         tone: lost ? 'error' : 'info',
-        text: `Opened ${c.name}: ${count(kept.length, 'batch', 'batches')}, ${count(
+        text: `Opened ${c.name}: ${count(
           c.learnings.filter((l) => l.text.trim()).length,
           'rule',
-        )}.${lost ? ` ${count(lost, 'batch', 'batches')} couldn’t be kept.` : ''}`,
+        )}.${lost ? ' Some of its screenshots couldn’t be kept.' : ''}`,
       });
     },
     [adopt, backend, onStatus, save],
   );
 
-  /** A zip from the file picker or a drop: a collection file, or a batch's export. */
+  /** A zip from the file picker or a drop: a collection file. A batch's export opens in the batch. */
   const openZip = useCallback(
     async (file: File) => {
       let found: Map<string, Uint8Array>;
@@ -425,14 +415,12 @@ export function CollectionsView({
       }
       const root = collectionRoot(found);
       if (root !== undefined) return openCollectionFile(file.name, found, root);
-      const target = listRef.current.find((c) => c.id === openId);
-      if (!target) {
-        onStatus({ tone: 'error', text: 'Make a collection first, then add exports to it.' });
-        return;
-      }
-      return addExport(target, file, file.name, found);
+      onStatus({
+        tone: 'error',
+        text: `${file.name} isn’t a collection file. To keep the notes on your images, use Add notes.`,
+      });
     },
-    [addExport, onStatus, openCollectionFile, openId],
+    [onStatus, openCollectionFile],
   );
 
   const addOpenBatch = async (c: Collection) => {
@@ -440,7 +428,7 @@ export function CollectionsView({
     try {
       const made = await batchZip();
       if (made) await addExport(c, made.blob, made.name);
-      else onStatus({ tone: 'error', text: 'The open batch has no notes yet.' });
+      else onStatus({ tone: 'error', text: 'The open images have no notes yet.' });
     } catch (e) {
       onStatus({ tone: 'error', text: (e as Error).message });
     } finally {
@@ -457,7 +445,7 @@ export function CollectionsView({
       if (!zips.length) {
         onStatus({
           tone: 'error',
-          text: 'Drop a Pinch export or a collection file (.zip). Images go in a batch.',
+          text: 'Drop a collection file (.zip).',
         });
         return;
       }
@@ -589,38 +577,6 @@ export function CollectionsView({
     }
   };
 
-  /** The whole collection as one file: to keep, or to open in another browser. */
-  const downloadCollection = async (c: Collection) => {
-    setBusy('file');
-    try {
-      const root = `pinch-collection-${collectionSlug(c.name)}/`;
-      const entries: ZipEntry[] = [
-        {
-          name: root + COLLECTION_FILE,
-          data: new TextEncoder().encode(`${JSON.stringify(collectionManifest(c), null, 2)}\n`),
-        },
-      ];
-      for (const b of c.batches) {
-        const blob = await backend.getBatch(b.id).catch(() => undefined);
-        if (blob)
-          entries.push({
-            name: root + batchFileName(b.id),
-            data: new Uint8Array(await blob.arrayBuffer()),
-          });
-      }
-      download(
-        new Blob(zip(entries) as BlobPart[], { type: 'application/zip' }),
-        `${root.slice(0, -1)}.zip`,
-      );
-      onStatus({
-        tone: 'info',
-        text: `Downloaded ${c.name} as one file. Import it in Collections to open it again, here or in another browser.`,
-      });
-    } finally {
-      setBusy(null);
-    }
-  };
-
   /** This browser's collections into the account, then out of this browser. */
   const moveHere = async () => {
     if (!moveFrom || !movable.length) return;
@@ -675,39 +631,16 @@ export function CollectionsView({
     });
   };
 
-  const openStored = async (b: Batch) => {
-    const blob = await backend.getBatch(b.id).catch(() => undefined);
-    if (!blob) {
-      onStatus({ tone: 'error', text: `${b.name} couldn’t be read.` });
-      return;
-    }
-    onOpenBatch(new File([blob], `${b.name}.zip`, { type: 'application/zip' }));
-  };
-
-  const downloadStored = async (b: Batch) => {
-    const blob = await backend.getBatch(b.id).catch(() => undefined);
-    if (blob) download(blob, `${b.name}.zip`);
-    else onStatus({ tone: 'error', text: `${b.name} couldn’t be read.` });
-  };
-
   const confirmed = async () => {
     if (!confirm) return;
     const c = confirm.collection;
-    if (confirm.kind === 'batch') {
-      const b = confirm.batch;
-      change(c.id, (x) => withoutBatch(x, b.id, nowIso()), true);
-      files.current.delete(b.id);
-      await backend.deleteBatch(b.id).catch(() => undefined);
-      onStatus({ tone: 'info', text: `Removed ${b.name} and its rules.` });
-    } else {
-      clearTimeout(timers.current.get(c.id));
-      timers.current.delete(c.id);
-      listRef.current = listRef.current.filter((x) => x.id !== c.id);
-      setCollections(listRef.current);
-      setOpenId(listRef.current[0]?.id ?? null);
-      await backend.remove(c).catch(() => undefined);
-      onStatus({ tone: 'info', text: `Deleted ${c.name}.` });
-    }
+    clearTimeout(timers.current.get(c.id));
+    timers.current.delete(c.id);
+    listRef.current = listRef.current.filter((x) => x.id !== c.id);
+    setCollections(listRef.current);
+    setOpenId(listRef.current[0]?.id ?? null);
+    await backend.remove(c).catch(() => undefined);
+    onStatus({ tone: 'info', text: `Deleted ${c.name}.` });
     setConfirm(null);
   };
 
@@ -765,7 +698,7 @@ export function CollectionsView({
                   >
                     <span className="truncate text-sm font-medium">{c.name}</span>
                     <span className="text-[13px] text-muted-foreground">
-                      {count(written, 'rule')} · {count(c.batches.length, 'batch', 'batches')}
+                      {count(written, 'rule')}
                     </span>
                   </button>
                 </li>
@@ -803,8 +736,8 @@ export function CollectionsView({
                 Keep what your notes teach
               </h2>
               <p className="m-0 text-sm text-muted-foreground">
-                A collection holds your batches and the rule each note teaches. Keep the rules that
-                are yours, then export them for your agent.
+                A collection holds the rule each of your notes teaches. Keep the rules that are
+                yours, then export them for your agent.
               </p>
               <button type="button" onClick={create} className={primary}>
                 <Plus className="size-4" aria-hidden />
@@ -823,33 +756,16 @@ export function CollectionsView({
               busy={busy}
               onRename={(name) => change(open.id, (x) => ({ ...x, name, updatedAt: nowIso() }))}
               onAddOpen={() => addOpenBatch(open)}
-              onImport={() => exportInput.current?.click()}
               onDraft={() => draftAll(open)}
               onExport={() => {
                 opener.current = document.activeElement as HTMLElement | null;
                 setExporting(true);
               }}
-              onDownload={() => downloadCollection(open)}
               onDelete={() => ask({ kind: 'collection', collection: open })}
               onLearning={(id, c) => change(open.id, (x) => withLearning(x, id, c, nowIso()))}
               onDeleteLearning={(l) => deleteLearning(open, l)}
-              onOpenBatch={openStored}
-              onDownloadBatch={downloadStored}
-              onRemoveBatch={(b) => ask({ kind: 'batch', collection: open, batch: b })}
             />
           )}
-          <input
-            ref={exportInput}
-            type="file"
-            accept=".zip,application/zip"
-            multiple
-            hidden
-            onChange={async (e) => {
-              const chosen = [...(e.target.files ?? [])];
-              e.target.value = '';
-              for (const f of chosen) await openZip(f);
-            }}
-          />
           <input
             ref={collectionInput}
             type="file"
@@ -878,24 +794,12 @@ export function CollectionsView({
       {confirm && (
         <Dialog
           id="confirm-title"
-          title={
-            confirm.kind === 'batch'
-              ? `Remove ${confirm.batch.name}?`
-              : `Delete ${confirm.collection.name}?`
-          }
+          title={`Delete ${confirm.collection.name}?`}
           opener={opener.current}
           onClose={() => setConfirm(null)}
         >
           <p className="m-0 text-muted-foreground">
-            {confirm.kind === 'batch'
-              ? `Its ${count(
-                  confirm.collection.learnings.filter((l) => l.batchId === confirm.batch.id).length,
-                  'rule',
-                )} go with it. Download it first to keep the batch.`
-              : `Its ${count(confirm.collection.batches.length, 'batch', 'batches')} and ${count(
-                  confirm.collection.learnings.length,
-                  'rule',
-                )} are deleted${backend.kind === 'account' ? ' from your account' : ' from this browser'}. Download the collection first to keep it.`}
+            {`Its ${count(confirm.collection.learnings.length, 'rule')} and their screenshots are deleted${backend.kind === 'account' ? ' from your account' : ' from this browser'}.`}
           </p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
@@ -906,7 +810,7 @@ export function CollectionsView({
                 'flex min-h-9 items-center rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
               )}
             >
-              {confirm.kind === 'batch' ? 'Remove' : 'Delete'}
+              Delete
             </button>
             <button
               type="button"
@@ -933,16 +837,11 @@ function CollectionPage({
   busy,
   onRename,
   onAddOpen,
-  onImport,
   onDraft,
   onExport,
-  onDownload,
   onDelete,
   onLearning,
   onDeleteLearning,
-  onOpenBatch,
-  onDownloadBatch,
-  onRemoveBatch,
 }: {
   collection: Collection;
   fresh: boolean;
@@ -953,16 +852,11 @@ function CollectionPage({
   busy: string | null;
   onRename: (name: string) => void;
   onAddOpen: () => void;
-  onImport: () => void;
   onDraft: () => void;
   onExport: () => void;
-  onDownload: () => void;
   onDelete: () => void;
   onLearning: (id: string, change: Partial<Learning>) => void;
   onDeleteLearning: (l: Learning) => void;
-  onOpenBatch: (b: Batch) => void;
-  onDownloadBatch: (b: Batch) => void;
-  onRemoveBatch: (b: Batch) => void;
 }) {
   const name = useRef<HTMLInputElement>(null);
   // A new collection opens with its name selected, ready to type over.
@@ -994,16 +888,6 @@ function CollectionPage({
           />
           <button
             type="button"
-            aria-label="Download collection file"
-            title="Download collection file"
-            onClick={onDownload}
-            disabled={busy !== null}
-            className={cn(iconButton, 'mt-1')}
-          >
-            <Archive className="size-4" aria-hidden />
-          </button>
-          <button
-            type="button"
             aria-label="Delete collection"
             title="Delete collection"
             onClick={onDelete}
@@ -1013,7 +897,7 @@ function CollectionPage({
           </button>
         </div>
         <p className="text-[13px] text-muted-foreground">
-          {count(c.batches.length, 'batch', 'batches')} · {count(rules, 'rule')}
+          {count(rules, 'rule')}
           {empty ? ` · ${empty} to write` : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -1021,15 +905,11 @@ function CollectionPage({
             type="button"
             onClick={onAddOpen}
             disabled={!openNotes || busy !== null}
-            title={openNotes ? undefined : 'The open batch has no notes yet'}
+            title={openNotes ? undefined : 'The open images have no notes yet'}
             className={button}
           >
             <Plus className="size-4" aria-hidden />
-            {busy === 'add' ? 'Adding…' : 'Add open batch'}
-          </button>
-          <button type="button" onClick={onImport} className={button}>
-            <Upload className="size-4" aria-hidden />
-            Import export
+            {busy === 'add' ? 'Adding…' : 'Add notes'}
           </button>
           {learnAvailable && (toWrite > 0 || drafting) && (
             <button
@@ -1059,95 +939,45 @@ function CollectionPage({
 
       {c.batches.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
-          Add the batch you are working on, or import a Pinch export, to get a rule for each of its
-          notes. You can also drop exports here.
+          Add the notes on your open images to get a rule for each one.
         </p>
       ) : (
-        <>
-          {groups.map((g) => (
-            <section key={g.label} aria-labelledby={`group-${g.label}`} className="space-y-3">
-              <h3 id={`group-${g.label}`} className="flex items-center gap-2 text-sm font-medium">
-                <span
-                  className={cn(
-                    'flex h-7 items-center rounded-md px-2 text-[13px] leading-none',
-                    g.topic
-                      ? cn(TOPIC_TONES[g.topic].fill, TOPIC_TONES[g.topic].ink)
-                      : 'border border-border text-muted-foreground',
-                  )}
-                >
-                  {g.label}
-                </span>
-                <span className="font-mono text-[13px] font-normal text-muted-foreground">
-                  {g.learnings.length}
-                </span>
-              </h3>
-              <ol className="m-0 list-none space-y-3 p-0">
-                {g.learnings.map((l) => {
-                  const found = noteOf(c, l);
-                  if (!found) return null;
-                  return (
-                    <li key={l.id}>
-                      <LearningCard
-                        learning={l}
-                        note={found.note}
-                        batch={found.batch}
-                        crop={crops[`${l.batchId}/${l.note}`]}
-                        onChange={(change) => onLearning(l.id, change)}
-                        onDelete={() => onDeleteLearning(l)}
-                      />
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-          ))}
-
-          <section aria-labelledby="batches-heading" className="space-y-2 pt-2">
-            <h3 id="batches-heading" className="text-sm font-medium">
-              Batches
+        groups.map((g) => (
+          <section key={g.label} aria-labelledby={`group-${g.label}`} className="space-y-3">
+            <h3 id={`group-${g.label}`} className="flex items-center gap-2 text-sm font-medium">
+              <span
+                className={cn(
+                  'flex h-7 items-center rounded-md px-2 text-[13px] leading-none',
+                  g.topic
+                    ? cn(TOPIC_TONES[g.topic].fill, TOPIC_TONES[g.topic].ink)
+                    : 'border border-border text-muted-foreground',
+                )}
+              >
+                {g.label}
+              </span>
+              <span className="font-mono text-[13px] font-normal text-muted-foreground">
+                {g.learnings.length}
+              </span>
             </h3>
-            <ul className="m-0 list-none divide-y divide-border rounded-xl border border-border p-0">
-              {c.batches.map((b) => (
-                <li key={b.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">{b.name}</span>
-                    <span className="text-[13px] text-muted-foreground">
-                      {count(b.images, 'image')} · {count(b.notes.length, 'note')} · added{' '}
-                      {new Date(b.addedAt).toLocaleDateString()}
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Open ${b.name} as the batch`}
-                    title="Open as the batch"
-                    onClick={() => onOpenBatch(b)}
-                    className={iconButton}
-                  >
-                    <FolderOpen className="size-4" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Download ${b.name}`}
-                    title="Download"
-                    onClick={() => onDownloadBatch(b)}
-                    className={iconButton}
-                  >
-                    <Download className="size-4" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${b.name}`}
-                    title="Remove"
-                    onClick={() => onRemoveBatch(b)}
-                    className={iconButton}
-                  >
-                    <Trash2 className="size-4" aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <ol className="m-0 list-none space-y-3 p-0">
+              {g.learnings.map((l) => {
+                const found = noteOf(c, l);
+                if (!found) return null;
+                return (
+                  <li key={l.id}>
+                    <LearningCard
+                      learning={l}
+                      note={found.note}
+                      crop={crops[`${l.batchId}/${l.note}`]}
+                      onChange={(change) => onLearning(l.id, change)}
+                      onDelete={() => onDeleteLearning(l)}
+                    />
+                  </li>
+                );
+              })}
+            </ol>
           </section>
-        </>
+        ))
       )}
     </div>
   );
@@ -1160,14 +990,12 @@ function CollectionPage({
 function LearningCard({
   learning: l,
   note,
-  batch,
   crop,
   onChange,
   onDelete,
 }: {
   learning: Learning;
   note: BatchNote;
-  batch: Batch;
   crop?: string;
   onChange: (change: Partial<Learning>) => void;
   onDelete: () => void;
@@ -1202,9 +1030,6 @@ function LearningCard({
         <p className="m-0 text-[13px] leading-snug text-muted-foreground">
           <span className="font-mono">{note.ref}</span> · {note.image}
           {note.source ? ` · ${sourceLabel(note.source)}` : ''}
-          <span className="block truncate" title={batch.name}>
-            {batch.name}
-          </span>
         </p>
       </div>
       <div className="min-w-0 space-y-3">
