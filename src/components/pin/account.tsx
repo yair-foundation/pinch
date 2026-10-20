@@ -187,12 +187,12 @@ export function AccountDialog({
         </p>
         <p className="m-0">
           {me.allowed
-            ? 'Pinch is yours. Your collections are kept in your account, on every device you sign in on.'
+            ? 'Pinch is yours. Your rules are kept in your account, on every device you sign in on.'
             : `You haven’t bought Pinch yet. It is ${me.price} once.`}
         </p>
         {confirming && (
           <p className="m-0 text-foreground" role="alert">
-            Delete your account, your collections and their screenshots for good? Your purchase is
+            Delete your account, your rules and their screenshots for good? Your purchase is
             kept, so signing in again still finds it.
           </p>
         )}

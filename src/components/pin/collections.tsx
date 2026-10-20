@@ -5,13 +5,11 @@ import {
   Cloud,
   Download,
   HardDrive,
-  Library,
   Plus,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
   Trash2,
-  Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { batchNotes, readExport } from '@/lib/pin/import';
@@ -19,17 +17,16 @@ import { MAX_LEARN_NOTES } from '@/lib/pin/learn';
 import {
   type Batch,
   type BatchNote,
-  batchFileName,
   byTopic,
-  COLLECTION_FILE,
   type Collection,
   collectionSlug,
   type Learning,
+  mergeCollection,
   newCollection,
   noteOf,
   originOf,
+  RULES_NAME,
   type RulePick,
-  readCollection,
   rulesManifest,
   rulesMarkdown,
   rulesOf,
@@ -50,14 +47,14 @@ import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
 /*
- * Collections (D79, D80): named, each holding batches (as their Pinch exports)
- * and one learning per note. A learning is the rule a note teaches: drafted by
- * the AI from the note's words when drafting is on, or written by the author,
- * who edits or deletes the ones that miss, and can change what it is about.
- * The rules export as a file, all of them or the topics a task needs, or as text to paste into a chat.
- * A collection also downloads as one file, to keep or to open elsewhere. Kept
- * in this browser, or in the account when signed in (D81). Shown in place of
- * the batch, from the header's Collections button.
+ * The person's rules (D79, D80, D86): one collection, holding the notes added
+ * from their images (kept as Pinch exports, for the close-ups) and one learning
+ * per note. A learning is the rule a note teaches: drafted by the AI from the
+ * note's words when drafting is on, or written by the author, who edits or
+ * deletes the ones that miss, and can change what it is about. The rules
+ * export as a file, all of them or the topics a task needs, or as text to
+ * paste into a chat. Kept in this browser, or in the account when signed in
+ * (D81). Shown in place of the images, from the header's Rules button.
  */
 
 export type Notice = {
@@ -71,37 +68,12 @@ const newId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => (b % 36).toString(36)).join('');
 const nowIso = () => new Date().toISOString();
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-const OPEN_KEY = 'pinch-collection';
 /** A collection is written this long after its last change, so typing a rule isn't a write per key. */
 const SAVE_PAUSE = 600;
-const isZip = (f: File) => /zip/.test(f.type) || /\.zip$/i.test(f.name);
-
-const local = {
-  get: (key: string) => {
-    try {
-      return window.localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  set: (key: string, value: string) => {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch {}
-  },
-};
 
 /** Two batches with the same notes are the same batch added twice. */
 const signature = (notes: BatchNote[]) =>
   JSON.stringify(notes.map((n) => [n.ref, n.image, n.works, n.doesNotWork]));
-
-/** The folder a collection file's contents sit in, found by its `collection.json`. */
-const collectionRoot = (files: Map<string, Uint8Array>) => {
-  const key = [...files.keys()]
-    .filter((k) => k === COLLECTION_FILE || k.endsWith(`/${COLLECTION_FILE}`))
-    .sort((a, b) => a.split('/').length - b.split('/').length)[0];
-  return key === undefined ? undefined : key.slice(0, -COLLECTION_FILE.length);
-};
 
 const button = cn(
   hit,
@@ -117,8 +89,6 @@ const iconButton = cn(
 );
 const field =
   'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm placeholder:text-[#737373] dark:placeholder:text-[#7a7a7a] focus-visible:outline-2 focus-visible:outline-ring';
-
-type Confirm = { kind: 'collection'; collection: Collection };
 
 export function CollectionsView({
   inert,
@@ -141,30 +111,50 @@ export function CollectionsView({
 }) {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const listRef = useRef<Collection[]>([]);
-  const [openId, setOpenId] = useState<string | null>(null);
   const [learnAvailable, setLearnAvailable] = useState(false);
   const [drafting, setDrafting] = useState<{ done: number; total: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [fresh, setFresh] = useState<string | null>(null);
   const [movable, setMovable] = useState<Collection[]>([]);
   const opener = useRef<HTMLElement | null>(null);
-  const collectionInput = useRef<HTMLInputElement>(null);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     backend
       .list()
       .then((list) => {
-        listRef.current = list;
-        setCollections(list);
-        const remembered = local.get(OPEN_KEY);
-        setOpenId(list.find((c) => c.id === remembered)?.id ?? list[0]?.id ?? null);
+        // One collection each (D86): several made before are merged into the oldest, and one
+        // is made, unsaved until something is added, when there is none.
+        const [first, ...rest] = [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        if (!first) {
+          listRef.current = [newCollection(RULES_NAME, newId(), nowIso())];
+          setCollections(listRef.current);
+          return;
+        }
+        let one = first;
+        for (const c of rest) one = mergeCollection(one, c, nowIso());
+        if (rest.length) one = { ...one, name: RULES_NAME };
+        listRef.current = [one];
+        setCollections(listRef.current);
+        // The merged ones go once the one holding everything is saved; emptied first, so that
+        // deleting them leaves the batches they shared with it.
+        if (rest.length)
+          backend
+            .save(one)
+            .then(() =>
+              Promise.all(
+                rest.map(async (c) => {
+                  const emptied = { ...c, batches: [], learnings: [] };
+                  await backend.save(emptied);
+                  await backend.remove(emptied);
+                }),
+              ),
+            )
+            .catch(() => undefined);
       })
       .catch(() => {
         setCollections([]);
-        onStatus({ tone: 'error', text: 'Your collections didn’t load. Reload to try again.' });
+        onStatus({ tone: 'error', text: 'Your rules didn’t load. Reload to try again.' });
       });
     moveFrom
       ?.list()
@@ -185,8 +175,8 @@ export function CollectionsView({
           tone: 'error',
           text:
             backend.kind === 'account'
-              ? 'The collection didn’t save to your account. Check the connection; your change is kept here until it does.'
-              : 'This browser didn’t save the collection. Export the rules you want to keep.',
+              ? 'Your rules didn’t save to your account. Check the connection; your change is kept here until it does.'
+              : 'This browser didn’t save your rules. Export the ones you want to keep.',
         }),
       );
     },
@@ -225,10 +215,7 @@ export function CollectionsView({
     };
   }, [save]);
 
-  const open = collections?.find((c) => c.id === openId) ?? null;
-  useEffect(() => {
-    if (openId) local.set(OPEN_KEY, openId);
-  }, [openId]);
+  const open = collections?.[0] ?? null;
 
   // Each batch's export, read once while the view is open: its close-ups are the evidence.
   const files = useRef(new Map<string, Promise<Map<string, Uint8Array> | null>>());
@@ -273,19 +260,6 @@ export function CollectionsView({
       setCrops({});
     };
   }, [batchIds, filesOf]);
-
-  const adopt = useCallback((c: Collection) => {
-    listRef.current = [c, ...listRef.current];
-    setCollections(listRef.current);
-    setOpenId(c.id);
-  }, []);
-
-  const create = () => {
-    const c = newCollection('Untitled collection', newId(), nowIso());
-    adopt(c);
-    setFresh(c.id);
-    save(c.id);
-  };
 
   /** A batch's export into the collection: its zip kept, an empty learning for each note. */
   const addExport = useCallback(
@@ -342,7 +316,7 @@ export function CollectionsView({
       change(c.id, (x) => withBatch(x, batch, nowIso(), newId), true);
       onStatus({
         tone: 'info',
-        text: `Added ${name} to ${current.name}: ${count(notes.length, 'note')}, each with a rule to write. ${
+        text: `${notes.length === 1 ? 'Added 1 note, with a rule to write.' : `Added ${notes.length} notes, each with a rule to write.`} ${
           learnAvailable
             ? 'Draft them with AI, or write them.'
             : 'Write the rule each note teaches.'
@@ -350,77 +324,6 @@ export function CollectionsView({
       });
     },
     [backend, change, learnAvailable, onStatus],
-  );
-
-  /** A collection file opened here: a new collection beside the others, with fresh ids. */
-  const openCollectionFile = useCallback(
-    async (fileName: string, found: Map<string, Uint8Array>, root: string) => {
-      let read: ReturnType<typeof readCollection>;
-      try {
-        read = readCollection(
-          JSON.parse(new TextDecoder().decode(found.get(root + COLLECTION_FILE))),
-          newId,
-          nowIso(),
-        );
-      } catch (e) {
-        onStatus({ tone: 'error', text: `Couldn't open ${fileName}. ${(e as Error).message}` });
-        return;
-      }
-      const { collection, batchIds } = read;
-      onStatus({ tone: 'info', text: `Opening ${collection.name}…`, sticky: true });
-      const kept: Batch[] = [];
-      for (const b of collection.batches) {
-        const old = [...batchIds].find(([, id]) => id === b.id)?.[0] as string;
-        const bytes = found.get(root + batchFileName(old));
-        if (!bytes) continue;
-        try {
-          await backend.putBatch(b.id, new Blob([bytes as BlobPart], { type: 'application/zip' }));
-          kept.push(b);
-        } catch {
-          break;
-        }
-      }
-      const keptIds = new Set(kept.map((b) => b.id));
-      const c: Collection = {
-        ...collection,
-        name: listRef.current.some((x) => x.name === collection.name)
-          ? `${collection.name} (copy)`
-          : collection.name,
-        batches: kept,
-        learnings: collection.learnings.filter((l) => keptIds.has(l.batchId)),
-      };
-      adopt(c);
-      save(c.id);
-      const lost = collection.batches.length - kept.length;
-      onStatus({
-        tone: lost ? 'error' : 'info',
-        text: `Opened ${c.name}: ${count(
-          c.learnings.filter((l) => l.text.trim()).length,
-          'rule',
-        )}.${lost ? ' Some of its screenshots couldn’t be kept.' : ''}`,
-      });
-    },
-    [adopt, backend, onStatus, save],
-  );
-
-  /** A zip from the file picker or a drop: a collection file. A batch's export opens in the batch. */
-  const openZip = useCallback(
-    async (file: File) => {
-      let found: Map<string, Uint8Array>;
-      try {
-        found = await unzip(await file.arrayBuffer());
-      } catch (e) {
-        onStatus({ tone: 'error', text: `Couldn't open ${file.name}. ${(e as Error).message}` });
-        return;
-      }
-      const root = collectionRoot(found);
-      if (root !== undefined) return openCollectionFile(file.name, found, root);
-      onStatus({
-        tone: 'error',
-        text: `${file.name} isn’t a collection file. To keep the notes on your images, use Add notes.`,
-      });
-    },
-    [onStatus, openCollectionFile],
   );
 
   const addOpenBatch = async (c: Collection) => {
@@ -436,26 +339,16 @@ export function CollectionsView({
     }
   };
 
-  // A zip dropped on the view joins the collections, not the batch.
+  // Files dropped here would land in the images behind this view; they go there from Back.
   useEffect(() => {
     const onDrop = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const zips = [...(e.dataTransfer?.files ?? [])].filter(isZip);
-      if (!zips.length) {
-        onStatus({
-          tone: 'error',
-          text: 'Drop a collection file (.zip).',
-        });
-        return;
-      }
-      (async () => {
-        for (const f of zips) await openZip(f);
-      })();
+      onStatus({ tone: 'error', text: 'Go Back to add images, then Add notes here.' });
     };
     window.addEventListener('drop', onDrop, { capture: true });
     return () => window.removeEventListener('drop', onDrop, { capture: true });
-  }, [openZip, onStatus]);
+  }, [onStatus]);
 
   /** Draft a rule for every note without one, a few notes per request. */
   const draftAll = async (c: Collection) => {
@@ -577,29 +470,31 @@ export function CollectionsView({
     }
   };
 
-  /** This browser's collections into the account, then out of this browser. */
+  /** This browser's rules into the account's, then out of this browser. */
   const moveHere = async () => {
-    if (!moveFrom || !movable.length) return;
+    const into = listRef.current[0];
+    if (!moveFrom || !movable.length || !into) return;
     setBusy('move');
+    onStatus({ tone: 'info', text: 'Moving your rules…', sticky: true });
     let moved = 0;
     try {
       for (const c of movable) {
-        onStatus({ tone: 'info', text: `Moving ${c.name}…`, sticky: true });
         for (const b of c.batches) {
           const blob = await moveFrom.getBatch(b.id);
           if (blob) await backend.putBatch(b.id, blob);
         }
-        await backend.save(c);
+        listRef.current = [mergeCollection(listRef.current[0] ?? into, c, nowIso())];
+        setCollections(listRef.current);
+        await backend.save(listRef.current[0]);
         await moveFrom.remove(c);
-        if (!listRef.current.some((x) => x.id === c.id)) adopt(c);
-        moved++;
+        moved += c.learnings.filter((l) => l.text.trim()).length;
       }
       setMovable([]);
-      onStatus({ tone: 'info', text: `Moved ${count(moved, 'collection')} to your account.` });
+      onStatus({ tone: 'info', text: `Moved ${count(moved, 'rule')} to your account.` });
     } catch (e) {
       onStatus({
         tone: 'error',
-        text: `Moved ${count(moved, 'collection')}, then stopped. ${(e as Error).message}`,
+        text: `Moved ${count(moved, 'rule')}, then stopped. ${(e as Error).message}`,
       });
       moveFrom
         .list()
@@ -631,154 +526,53 @@ export function CollectionsView({
     });
   };
 
-  const confirmed = async () => {
-    if (!confirm) return;
-    const c = confirm.collection;
-    clearTimeout(timers.current.get(c.id));
-    timers.current.delete(c.id);
-    listRef.current = listRef.current.filter((x) => x.id !== c.id);
-    setCollections(listRef.current);
-    setOpenId(listRef.current[0]?.id ?? null);
-    await backend.remove(c).catch(() => undefined);
-    onStatus({ tone: 'info', text: `Deleted ${c.name}.` });
-    setConfirm(null);
-  };
-
-  const ask = (next: Confirm) => {
-    opener.current = document.activeElement as HTMLElement | null;
-    setConfirm(next);
-  };
-
   if (!collections) return <div className="flex-1" />;
   const Where = backend.kind === 'account' ? Cloud : HardDrive;
 
   return (
     <>
-      <div inert={inert || confirm !== null || exporting} className="flex min-h-0 flex-1">
-        <nav
-          aria-label="Collections"
-          className="flex w-60 shrink-0 flex-col border-r border-border max-[900px]:w-48"
-        >
-          <div className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-3">
-            <h2 className="m-0 flex-1 text-[13px] font-medium text-muted-foreground">
-              Collections
-            </h2>
-            <button
-              type="button"
-              aria-label="Import a collection file"
-              title="Import a collection file"
-              onClick={() => collectionInput.current?.click()}
-              className={iconButton}
-            >
-              <Upload className="size-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              aria-label="New collection"
-              title="New collection"
-              onClick={create}
-              className={iconButton}
-            >
-              <Plus className="size-4" aria-hidden />
-            </button>
-          </div>
-          <ol className="m-0 min-h-0 flex-1 list-none space-y-1 overflow-y-auto p-2">
-            {collections.map((c) => {
-              const written = c.learnings.filter((l) => l.text.trim()).length;
-              return (
-                <li key={c.id}>
+      <main inert={inert || exporting} className="min-h-0 flex-1 overflow-y-auto">
+        {open ? (
+          <CollectionPage
+            collection={open}
+            crops={crops}
+            openNotes={openNotes}
+            learnAvailable={learnAvailable}
+            drafting={drafting}
+            busy={busy}
+            kept={
+              <span className="flex items-center gap-1.5">
+                <Where className="size-3.5" aria-hidden />
+                {backend.kind === 'account' ? 'Kept in your account' : 'Kept in this browser'}
+              </span>
+            }
+            move={
+              movable.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px] text-muted-foreground">
+                  <p className="m-0 flex-1">Some of your rules are only in this browser.</p>
                   <button
                     type="button"
-                    aria-current={c.id === openId ? 'page' : undefined}
-                    onClick={() => setOpenId(c.id)}
-                    className={cn(
-                      'flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-                      c.id === openId && 'bg-muted',
-                    )}
+                    onClick={moveHere}
+                    disabled={busy !== null}
+                    className={button}
                   >
-                    <span className="truncate text-sm font-medium">{c.name}</span>
-                    <span className="text-[13px] text-muted-foreground">
-                      {count(written, 'rule')}
-                    </span>
+                    <Cloud className="size-4" aria-hidden />
+                    {busy === 'move' ? 'Moving…' : 'Move to your account'}
                   </button>
-                </li>
-              );
-            })}
-          </ol>
-          {movable.length > 0 && (
-            <div className="shrink-0 space-y-2 border-t border-border p-3 text-[13px] text-muted-foreground">
-              <p>
-                {count(movable.length, 'collection')} {movable.length === 1 ? 'is' : 'are'} only in
-                this browser.
-              </p>
-              <button
-                type="button"
-                onClick={moveHere}
-                disabled={busy !== null}
-                className={cn(button, 'w-full justify-center')}
-              >
-                <Cloud className="size-4" aria-hidden />
-                {busy === 'move' ? 'Moving…' : 'Move to your account'}
-              </button>
-            </div>
-          )}
-          <p className="flex shrink-0 items-center gap-1.5 border-t border-border px-4 py-2.5 text-[13px] text-muted-foreground">
-            <Where className="size-3.5" aria-hidden />
-            {backend.kind === 'account' ? 'Kept in your account' : 'Kept in this browser'}
-          </p>
-        </nav>
-
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          {!open ? (
-            <div className="mx-auto flex max-w-md flex-col items-center gap-4 px-6 py-24 text-center">
-              <Library className="size-6 text-muted-foreground" aria-hidden />
-              <h2 className="m-0 text-[1.4rem] leading-snug font-normal tracking-tight">
-                Keep what your notes teach
-              </h2>
-              <p className="m-0 text-sm text-muted-foreground">
-                A collection holds the rule each of your notes teaches. Keep the rules that are
-                yours, then export them for your agent.
-              </p>
-              <button type="button" onClick={create} className={primary}>
-                <Plus className="size-4" aria-hidden />
-                New collection
-              </button>
-            </div>
-          ) : (
-            <CollectionPage
-              key={open.id}
-              collection={open}
-              fresh={fresh === open.id}
-              crops={crops}
-              openNotes={openNotes}
-              learnAvailable={learnAvailable}
-              drafting={drafting}
-              busy={busy}
-              onRename={(name) => change(open.id, (x) => ({ ...x, name, updatedAt: nowIso() }))}
-              onAddOpen={() => addOpenBatch(open)}
-              onDraft={() => draftAll(open)}
-              onExport={() => {
-                opener.current = document.activeElement as HTMLElement | null;
-                setExporting(true);
-              }}
-              onDelete={() => ask({ kind: 'collection', collection: open })}
-              onLearning={(id, c) => change(open.id, (x) => withLearning(x, id, c, nowIso()))}
-              onDeleteLearning={(l) => deleteLearning(open, l)}
-            />
-          )}
-          <input
-            ref={collectionInput}
-            type="file"
-            accept=".zip,application/zip"
-            hidden
-            onChange={async (e) => {
-              const [f] = [...(e.target.files ?? [])];
-              e.target.value = '';
-              if (f) await openZip(f);
+                </div>
+              )
+            }
+            onAddOpen={() => addOpenBatch(open)}
+            onDraft={() => draftAll(open)}
+            onExport={() => {
+              opener.current = document.activeElement as HTMLElement | null;
+              setExporting(true);
             }}
+            onLearning={(id, c) => change(open.id, (x) => withLearning(x, id, c, nowIso()))}
+            onDeleteLearning={(l) => deleteLearning(open, l)}
           />
-        </main>
-      </div>
+        ) : null}
+      </main>
 
       {exporting && open && (
         <ExportDialog
@@ -790,79 +584,41 @@ export function CollectionsView({
           onCopy={(pick) => copyRules(open, pick)}
         />
       )}
-
-      {confirm && (
-        <Dialog
-          id="confirm-title"
-          title={`Delete ${confirm.collection.name}?`}
-          opener={opener.current}
-          onClose={() => setConfirm(null)}
-        >
-          <p className="m-0 text-muted-foreground">
-            {`Its ${count(confirm.collection.learnings.length, 'rule')} and their screenshots are deleted${backend.kind === 'account' ? ' from your account' : ' from this browser'}.`}
-          </p>
-          <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              onClick={confirmed}
-              className={cn(
-                hit,
-                'flex min-h-9 items-center rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
-              )}
-            >
-              Delete
-            </button>
-            <button
-              type="button"
-              data-autofocus
-              onClick={() => setConfirm(null)}
-              className={button}
-            >
-              Cancel
-            </button>
-          </div>
-        </Dialog>
-      )}
     </>
   );
 }
 
 function CollectionPage({
   collection: c,
-  fresh,
   crops,
   openNotes,
   learnAvailable,
   drafting,
   busy,
-  onRename,
+  kept,
+  move,
   onAddOpen,
   onDraft,
   onExport,
-  onDelete,
   onLearning,
   onDeleteLearning,
 }: {
   collection: Collection;
-  fresh: boolean;
   crops: Record<string, string>;
   openNotes: number;
   learnAvailable: boolean;
   drafting: { done: number; total: number } | null;
   busy: string | null;
-  onRename: (name: string) => void;
+  /** Where the rules are kept, said under the title. */
+  kept: React.ReactNode;
+  /** The offer to move this browser's rules into the account, when there are some. */
+  move: React.ReactNode;
   onAddOpen: () => void;
   onDraft: () => void;
   onExport: () => void;
-  onDelete: () => void;
   onLearning: (id: string, change: Partial<Learning>) => void;
   onDeleteLearning: (l: Learning) => void;
 }) {
-  const name = useRef<HTMLInputElement>(null);
-  // A new collection opens with its name selected, ready to type over.
-  useEffect(() => {
-    if (fresh) name.current?.select();
-  }, [fresh]);
   const toWrite = unwritten(c).length;
   const rules = c.learnings.filter((l) => l.text.trim()).length;
   const empty = c.learnings.length - rules;
@@ -871,35 +627,15 @@ function CollectionPage({
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
       <header className="space-y-3">
-        <div className="flex items-start gap-1">
-          <label htmlFor="collection-name" className="sr-only">
-            Collection name
-          </label>
-          <input
-            ref={name}
-            id="collection-name"
-            value={c.name}
-            maxLength={80}
-            onChange={(e) => onRename(e.target.value)}
-            onBlur={(e) => {
-              if (!e.target.value.trim()) onRename('Untitled collection');
-            }}
-            className="-mx-2 min-w-0 flex-1 rounded-md bg-transparent px-2 py-1 text-[1.4rem] leading-snug font-normal tracking-tight outline-none hover:bg-muted focus-visible:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-          />
-          <button
-            type="button"
-            aria-label="Delete collection"
-            title="Delete collection"
-            onClick={onDelete}
-            className={cn(iconButton, 'mt-1')}
-          >
-            <Trash2 className="size-4" aria-hidden />
-          </button>
-        </div>
-        <p className="text-[13px] text-muted-foreground">
-          {count(rules, 'rule')}
-          {empty ? ` · ${empty} to write` : ''}
+        <h2 className="m-0 text-[1.4rem] leading-snug font-normal tracking-tight">Your rules</h2>
+        <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
+          <span>
+            {count(rules, 'rule')}
+            {empty ? ` · ${empty} to write` : ''} ·
+          </span>
+          {kept}
         </p>
+        {move}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

@@ -1523,7 +1523,7 @@ function Workspace() {
               ) : (
                 <ArrowLeft className="size-4" aria-hidden />
               )}
-              {view === 'batch' ? 'Collections' : 'Back'}
+              {view === 'batch' ? 'Rules' : 'Back'}
             </button>
           )}
           {me?.user && (
@@ -1756,7 +1756,7 @@ function Workspace() {
             await leaveAccount('Signed out.');
           }}
           onDeleted={() =>
-            leaveAccount('Your account and its collections were deleted. Your purchase is kept.')
+            leaveAccount('Your account and its rules were deleted. Your purchase is kept.')
           }
         />
       )}
@@ -1844,7 +1844,7 @@ function PrivacyDialog({
       <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Your images',
-          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you add their notes to a collection in your account.',
+          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you add their notes to your rules in your account.',
         )}
         {item(
           'AI suggestions',
@@ -1875,8 +1875,8 @@ function PrivacyDialog({
           'signing in with Google gives Pinch your email and name, kept with your account. Your purchase is kept under a hash of your email; Lemon Squeezy, who sell Pinch, keep the payment details.',
         )}
         {item(
-          'Collections',
-          'in your account, with their screenshots and rules, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
+          'Your rules',
+          'in your account, with their screenshots, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of the notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
         )}
         {item(
           'No ads, no analytics.',
@@ -2185,7 +2185,7 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {price
-                ? `Pinch is ${price} once, with a Google sign-in. Images stay in this browser unless you keep them in a collection; AI suggestions send the marked area to Anthropic.`
+                ? `Pinch is ${price} once, with a Google sign-in. Images stay in this browser unless you keep their notes in your rules; AI suggestions send the marked area to Anthropic.`
                 : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"

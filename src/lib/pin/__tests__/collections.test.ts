@@ -6,14 +6,12 @@ import { assetsOf, batchNotes, readExport } from '../import';
 import { cleanLearnings, learnPrompt, learnRequestSchema, learnSystem } from '../learn';
 import {
   type Batch,
-  batchFileName,
   byTopic,
   type Collection,
-  collectionManifest,
   collectionSlug,
+  mergeCollection,
   newCollection,
   originOf,
-  readCollection,
   rulesManifest,
   rulesMarkdown,
   rulesOf,
@@ -21,7 +19,6 @@ import {
   unwritten,
   withBatch,
   withLearning,
-  withoutBatch,
 } from '../learnings';
 import { type Asset, type Mark, manifest } from '../model';
 import { unzip } from '../unzip';
@@ -248,7 +245,6 @@ describe('collections and learnings', () => {
     // A note the AI found no rule in isn't asked about again.
     const drafted = withLearning(c, c.learnings[0].id, { drafted: '' }, 'x');
     assert.equal(unwritten(drafted).length, 2);
-    assert.equal(withoutBatch(c, 'b1', 'later').learnings.length, 0);
   });
 
   it('groups by first topic, untagged last, and says whose words a learning is', () => {
@@ -322,33 +318,22 @@ describe('collections and learnings', () => {
     assert.doesNotMatch(text, /evidence/);
   });
 
-  it('still reads a collection file kept with the old personal or project marks', () => {
-    const json = JSON.parse(JSON.stringify(collectionManifest(written())));
-    json.learnings = json.learnings.map((l: object) => ({ ...l, scope: 'project' }));
-    const { collection: back } = readCollection(json, newId, 'now');
-    assert.equal(back.learnings.length, 3);
-    assert.equal('scope' in back.learnings[0], false);
-  });
-
-  it('moves a collection to another browser with fresh ids', () => {
+  it('merges another collection into the one kept, leaving its own as they are', () => {
     const c = written();
-    const json = JSON.parse(JSON.stringify(collectionManifest(c)));
-    assert.equal(json.learnings[0].id, undefined);
-    counter = 100;
-    const { collection: back, batchIds } = readCollection(json, newId, 'now');
-    assert.notEqual(back.id, c.id);
-    assert.equal(back.name, 'Acme');
-    assert.equal(batchIds.get('b1'), back.batches[0].id);
+    const other: Collection = {
+      ...newCollection('Other', 'c2', 'x'),
+      batches: [{ ...c.batches[0], id: 'b2' }],
+      learnings: [{ ...c.learnings[0], id: 'o1', batchId: 'b2' }, c.learnings[1]],
+    };
+    const merged = mergeCollection(c, other, 'later');
+    assert.equal(merged.id, c.id);
+    assert.equal(merged.name, 'Acme');
     assert.deepEqual(
-      back.learnings.map((l) => [l.batchId === back.batches[0].id, l.note, l.text]),
-      c.learnings.map((l) => [true, l.note, l.text]),
+      merged.batches.map((b) => b.id),
+      ['b1', 'b2'],
     );
-    assert.equal(rulesOf(back).length, 2);
-    assert.throws(
-      () => readCollection({ tool: 'Pinch' }, newId, 'now'),
-      /isn’t a Pinch collection/,
-    );
-    assert.equal(batchFileName('b1'), 'batches/b1.zip');
+    assert.equal(merged.learnings.length, c.learnings.length + 1, 'a rule it already has is not added twice');
+    assert.equal(merged.updatedAt, 'later');
   });
 });
 

@@ -1,8 +1,8 @@
 # Pinch
 
-Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why and what it's about (visual, layout, copy, interaction, flow, accessibility), and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Batches are kept in collections, where each note becomes a rule it teaches (drafted by AI or written by hand; edit or delete the ones that miss), and exported as a rules file with its evidence, or copied as text for one task.
+Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why and what it's about (visual, layout, copy, interaction, flow, accessibility), and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Notes are kept in your rules, where each one becomes the rule it teaches (drafted by AI or written by hand; edit or delete the ones that miss), exported as a rules file with its evidence, or copied as text for one task.
 
-Pinch is one paid tool (D81): $19 once, with a Google sign-in, sold through Lemon Squeezy. A buyer's collections are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose collections stay in the browser.
+Pinch is one paid tool (D81): $19 once, with a Google sign-in, sold through Lemon Squeezy. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose collections stay in the browser.
 
 Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message), up to 100 images a session.
 

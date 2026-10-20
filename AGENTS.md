@@ -19,4 +19,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Privacy: images leave the browser only into a signed-in buyer's own collections in their account (D81); otherwise only the text of notes is saved, anonymously and only while the visitor's switch is on (D82), and only note text goes to Jev. Never log emails, images, file names, links, "made by" or IP addresses on the server; the visitor key is a salted hash, accounts and purchases are keyed by hashes. Keep every AI step and the tagging off without their keys and behind their daily caps, and every paid step behind the gate (`src/lib/access.ts`).
 - No secrets in the repository: `.env*` is ignored; `.env.example` lists every variable with no values.
 - Copy: no text arrows in UI strings; short labels; see [docs/design.md](docs/design.md).
-- New decisions go at the top of `docs/decisions.md`, numbered on from D85, with the reason.
+- New decisions go at the top of `docs/decisions.md`, numbered on from D86, with the reason.

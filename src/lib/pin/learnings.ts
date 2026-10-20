@@ -1,8 +1,5 @@
-import { z } from 'zod';
 import {
-  SOURCES,
   type SourceKind,
-  sortTopics,
   sourceLabel,
   TOPICS,
   type Topic,
@@ -73,6 +70,24 @@ export function newCollection(name: string, id: string, now: string): Collection
   return { id, name, createdAt: now, updatedAt: now, batches: [], learnings: [] };
 }
 
+/** The name of the one collection each person has (D86). */
+export const RULES_NAME = 'My rules';
+
+/**
+ * Another collection's batches and rules added to this one, for the one
+ * collection a person keeps (D86): what this one already has is left as it is.
+ */
+export function mergeCollection(into: Collection, from: Collection, now: string): Collection {
+  const batchIds = new Set(into.batches.map((b) => b.id));
+  const learningIds = new Set(into.learnings.map((l) => l.id));
+  return {
+    ...into,
+    updatedAt: now,
+    batches: [...into.batches, ...from.batches.filter((b) => !batchIds.has(b.id))],
+    learnings: [...into.learnings, ...from.learnings.filter((l) => !learningIds.has(l.id))],
+  };
+}
+
 /** The collection with a batch added, and an empty learning for each of its notes. */
 export function withBatch(
   c: Collection,
@@ -94,14 +109,6 @@ export function withBatch(
     learnings: [...c.learnings, ...drafts],
   };
 }
-
-/** The collection without a batch, and without the learnings drawn from it. */
-export const withoutBatch = (c: Collection, batchId: string, now: string): Collection => ({
-  ...c,
-  updatedAt: now,
-  batches: c.batches.filter((b) => b.id !== batchId),
-  learnings: c.learnings.filter((l) => l.batchId !== batchId),
-});
 
 export const withLearning = (
   c: Collection,
@@ -301,106 +308,6 @@ export function rulesText(c: Collection, rules: Rule[]): string {
     );
   }
   return `${lines.join('\n')}\n`;
-}
-
-/*
- * Moving a collection to another browser: one zip with `collection.json` (its
- * name, batches and learnings) and each batch's own export under `batches/`.
- * Read back, it becomes a new collection with fresh ids, beside any already
- * there. Nothing goes through a server.
- */
-
-export const COLLECTION_FILE = 'collection.json';
-export const batchFileName = (batchId: string) => `batches/${batchId}.zip`;
-
-const source = z.enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]]);
-const topics = z
-  .array(z.string().max(40))
-  .max(20)
-  .transform((t) => sortTopics(t));
-const collectionSchema = z.object({
-  tool: z.literal('Pinch'),
-  kind: z.literal('collection'),
-  version: z.literal(1),
-  name: z.string().max(200),
-  createdAt: z.string().max(40),
-  batches: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(40),
-        name: z.string().max(200),
-        addedAt: z.string().max(40),
-        exportedAt: z.string().max(40),
-        root: z.string().max(200),
-        images: z.number().int().min(0),
-        notes: z
-          .array(
-            z.object({
-              ref: z.string().max(10),
-              image: z.string().max(300),
-              source: source.nullable(),
-              topics,
-              works: z.string().max(5000),
-              doesNotWork: z.string().max(5000),
-              label: z.string().max(200).optional(),
-              crop: z.string().max(300),
-            }),
-          )
-          .max(5000),
-      }),
-    )
-    .max(500),
-  learnings: z
-    .array(
-      z.object({
-        batchId: z.string().min(1).max(40),
-        note: z.string().max(10),
-        text: z.string().max(2000),
-        drafted: z.string().max(2000).optional(),
-        topics,
-      }),
-    )
-    .max(20000),
-});
-
-/** `collection.json`: what a collection holds besides its batches' exports. */
-export const collectionManifest = (c: Collection) => ({
-  tool: 'Pinch' as const,
-  kind: 'collection' as const,
-  version: 1 as const,
-  name: c.name,
-  createdAt: c.createdAt,
-  batches: c.batches,
-  learnings: c.learnings.map(({ id: _, ...l }) => l),
-});
-
-/**
- * A collection read back from its file, with fresh ids for it, its batches and
- * its learnings; `batchIds` maps each batch's id in the file to its new one, to
- * find its export under `batches/`.
- */
-export function readCollection(
-  json: unknown,
-  newId: () => string,
-  now: string,
-): { collection: Collection; batchIds: Map<string, string> } {
-  const parsed = collectionSchema.safeParse(json);
-  if (!parsed.success) throw new Error('It isn’t a Pinch collection this version reads.');
-  const d = parsed.data;
-  const batchIds = new Map(d.batches.map((b) => [b.id, newId()]));
-  return {
-    batchIds,
-    collection: {
-      id: newId(),
-      name: d.name || 'Untitled collection',
-      createdAt: d.createdAt,
-      updatedAt: now,
-      batches: d.batches.map((b) => ({ ...b, id: batchIds.get(b.id) as string })),
-      learnings: d.learnings
-        .filter((l) => batchIds.has(l.batchId))
-        .map((l) => ({ ...l, id: newId(), batchId: batchIds.get(l.batchId) as string })),
-    },
-  };
 }
 
 /** A file-safe name for a collection: "Acme dashboard" → "acme-dashboard". */
