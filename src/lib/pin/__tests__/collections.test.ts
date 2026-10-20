@@ -233,15 +233,15 @@ function collection(): Collection {
 }
 
 describe('collections and learnings', () => {
-  it('adds an empty learning per note, scoped by whose design it is', () => {
+  it('adds an empty learning per note', () => {
     const c = collection();
     assert.equal(c.learnings.length, 3);
     assert.deepEqual(
-      c.learnings.map((l) => [l.note, l.scope, l.text]),
+      c.learnings.map((l) => [l.note, l.text]),
       [
-        ['01.1', 'personal', ''],
-        ['01.2', 'personal', ''],
-        ['02.1', 'project', ''],
+        ['01.1', ''],
+        ['01.2', ''],
+        ['02.1', ''],
       ],
     );
     assert.equal(unwritten(c).length, 3);
@@ -276,50 +276,58 @@ describe('collections and learnings', () => {
     return c;
   }
 
-  it('exports every written rule, personal taste first, numbered', () => {
+  it('exports every written rule, grouped by topic, numbered', () => {
     const c = written();
     const rules = rulesOf(c);
     assert.deepEqual(
       rules.map((r) => [r.id, r.learning.note, r.evidence]),
       [
-        ['R1', '01.1', 'evidence/r01.jpg'],
-        ['R2', '02.1', 'evidence/r02.jpg'],
+        ['R1', '02.1', 'evidence/r01.jpg'],
+        ['R2', '01.1', 'evidence/r02.jpg'],
       ],
     );
     const md = rulesMarkdown(c, rules, '2026-10-20T12:00:00Z');
     assert.match(md, /^# Design rules: Acme$/m);
     assert.match(md, /2 rules\./);
     assert.match(md, /design rules the author keeps/);
-    assert.ok(md.indexOf('## Personal taste') < md.indexOf('## This project'));
-    assert.match(md, /^\*\*R1\.\*\* Lead with a short headline\.$/m);
+    assert.ok(md.indexOf('## Visual') < md.indexOf('## Copy'));
+    assert.doesNotMatch(md, /Personal taste|This project/);
+    assert.match(md, /^\*\*R2\.\*\* Lead with a short headline\.$/m);
     assert.match(md, /from note 01\.1 on Pricing\.png \(Competitor\), pinch-2026-10-20\./);
     assert.match(md, /^What works: Short headline\.$/m);
     assert.match(md, /Also about: Layout\./);
     const data = rulesManifest(c, rules, 'x');
-    assert.equal(data.rules[1].origin, 'ai-edited');
-    assert.equal(data.rules[0].note.source, 'competitor');
+    assert.equal(data.rules[0].origin, 'ai-edited');
+    assert.equal(data.rules[1].note.source, 'competitor');
+    assert.equal('scope' in data.rules[0], false);
     assert.equal(collectionSlug('Acme Dashboard, v2'), 'acme-dashboard-v2');
   });
 
-  it('picks the rules a task needs, by scope and topic', () => {
+  it('picks the rules a task needs, by topic', () => {
     const c = written();
     const notes = (pick: Parameters<typeof rulesOf>[1]) =>
       rulesOf(c, pick).map((r) => r.learning.note);
-    assert.deepEqual(notes({ scopes: ['project'] }), ['02.1']);
     assert.deepEqual(notes({ topics: ['copy'] }), ['01.1']);
     assert.deepEqual(notes({ topics: ['layout'] }), ['02.1'], 'any of its topics counts');
     assert.deepEqual(notes({ topics: [null] }), [], 'the untagged rule is empty, so not a rule');
-    assert.deepEqual(notes({ scopes: [], topics: ['copy'] }), []);
     // Numbering follows the pick, so a task's file reads R1, R2, …
-    assert.equal(rulesOf(c, { scopes: ['project'] })[0].id, 'R1');
+    assert.equal(rulesOf(c, { topics: ['copy'] })[0].id, 'R1');
     const text = rulesText(c, rulesOf(c));
     assert.match(text, /^Design rules from Acme \(Pinch\), 2 rules\./);
-    assert.match(text, /^R2\. Align related controls\. \(This project; Visual, Layout\)$/m);
+    assert.match(text, /^R1\. Align related controls\. \(Visual, Layout\)$/m);
     assert.match(
       text,
       /From a note on Home\.jpg \(Ours\): works: "Aligned\."; doesn't: "Too far\."/,
     );
     assert.doesNotMatch(text, /evidence/);
+  });
+
+  it('still reads a collection file kept with the old personal or project marks', () => {
+    const json = JSON.parse(JSON.stringify(collectionManifest(written())));
+    json.learnings = json.learnings.map((l: object) => ({ ...l, scope: 'project' }));
+    const { collection: back } = readCollection(json, newId, 'now');
+    assert.equal(back.learnings.length, 3);
+    assert.equal('scope' in back.learnings[0], false);
   });
 
   it('moves a collection to another browser with fresh ids', () => {

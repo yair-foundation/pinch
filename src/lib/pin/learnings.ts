@@ -13,10 +13,10 @@ import {
  * Collections: what a designer keeps from batch to batch. A collection holds
  * batches (each kept as its Pinch export, so it can be opened again) and one
  * learning per note: a rule the note teaches, drafted by the AI or written by
- * the author, marked as their personal taste or as this project's. Keeping a
+ * the author. Keeping a
  * rule is agreeing with it; the author edits or deletes the ones that miss
  * (D78). Rules export as a rules file an agent follows, each with the close-up
- * it came from, all of them or the scopes and topics a task needs. This file
+ * it came from, all of them or the topics a task needs. This file
  * is the pure part; the browser keeps collections in IndexedDB
  * (`collections-store.ts`).
  */
@@ -48,14 +48,6 @@ export type Batch = {
   notes: BatchNote[];
 };
 
-/** Personal taste holds everywhere; a project's rule holds for that project only. */
-export type Scope = 'personal' | 'project';
-export const SCOPES: { kind: Scope; label: string }[] = [
-  { kind: 'personal', label: 'Personal taste' },
-  { kind: 'project', label: 'This project' },
-];
-export const scopeLabel = (s: Scope) => SCOPES.find((x) => x.kind === s)?.label ?? s;
-
 export type Learning = {
   id: string;
   batchId: string;
@@ -65,7 +57,6 @@ export type Learning = {
   text: string;
   /** The AI's draft as it came, so the export can say whether the author changed it. */
   drafted?: string;
-  scope: Scope;
   topics: Topic[];
 };
 
@@ -77,10 +68,6 @@ export type Collection = {
   batches: Batch[];
   learnings: Learning[];
 };
-
-/** A note from our own product teaches about this project; anyone else's, about taste. */
-export const defaultScope = (source: SourceKind | null): Scope =>
-  source === 'ours' ? 'project' : 'personal';
 
 export function newCollection(name: string, id: string, now: string): Collection {
   return { id, name, createdAt: now, updatedAt: now, batches: [], learnings: [] };
@@ -98,7 +85,6 @@ export function withBatch(
     batchId: batch.id,
     note: n.ref,
     text: '',
-    scope: defaultScope(n.source),
     topics: n.topics,
   }));
   return {
@@ -181,27 +167,25 @@ export type Rule = {
 };
 
 /**
- * Which rules a task needs: the scopes and topics to take. A rule is taken when
- * its scope is among `scopes` and any of its topics is among `topics` (`null`
- * stands for a rule with no topic). Leaving either out takes them all.
+ * Which rules a task needs: the topics to take. A rule is taken when any of
+ * its topics is among `topics` (`null` stands for a rule with no topic).
+ * Leaving it out takes them all.
  */
-export type RulePick = { scopes?: readonly Scope[]; topics?: readonly (Topic | null)[] };
+export type RulePick = { topics?: readonly (Topic | null)[] };
 
 const picked = (l: Learning, pick: RulePick) =>
-  (!pick.scopes || pick.scopes.includes(l.scope)) &&
-  (!pick.topics ||
-    (l.topics.length
-      ? l.topics.some((t) => pick.topics?.includes(t))
-      : pick.topics.includes(null)));
+  !pick.topics ||
+  (l.topics.length
+    ? l.topics.some((t) => pick.topics?.includes(t))
+    : pick.topics.includes(null));
 
 /**
  * The rules an export carries: every learning with words and a note that the
- * pick takes, personal taste first, then by topic, then in the order the
+ * pick takes, by topic, then in the order the
  * batches were added. Numbered R1, R2, … in that order, each with its
  * close-up's file name in `evidence/`.
  */
 export function rulesOf(c: Collection, pick: RulePick = {}): Rule[] {
-  const scopeOrder = (s: Scope) => SCOPES.findIndex((x) => x.kind === s);
   const topicOrder = (l: Learning) => {
     const i = TOPICS.findIndex((t) => l.topics.includes(t.kind));
     return i < 0 ? TOPICS.length : i;
@@ -211,7 +195,6 @@ export function rulesOf(c: Collection, pick: RulePick = {}): Rule[] {
     .filter((l) => l.text.trim() && noteOf(c, l) && picked(l, pick))
     .sort(
       (a, b) =>
-        scopeOrder(a.scope) - scopeOrder(b.scope) ||
         topicOrder(a) - topicOrder(b) ||
         batchOrder(a) - batchOrder(b) ||
         a.note.localeCompare(b.note, undefined, { numeric: true }),
@@ -235,7 +218,6 @@ const fromLine = (r: Rule) =>
 
 const HOW_TO_USE = [
   'These are design rules the author keeps, each drawn from a note they wrote on a screenshot. Follow them in design and front-end work for this author.',
-  '"Personal taste" rules hold for everything the author makes. "This project" rules hold for the project this file sits in.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule names its close-up in `evidence/` and the note it came from. Open the close-up when you need to see what the rule means; the note says what the author saw there.',
   "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.",
@@ -253,24 +235,19 @@ export function rulesMarkdown(c: Collection, rules: Rule[], exportedAt: string):
     '',
     ...HOW_TO_USE.map((l) => `- ${l}`),
   ];
-  for (const scope of SCOPES) {
-    const inScope = rules.filter((r) => r.learning.scope === scope.kind);
-    if (!inScope.length) continue;
-    lines.push('', `## ${scope.label}`);
-    for (const group of byTopic(inScope.map((r) => r.learning))) {
-      lines.push('', `### ${group.label}`);
-      for (const l of group.learnings) {
-        const r = inScope.find((x) => x.learning === l) as Rule;
-        const others = l.topics.slice(1).map(topicLabel);
-        lines.push(
-          '',
-          `**${r.id}.** ${oneLine(l.text)}`,
-          '',
-          `Evidence: \`${r.evidence}\`, from ${fromLine(r)}.${others.length ? ` Also about: ${others.join(', ')}.` : ''}`,
-        );
-        if (r.note.works.trim()) lines.push(`What works: ${oneLine(r.note.works)}`);
-        if (r.note.doesNotWork.trim()) lines.push(`What doesn't: ${oneLine(r.note.doesNotWork)}`);
-      }
+  for (const group of byTopic(rules.map((r) => r.learning))) {
+    lines.push('', `## ${group.label}`);
+    for (const l of group.learnings) {
+      const r = rules.find((x) => x.learning === l) as Rule;
+      const others = l.topics.slice(1).map(topicLabel);
+      lines.push(
+        '',
+        `**${r.id}.** ${oneLine(l.text)}`,
+        '',
+        `Evidence: \`${r.evidence}\`, from ${fromLine(r)}.${others.length ? ` Also about: ${others.join(', ')}.` : ''}`,
+      );
+      if (r.note.works.trim()) lines.push(`What works: ${oneLine(r.note.works)}`);
+      if (r.note.doesNotWork.trim()) lines.push(`What doesn't: ${oneLine(r.note.doesNotWork)}`);
     }
   }
   return `${lines.join('\n')}\n`;
@@ -288,7 +265,6 @@ export function rulesManifest(c: Collection, rules: Rule[], exportedAt: string) 
     rules: rules.map((r) => ({
       id: r.id,
       text: oneLine(r.learning.text),
-      scope: r.learning.scope,
       topics: r.learning.topics,
       origin: originOf(r.learning),
       evidence: r.evidence,
@@ -310,7 +286,7 @@ export function rulesManifest(c: Collection, rules: Rule[], exportedAt: string) 
  */
 export function rulesText(c: Collection, rules: Rule[]): string {
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; "Personal taste" holds everywhere, "This project" for this project. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
   ];
   for (const r of rules) {
     const about = r.learning.topics.map(topicLabel).join(', ');
@@ -320,7 +296,7 @@ export function rulesText(c: Collection, rules: Rule[]): string {
     ].filter(Boolean);
     lines.push(
       '',
-      `${r.id}. ${oneLine(r.learning.text)} (${scopeLabel(r.learning.scope)}${about ? `; ${about}` : ''})`,
+      `${r.id}. ${oneLine(r.learning.text)} ${about ? `(${about})` : ''}`,
       `   From a note on ${r.note.image}${r.note.source ? ` (${sourceLabel(r.note.source)})` : ''}: ${said.join('; ')}`,
     );
   }
@@ -381,7 +357,6 @@ const collectionSchema = z.object({
         note: z.string().max(10),
         text: z.string().max(2000),
         drafted: z.string().max(2000).optional(),
-        scope: z.enum(['personal', 'project']),
         topics,
       }),
     )

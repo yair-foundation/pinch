@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Copy,
   Download,
   Globe,
   House,
@@ -79,7 +78,6 @@ import {
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import { type Checked, checkRhythm, type Rhythm, rhythmSuggestion } from '@/lib/pin/rhythm';
 import type { SuggestResult } from '@/lib/pin/suggest';
-import { imageSummary } from '@/lib/pin/summary';
 import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
@@ -97,7 +95,6 @@ import {
   contextForAi,
   cropForAi,
   download,
-  markedImage,
   ODD_COLOR,
   prepareImage,
   SPACING_COLOR,
@@ -308,27 +305,6 @@ const isSmallDevice = () =>
   window.matchMedia('(pointer: coarse)').matches ||
   window.screen.width * window.devicePixelRatio < 768;
 
-/** Whether the clipboard takes images as well as text here. */
-const canCopyImages = () =>
-  typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function';
-
-/** The marked copies are JPEG; the clipboard wants PNG. */
-async function toPng(blob: Blob): Promise<Blob> {
-  if (blob.type === 'image/png') return blob;
-  const bitmap = await bitmapOf(blob);
-  const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('Could not draw the image.'))),
-      'image/png',
-    ),
-  );
-}
-
 /** The next source when S is pressed: through the four kinds, then none. */
 function nextSource(source: Source | undefined): Source | undefined {
   const at = source ? SOURCES.findIndex((s) => s.kind === source.kind) : -1;
@@ -414,7 +390,6 @@ function Workspace() {
   const [suggesting, setSuggesting] = useState<string | null>(null);
   const suggestStopped = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
   // The one dialog open, and what had focus before it, so closing it puts focus back.
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -607,13 +582,6 @@ function Workspace() {
     );
     return () => clearTimeout(timer);
   }, [status]);
-
-  // "Copied" on the button, then back to its name.
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1400);
-    return () => clearTimeout(timer);
-  }, [copied]);
 
   // Save on every change. One write at a time; changes made meanwhile go in the next one, so
   // closing the tab right after an edit loses nothing. Once another tab has saved, this one
@@ -1344,57 +1312,6 @@ function Workspace() {
     }
   };
 
-  /**
-   * The open image with its notes drawn on, as PNG, and a short summary as text, in one
-   * clipboard item: pasted into a chat, the agent gets both. A browser that takes only text
-   * gets the summary, and the toast says so.
-   */
-  const copyForAgent = async () => {
-    if (!asset) return;
-    const target = asset;
-    const text = imageSummary(target, index, assets.length);
-    const notes = target.marks.filter((m) => verdictOf(m) !== 'empty').length;
-    const image = async () => {
-      const blob = await store.getImage(target.id);
-      if (!blob) throw new Error('The image is missing.');
-      if (!notes) return toPng(blob);
-      const bitmap = await bitmapOf(blob);
-      try {
-        return await toPng(await markedImage(bitmap, target));
-      } finally {
-        bitmap.close();
-      }
-    };
-    try {
-      if (!canCopyImages()) throw new Error('text only');
-      // Promises keep the write inside the click, which Safari asks for.
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'image/png': image(),
-          'text/plain': Promise.resolve(new Blob([text], { type: 'text/plain' })),
-        }),
-      ]);
-      setCopied(true);
-      setStatus({
-        tone: 'info',
-        text: notes
-          ? `Copied the image with ${count(notes, 'note')} drawn on, and the notes as text. Paste both into the agent.`
-          : 'Copied the image and its name as text; it has no notes yet.',
-      });
-    } catch {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setStatus({
-          tone: 'info',
-          text: "Copied the notes as text; this browser didn't allow copying the image with them.",
-        });
-      } catch {
-        setStatus({ tone: 'error', text: "The browser didn't allow copying." });
-      }
-    }
-  };
-
   /** The image leaves the session; its file stays in the browser while Undo can bring it back. */
   const removeAsset = (id: string) => {
     const name = assets.find((a) => a.id === id)?.name ?? 'image';
@@ -1554,23 +1471,6 @@ function Workspace() {
           )}
           {batchTools && (
             <TooltipProvider>
-              <ToolbarButton
-                onClick={copyForAgent}
-                title="Copy the open image with its notes drawn on, plus the notes as text."
-                aria-live="polite"
-                className="justify-center min-[900px]:min-w-[8.75rem]"
-              >
-                {copied ? (
-                  <Check className="size-4" aria-hidden />
-                ) : (
-                  <Copy className="size-4" aria-hidden />
-                )}
-                {/* One element, so the button's gap doesn't open a second space after "Copy". */}
-                <span>
-                  {copied ? 'Copied' : 'Copy'}
-                  {!copied && <span className="max-[900px]:hidden"> for agent</span>}
-                </span>
-              </ToolbarButton>
               <button
                 type="button"
                 onClick={exportZip}
@@ -2126,22 +2026,6 @@ function ShortcutsDialog({
         None of these fire while you type in a field; <Kbd>Esc</Kbd> leaves it first.
       </p>
     </Dialog>
-  );
-}
-
-function ToolbarButton({ children, className, ...props }: React.ComponentProps<'button'>) {
-  return (
-    <button
-      type="button"
-      {...props}
-      className={cn(
-        hit,
-        'flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-50',
-        className,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 

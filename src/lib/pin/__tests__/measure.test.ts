@@ -11,7 +11,6 @@ import {
   type Shape,
   shapeKey,
 } from '../model';
-import { imageSummary } from '../summary';
 
 type Box = { x: number; y: number; w: number; h: number; luma?: number };
 
@@ -172,7 +171,7 @@ describe('spacing in the export', () => {
     ...over,
   });
 
-  it('writes the gaps and the element into the README, notes.json and the copied text', () => {
+  it('writes the gaps and the element into the README and notes.json', () => {
     const a = asset(withSpacing());
     const text = readme([a], '2026-10-20T10:00:00Z');
     assert.match(
@@ -191,7 +190,6 @@ describe('spacing in the export', () => {
       scaleGuessed: true,
       precision: 1,
     });
-    assert.match(imageSummary(a, 0, 1), /· spacing: 32 px above and 12 px below/);
     // The author's scale wins over the guess.
     assert.match(readme([asset(withSpacing(), { scale: 1 })], 'x'), /the same in CSS px at 1×, set by the author/);
   });

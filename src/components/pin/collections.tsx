@@ -37,8 +37,6 @@ import {
   rulesMarkdown,
   rulesOf,
   rulesText,
-  SCOPES,
-  type Scope,
   unwritten,
   withBatch,
   withLearning,
@@ -59,9 +57,8 @@ import { TOPIC_TONES, tagHit } from './topic-style';
  * Collections (D79, D80): named, each holding batches (as their Pinch exports)
  * and one learning per note. A learning is the rule a note teaches: drafted by
  * the AI from the note's words when drafting is on, or written by the author,
- * who edits or deletes the ones that miss, marks each personal taste or this
- * project, and can change what it is about. The rules export as a file, all of
- * them or the scopes and topics a task needs, or as text to paste into a chat.
+ * who edits or deletes the ones that miss, and can change what it is about.
+ * The rules export as a file, all of them or the topics a task needs, or as text to paste into a chat.
  * A collection also downloads as one file, to keep or to open elsewhere. Kept
  * in this browser, or in the account when signed in (D81). Shown in place of
  * the batch, from the header's Collections button.
@@ -1157,7 +1154,7 @@ function CollectionPage({
 }
 
 /**
- * One rule: the note's close-up and words as evidence, the rule (editable), its scope, what it is
+ * One rule: the note's close-up and words as evidence, the rule (editable), what it is
  * about, and delete. Keeping a rule is agreeing with it (D80).
  */
 function LearningCard({
@@ -1262,26 +1259,7 @@ function LearningCard({
           topics={l.topics}
           onChange={(topics) => onChange({ topics })}
         />
-        <div className="flex flex-wrap items-center gap-2">
-          <fieldset className="m-0 flex min-w-0 gap-1 rounded-lg border border-border p-0.5">
-            <legend className="sr-only">Scope</legend>
-            {SCOPES.map((s) => (
-              <button
-                key={s.kind}
-                type="button"
-                aria-pressed={l.scope === s.kind}
-                onClick={() => onChange({ scope: s.kind })}
-                className={cn(
-                  'flex min-h-8 items-center rounded-md px-2.5 text-[13px] transition-colors duration-150 motion-reduce:transition-none',
-                  l.scope === s.kind
-                    ? 'bg-muted font-medium text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
-          </fieldset>
+        <div className="flex items-center">
           <button
             type="button"
             aria-label="Delete rule"
@@ -1298,7 +1276,7 @@ function LearningCard({
 }
 
 /**
- * What goes out: the scopes and topics a task needs (all of them at first), as a zip with the
+ * What goes out: the topics a task needs (all of them at first), as a zip with the
  * close-ups or as text for a chat.
  */
 function ExportDialog({
@@ -1325,34 +1303,14 @@ function ExportDialog({
     if (all.some((l) => !l.topics.length)) topics.push(null);
     return topics;
   }, [all]);
-  const [scopes, setScopes] = useState<Scope[]>(SCOPES.map((s) => s.kind));
   const [topics, setTopics] = useState<(Topic | null)[]>(present);
-  const pick: RulePick = { scopes, topics };
+  const pick: RulePick = { topics };
   const n = rulesOf(c, pick).length;
   const toggle = <T,>(list: T[], v: T) =>
     list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
   return (
     <Dialog id="export-title" title="Export rules" opener={opener} onClose={onClose}>
       <div className="space-y-4 text-[13px]">
-        <fieldset className="min-w-0 border-0 p-0">
-          <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">For</legend>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {SCOPES.map((s) => (
-              <label key={s.kind} className="flex min-h-8 items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={scopes.includes(s.kind)}
-                  onChange={() => setScopes((x) => toggle(x, s.kind))}
-                  className="size-4 accent-foreground"
-                />
-                {s.label}
-                <span className="font-mono text-[13px] text-muted-foreground">
-                  {all.filter((l) => l.scope === s.kind).length}
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
         <fieldset className="min-w-0 border-0 p-0">
           <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">About</legend>
           <div className="flex flex-wrap gap-2">

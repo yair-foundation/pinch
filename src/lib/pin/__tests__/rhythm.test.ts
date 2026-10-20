@@ -11,7 +11,6 @@ import {
   shapeKey,
 } from '../model';
 import { checkRhythm, rhythmSuggestion, rhythmText } from '../rhythm';
-import { imageSummary } from '../summary';
 
 type Box = { x: number; y: number; w: number; h: number; luma?: number };
 
@@ -188,7 +187,7 @@ describe('rhythm in the export', () => {
     marks: [m],
   });
 
-  it('writes the check into the README, notes.json and the copied text', () => {
+  it('writes the check into the README and notes.json', () => {
     const text = readme([asset(withRhythm())], 'x');
     assert.match(
       text,
@@ -208,7 +207,6 @@ describe('rhythm in the export', () => {
       scaleGuessed: true,
       precision: 2,
     });
-    assert.match(imageSummary(asset(withRhythm()), 0, 1), /· rhythm: 4 items in a column/);
   });
 
   it('leaves out a check made before the note moved, and its rule', () => {
