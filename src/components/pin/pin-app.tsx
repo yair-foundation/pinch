@@ -1782,10 +1782,10 @@ function ToolbarButton({ children, className, ...props }: React.ComponentProps<'
 }
 
 /*
- * The landing: the painting fills the page, the same in both themes, and a
- * dark glass card sits in the middle. The card is always dark, so its text
- * colours are fixed, not the theme's: #f5f5f5 and #c4c4c4 on the card's
- * near-black keep 4.5:1 with the painting showing through.
+ * The landing: the painting fills the page (dusk in dark mode, night in light mode, crossfading
+ * when the theme changes), and a dark glass card sits in the middle. The card is always dark, so
+ * its text colours are fixed, not the theme's: #f5f5f5 and #c4c4c4 on the card's near-black keep
+ * 4.5:1 with the painting showing through.
  */
 /** How far the painting drifts against the pointer, in px at the screen's edge. */
 const PARALLAX = { x: 44, y: 28 };
@@ -1853,6 +1853,19 @@ function EmptyState({
           sizes="100vw"
           quality={85}
           className="object-cover"
+        />
+        {/*
+         * Light mode lays the night painting over the dusk one and fades it in. The theme
+         * provider switches themes with transitions off, so this one is forced on (!); it
+         * stands still under reduced motion.
+         */}
+        <Image
+          src="/pin-notes/landing-night.webp"
+          alt=""
+          fill
+          sizes="100vw"
+          quality={85}
+          className="object-cover opacity-100 transition-opacity! duration-700! ease-in-out! motion-reduce:transition-none! dark:opacity-0"
         />
       </div>
       <div

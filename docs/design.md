@@ -42,8 +42,8 @@ Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-mu
 
 ## Motion
 
-- Short and purposeful: a 300 ms transition on the landing card's drag state, the folder animation on the landing, the pointer parallax on the painting, `animate-in` fades on tooltips. No decorative motion.
-- **Reduced motion is honoured.** Spinners hide under `motion-reduce:hidden`; the parallax and the folder animation stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
+- Short and purposeful: a 300 ms transition on the landing card's drag state, the folder animation on the landing, the 700 ms crossfade of the landing painting between themes, the pointer parallax on the painting, `animate-in` fades on tooltips. No decorative motion.
+- **Reduced motion is honoured.** The painting swaps without a fade; spinners hide under `motion-reduce:hidden`; the parallax and the folder animation stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
 
 ## Icons
 
