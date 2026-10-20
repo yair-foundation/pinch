@@ -1,24 +1,19 @@
-import {
-  type SourceKind,
-  sourceLabel,
-  TOPICS,
-  type Topic,
-  topicLabel,
-} from './model';
+import { type SourceKind, sortTopics, sourceLabel, TOPICS, type Topic, topicLabel } from './model';
 
 /*
- * Collections: what a designer keeps from batch to batch. A collection holds
- * batches (each kept as its Pinch export, so it can be opened again) and one
- * learning per note: a rule the note teaches, drafted by the AI or written by
- * the author. Keeping a
- * rule is agreeing with it; the author edits or deletes the ones that miss
- * (D78). Rules export as a rules file an agent follows, each with the close-up
- * it came from, all of them or the topics a task needs. This file
- * is the pure part; the browser keeps collections in IndexedDB
- * (`collections-store.ts`).
+ * The person's taste library (D79, D86, D87): one collection of design rules
+ * an agent follows, drawn from their notes on screenshots. The notes come in
+ * a batch at a time (each batch kept as its Pinch export, for the close-ups);
+ * the AI reads the new ones against the rules already there and, for each,
+ * strengthens a rule that says the same, writes a new one, or flags a
+ * conflict with one. A rule stands on its own: it holds the notes it draws on
+ * (one note can inform several rules, one rule draws on notes across images).
+ * Rules are guidance as soon as Pinch writes them; the author can edit them
+ * (D88). This file is the pure part; the browser keeps the collection in
+ * IndexedDB (`collections-store.ts`), or the account in the Blob store.
  */
 
-/** A note as a collection keeps it: its words and where its close-up is in the batch's export. */
+/** A note as the collection keeps it: its words and where its close-up is in the batch's export. */
 export type BatchNote = {
   /** Its number in the export: "02.3", the third note on image 02. */
   ref: string;
@@ -45,14 +40,48 @@ export type Batch = {
   notes: BatchNote[];
 };
 
+/** A note by where it is kept: its batch, and its number in that batch. */
+export type NoteRef = { batchId: string; note: string };
+
+/**
+ * Every rule is `approved`, guidance as soon as it is written (D88). Rules kept before D88 may
+ * be `proposed` (read as approved) or `dismissed` (kept out of sight and out of exports, and
+ * sent to the AI so it doesn't write them again).
+ */
+export type RuleStatus = 'proposed' | 'approved' | 'dismissed';
+
+export type Rule = {
+  id: string;
+  /** The rule, one sentence. Empty while it is locked. */
+  text: string;
+  /** Where it holds, a few words ("in data tables"), or empty when it holds everywhere. */
+  context: string;
+  topics: Topic[];
+  /** The author's own tags: a project, a client, a kind of work. */
+  tags: string[];
+  /** The notes it draws on, oldest first. */
+  evidence: NoteRef[];
+  status: RuleStatus;
+  /** The AI's wording as it came, so the export can say whether the author changed it. */
+  drafted?: string;
+  /** Another rule this one pulls against, and why both may hold. */
+  conflict?: { ruleId: string; why: string };
+  /** Notes added since the author last opened its evidence. */
+  fresh?: number;
+  /**
+   * Found before Pinch was bought: shown only as a placeholder, its words never sent. Bought,
+   * its notes are read again and it is written in full.
+   */
+  locked?: boolean;
+  createdAt: string;
+};
+
+/** Before D87 a collection held one learning per note; they are read once into rules. */
 export type Learning = {
   id: string;
   batchId: string;
-  /** The note it comes from, by its number in the batch: "02.3". */
   note: string;
-  /** The rule, one sentence. Empty until drafted or written. */
   text: string;
-  /** The AI's draft as it came, so the export can say whether the author changed it. */
   drafted?: string;
   topics: Topic[];
 };
@@ -63,176 +92,356 @@ export type Collection = {
   createdAt: string;
   updatedAt: string;
   batches: Batch[];
-  learnings: Learning[];
+  rules: Rule[];
+  /** The notes the AI has read, as `batchId/ref`; the rest wait for it. */
+  read: string[];
+  /** Before D87 only. */
+  learnings?: Learning[];
 };
-
-export function newCollection(name: string, id: string, now: string): Collection {
-  return { id, name, createdAt: now, updatedAt: now, batches: [], learnings: [] };
-}
 
 /** The name of the one collection each person has (D86). */
 export const RULES_NAME = 'My rules';
 
-/**
- * Another collection's batches and rules added to this one, for the one
- * collection a person keeps (D86): what this one already has is left as it is.
- */
-export function mergeCollection(into: Collection, from: Collection, now: string): Collection {
-  const batchIds = new Set(into.batches.map((b) => b.id));
-  const learningIds = new Set(into.learnings.map((l) => l.id));
-  return {
-    ...into,
-    updatedAt: now,
-    batches: [...into.batches, ...from.batches.filter((b) => !batchIds.has(b.id))],
-    learnings: [...into.learnings, ...from.learnings.filter((l) => !learningIds.has(l.id))],
-  };
+export function newCollection(name: string, id: string, now: string): Collection {
+  return { id, name, createdAt: now, updatedAt: now, batches: [], rules: [], read: [] };
 }
 
-/** The collection with a batch added, and an empty learning for each of its notes. */
-export function withBatch(
-  c: Collection,
-  batch: Batch,
-  now: string,
-  newId: () => string,
-): Collection {
-  const drafts: Learning[] = batch.notes.map((n) => ({
-    id: newId(),
-    batchId: batch.id,
-    note: n.ref,
-    text: '',
-    topics: n.topics,
-  }));
-  return {
-    ...c,
-    updatedAt: now,
-    batches: [...c.batches, batch],
-    learnings: [...c.learnings, ...drafts],
-  };
-}
-
-export const withLearning = (
-  c: Collection,
-  id: string,
-  change: Partial<Learning>,
-  now: string,
-): Collection => ({
-  ...c,
-  updatedAt: now,
-  learnings: c.learnings.map((l) => (l.id === id ? { ...l, ...change } : l)),
-});
-
-export const withoutLearning = (c: Collection, id: string, now: string): Collection => ({
-  ...c,
-  updatedAt: now,
-  learnings: c.learnings.filter((l) => l.id !== id),
-});
-
-/** The note a learning comes from. */
-export function noteOf(c: Collection, l: Learning): { batch: Batch; note: BatchNote } | undefined {
-  const batch = c.batches.find((b) => b.id === l.batchId);
-  const note = batch?.notes.find((n) => n.ref === l.note);
-  return batch && note ? { batch, note } : undefined;
-}
-
-/** Learnings with nothing written and never drafted: what the AI is asked to draft. */
-export const unwritten = (c: Collection) =>
-  c.learnings.filter((l) => !l.text.trim() && l.drafted === undefined);
-
-/** Whose words a learning is: the AI's as drafted, the AI's edited by the author, or the author's. */
-export function originOf(l: Learning): 'ai' | 'ai-edited' | 'author' {
-  if (l.drafted === undefined || !l.drafted.trim()) return 'author';
-  return l.text.trim() === l.drafted.trim() ? 'ai' : 'ai-edited';
-}
-
-export type TopicGroup = { topic: Topic | null; label: string; learnings: Learning[] };
+export const noteKey = (r: NoteRef) => `${r.batchId}/${r.note}`;
 
 /**
- * Learnings by topic, in the topics' order, each under its first topic (so a
- * learning shows once), and those without one last, under "Not tagged".
+ * What makes two notes the same note, whichever batch carried them: the image and the words.
+ * Adding the open images again adds only the notes that are new or were reworded.
  */
-export function byTopic(learnings: Learning[]): TopicGroup[] {
-  const groups: TopicGroup[] = [
-    ...TOPICS.map((t) => ({ topic: t.kind, label: t.label, learnings: [] as Learning[] })),
-    { topic: null, label: 'Not tagged', learnings: [] },
-  ];
-  for (const l of learnings) {
-    const first = TOPICS.find((t) => l.topics.includes(t.kind))?.kind ?? null;
-    groups.find((g) => g.topic === first)?.learnings.push(l);
-  }
-  return groups.filter((g) => g.learnings.length);
-}
+export const noteFingerprint = (image: string, works: string, doesNotWork: string) =>
+  `${image.trim()}\n${works.trim()}\n${doesNotWork.trim()}`;
 
-const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+const fingerprintOf = (n: BatchNote) => noteFingerprint(n.image, n.works, n.doesNotWork);
 
-/** A rule as it is exported: its number, the learning, the note and batch it came from, and its close-up. */
-export type Rule = {
-  id: string;
-  learning: Learning;
-  batch: Batch;
-  note: BatchNote;
-  evidence: string;
+/** The fingerprints of every note the collection holds. */
+export const knownNotes = (c: Collection) =>
+  new Set(c.batches.flatMap((b) => b.notes.map(fingerprintOf)));
+
+/** The notes of a batch the collection doesn't hold yet. */
+export const newNotes = (c: Collection, notes: BatchNote[]) => {
+  const known = knownNotes(c);
+  return notes.filter((n) => (n.works || n.doesNotWork) && !known.has(fingerprintOf(n)));
 };
 
 /**
- * Which rules a task needs: the topics to take. A rule is taken when any of
- * its topics is among `topics` (`null` stands for a rule with no topic).
- * Leaving it out takes them all.
+ * A collection as kept, brought up to date: arrays where older records had none, and the
+ * learnings of before D87 as approved rules (keeping a rule was agreeing with it, D80), each
+ * on its one note. Notes whose learning was never written wait to be read.
  */
-export type RulePick = { topics?: readonly (Topic | null)[] };
-
-const picked = (l: Learning, pick: RulePick) =>
-  !pick.topics ||
-  (l.topics.length
-    ? l.topics.some((t) => pick.topics?.includes(t))
-    : pick.topics.includes(null));
+export function upgradeCollection(raw: Collection, newId: () => string): Collection {
+  const c: Collection = {
+    ...raw,
+    batches: raw.batches ?? [],
+    rules: (raw.rules ?? []).map((r) => ({
+      ...r,
+      tags: r.tags ?? [],
+      context: r.context ?? '',
+      status: r.status === 'proposed' ? 'approved' : r.status,
+    })),
+    read: raw.read ?? [],
+  };
+  if (!raw.learnings) return c;
+  const read = new Set(c.read);
+  for (const l of raw.learnings) {
+    const ref = { batchId: l.batchId, note: l.note };
+    if (l.text.trim()) {
+      c.rules.push({
+        id: newId(),
+        text: l.text.trim(),
+        context: '',
+        topics: sortTopics(l.topics ?? []),
+        tags: [],
+        evidence: [ref],
+        status: 'approved',
+        ...(l.drafted ? { drafted: l.drafted } : {}),
+        createdAt: raw.updatedAt ?? raw.createdAt,
+      });
+      read.add(noteKey(ref));
+    } else if (l.drafted === '') read.add(noteKey(ref));
+  }
+  const { learnings: _, ...rest } = c;
+  return { ...rest, read: [...read] };
+}
 
 /**
- * The rules an export carries: every learning with words and a note that the
- * pick takes, by topic, then in the order the
- * batches were added. Numbered R1, R2, … in that order, each with its
- * close-up's file name in `evidence/`.
+ * Another collection's notes and rules added to this one, for the one collection a person
+ * keeps (D86): what this one already has is left as it is. A note this one already holds
+ * (the same image and words) is not kept twice: the other's rules point at this one's copy,
+ * and a batch left with no new note is dropped. A rule worded the same as one here adds its
+ * notes to it instead of showing twice.
  */
-export function rulesOf(c: Collection, pick: RulePick = {}): Rule[] {
-  const topicOrder = (l: Learning) => {
-    const i = TOPICS.findIndex((t) => l.topics.includes(t.kind));
+export function mergeCollection(into: Collection, from: Collection, now: string): Collection {
+  const where = new Map<string, NoteRef>();
+  for (const b of into.batches)
+    for (const n of b.notes) where.set(fingerprintOf(n), { batchId: b.id, note: n.ref });
+  const moved = new Map<string, NoteRef>();
+  const batchIds = new Set(into.batches.map((b) => b.id));
+  const batches = [...into.batches];
+  for (const b of from.batches) {
+    if (batchIds.has(b.id)) continue;
+    const kept: BatchNote[] = [];
+    for (const n of b.notes) {
+      const here = where.get(fingerprintOf(n));
+      if (here) moved.set(noteKey({ batchId: b.id, note: n.ref }), here);
+      else {
+        kept.push(n);
+        where.set(fingerprintOf(n), { batchId: b.id, note: n.ref });
+      }
+    }
+    if (kept.length) batches.push({ ...b, notes: kept });
+  }
+  const at = (r: NoteRef) => moved.get(noteKey(r)) ?? r;
+  const once = (refs: NoteRef[]) => [...new Map(refs.map((r) => [noteKey(r), r])).values()];
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  let rules = [...into.rules];
+  for (const r of from.rules) {
+    if (rules.some((x) => x.id === r.id)) continue;
+    const evidence = once(r.evidence.map(at));
+    const twin = r.text.trim() ? rules.find((x) => !x.locked && same(x.text, r.text)) : undefined;
+    if (twin)
+      rules = rules.map((x) =>
+        x === twin ? { ...x, evidence: once([...x.evidence, ...evidence]) } : x,
+      );
+    else rules.push({ ...r, evidence });
+  }
+  const read = new Set(into.read);
+  for (const k of from.read) {
+    const i = k.indexOf('/');
+    read.add(noteKey(at({ batchId: k.slice(0, i), note: k.slice(i + 1) })));
+  }
+  return { ...into, updatedAt: now, batches, rules, read: [...read] };
+}
+
+/** The collection with a batch added; its notes wait for the AI. */
+export const withBatch = (c: Collection, batch: Batch, now: string): Collection => ({
+  ...c,
+  updatedAt: now,
+  batches: [...c.batches, batch],
+});
+
+export const withRule = (c: Collection, id: string, change: Partial<Rule>, now: string) => ({
+  ...c,
+  updatedAt: now,
+  rules: c.rules.map((r) => (r.id === id ? { ...r, ...change } : r)),
+});
+
+/** Every note the AI hasn't read yet, oldest batch first. */
+export function unreadNotes(c: Collection): { batch: Batch; note: BatchNote }[] {
+  const read = new Set(c.read);
+  return c.batches.flatMap((batch) =>
+    batch.notes
+      .filter((note) => !read.has(noteKey({ batchId: batch.id, note: note.ref })))
+      .map((note) => ({ batch, note })),
+  );
+}
+
+/** A note by its reference, with its batch. */
+export function noteAt(c: Collection, ref: NoteRef): { batch: Batch; note: BatchNote } | undefined {
+  const batch = c.batches.find((b) => b.id === ref.batchId);
+  const note = batch?.notes.find((n) => n.ref === ref.note);
+  return batch && note ? { batch, note } : undefined;
+}
+
+/** The notes a rule draws on that the collection still holds. */
+export const evidenceOf = (c: Collection, r: Rule) =>
+  r.evidence.map((e) => noteAt(c, e)).filter((x) => x !== undefined);
+
+/** How many images a rule's notes are on. */
+export const imagesOf = (c: Collection, r: Rule) =>
+  new Set(evidenceOf(c, r).map(({ batch, note }) => `${batch.id}/${note.image}`)).size;
+
+/** What the AI made of some notes, by the notes' and rules' own ids (see `learn.ts`). */
+export type Reading = {
+  strengthen: { rule: string; notes: string[] }[];
+  propose: {
+    rule: string;
+    context: string;
+    topics: Topic[];
+    notes: string[];
+    conflictsWith?: string;
+    conflict?: string;
+    locked?: boolean;
+  }[];
+};
+
+/**
+ * A reading applied: the notes it was given count as read, the rules they strengthen gain
+ * them as evidence, and each new rule joins as guidance (or `locked`, unseen until Pinch is
+ * bought). `notes` maps the ids the AI saw to the notes they stand for.
+ */
+export function applyReading(
+  c: Collection,
+  reading: Reading,
+  notes: Map<string, NoteRef>,
+  now: string,
+  newId: () => string,
+): Collection {
+  const refs = (ids: string[]) => {
+    const seen = new Set<string>();
+    const out: NoteRef[] = [];
+    for (const id of ids) {
+      const ref = notes.get(id);
+      if (!ref || seen.has(noteKey(ref))) continue;
+      seen.add(noteKey(ref));
+      out.push(ref);
+    }
+    return out;
+  };
+  const rules = c.rules.map((r) => {
+    const add = reading.strengthen
+      .filter((s) => s.rule === r.id)
+      .flatMap((s) => refs(s.notes))
+      .filter((ref) => !r.evidence.some((e) => noteKey(e) === noteKey(ref)));
+    if (!add.length) return r;
+    return {
+      ...r,
+      evidence: [...r.evidence, ...add],
+      fresh: (r.fresh ?? 0) + add.length,
+    };
+  });
+  for (const p of reading.propose) {
+    const evidence = refs(p.notes);
+    if (!evidence.length || (!p.locked && !p.rule.trim())) continue;
+    const other = p.conflictsWith ? c.rules.find((r) => r.id === p.conflictsWith) : undefined;
+    rules.push({
+      id: newId(),
+      text: p.locked ? '' : p.rule.trim(),
+      context: p.locked ? '' : p.context.trim(),
+      topics: sortTopics(p.topics),
+      tags: [],
+      evidence,
+      status: 'approved',
+      ...(p.locked ? { locked: true } : { drafted: p.rule.trim() }),
+      ...(other && !p.locked
+        ? { conflict: { ruleId: other.id, why: (p.conflict ?? '').trim() } }
+        : {}),
+      createdAt: now,
+    });
+  }
+  const read = new Set(c.read);
+  for (const ref of notes.values()) read.add(noteKey(ref));
+  return { ...c, updatedAt: now, rules, read: [...read] };
+}
+
+/**
+ * Bought: the locked rules go, and their notes wait to be read again, now to be written in
+ * full. A note a written rule already holds is read again too, and only strengthens it.
+ */
+export function unlockRules(c: Collection, now: string): Collection {
+  const locked = c.rules.filter((r) => r.locked);
+  if (!locked.length) return c;
+  const again = new Set(locked.flatMap((r) => r.evidence.map(noteKey)));
+  return {
+    ...c,
+    updatedAt: now,
+    rules: c.rules.filter((r) => !r.locked),
+    read: c.read.filter((k) => !again.has(k)),
+  };
+}
+
+/** Whose words a rule is: the AI's as drafted, the AI's edited by the author, or the author's. */
+export function originOf(r: Pick<Rule, 'text' | 'drafted'>): 'ai' | 'ai-edited' | 'author' {
+  if (r.drafted === undefined || !r.drafted.trim()) return 'author';
+  return r.text.trim() === r.drafted.trim() ? 'ai' : 'ai-edited';
+}
+
+/** Every tag the author gave a rule, in the order first used. */
+export const tagsOf = (rules: Rule[]) => [...new Set(rules.flatMap((r) => r.tags))];
+
+/** A tag as the author typed it, tidied: one line, 30 characters at most. */
+export const cleanTag = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, 30);
+
+export type TopicGroup = { topic: Topic | null; label: string; rules: Rule[] };
+
+/**
+ * Rules by topic, in the topics' order, each under its first topic (so a rule shows once),
+ * and those without one last, under "Not tagged".
+ */
+export function byTopic(rules: Rule[]): TopicGroup[] {
+  const groups: TopicGroup[] = [
+    ...TOPICS.map((t) => ({ topic: t.kind, label: t.label, rules: [] as Rule[] })),
+    { topic: null, label: 'Not tagged', rules: [] },
+  ];
+  for (const r of rules) {
+    const first = TOPICS.find((t) => r.topics.includes(t.kind))?.kind ?? null;
+    groups.find((g) => g.topic === first)?.rules.push(r);
+  }
+  return groups.filter((g) => g.rules.length);
+}
+
+/**
+ * Which rules a view or a task takes, sliced by tags: a rule is taken when any of its topics
+ * is among `topics`, and any of its own tags among `tags` (`null` stands for none, in both).
+ * Leaving either out takes them all.
+ */
+export type RulePick = { topics?: readonly (Topic | null)[]; tags?: readonly (string | null)[] };
+
+export const picked = (r: Rule, pick: RulePick) =>
+  (!pick.topics ||
+    (r.topics.length
+      ? r.topics.some((t) => pick.topics?.includes(t))
+      : pick.topics.includes(null))) &&
+  (!pick.tags ||
+    (r.tags.length ? r.tags.some((t) => pick.tags?.includes(t)) : pick.tags.includes(null)));
+
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/** One note of an exported rule, with its close-up's name in `evidence/`. */
+export type ExportedNote = { batch: Batch; note: BatchNote; file: string };
+
+/** A rule as it is exported: its number, the rule, and its notes. */
+export type ExportedRule = { id: string; rule: Rule; notes: ExportedNote[] };
+
+/**
+ * The rules an export carries: the ones the pick takes (never a dismissed or locked one), by topic, then oldest
+ * first. Numbered R1, R2, … in that order; each note's close-up is `evidence/r01-1.jpg` and on.
+ */
+export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
+  const topicOrder = (r: Rule) => {
+    const i = TOPICS.findIndex((t) => r.topics.includes(t.kind));
     return i < 0 ? TOPICS.length : i;
   };
-  const batchOrder = (l: Learning) => c.batches.findIndex((b) => b.id === l.batchId);
-  const chosen = c.learnings
-    .filter((l) => l.text.trim() && noteOf(c, l) && picked(l, pick))
-    .sort(
-      (a, b) =>
-        topicOrder(a) - topicOrder(b) ||
-        batchOrder(a) - batchOrder(b) ||
-        a.note.localeCompare(b.note, undefined, { numeric: true }),
-    );
+  const chosen = c.rules
+    .filter((r) => r.status === 'approved' && !r.locked && r.text.trim() && picked(r, pick))
+    .sort((a, b) => topicOrder(a) - topicOrder(b) || a.createdAt.localeCompare(b.createdAt));
   const width = chosen.length > 99 ? 3 : 2;
-  return chosen.map((learning, i) => {
-    const found = noteOf(c, learning) as { batch: Batch; note: BatchNote };
-    const id = `R${i + 1}`;
+  return chosen.map((rule, i) => {
+    const n = String(i + 1).padStart(width, '0');
     return {
-      id,
-      learning,
-      ...found,
-      evidence: `evidence/r${String(i + 1).padStart(width, '0')}.jpg`,
+      id: `R${i + 1}`,
+      rule,
+      notes: evidenceOf(c, rule).map((e, j) => ({ ...e, file: `evidence/r${n}-${j + 1}.jpg` })),
     };
   });
 }
 
-/** Where a rule came from, in one line: "note 02.3 on pricing.png (Competitor)". */
-const fromLine = (r: Rule) =>
-  `note ${r.note.ref} on ${r.note.image}${r.note.source ? ` (${sourceLabel(r.note.source)})` : ''}, ${r.batch.name}`;
+/** Where a note came from, in one line: "note 02.3 on pricing.png (Competitor)". */
+const fromLine = (n: ExportedNote) =>
+  `note ${n.note.ref} on ${n.note.image}${n.note.source ? ` (${sourceLabel(n.note.source)})` : ''}`;
+
+const said = (n: BatchNote) =>
+  [
+    n.works.trim() ? `works: "${oneLine(n.works)}"` : '',
+    n.doesNotWork.trim() ? `doesn't: "${oneLine(n.doesNotWork)}"` : '',
+  ]
+    .filter(Boolean)
+    .join('; ');
 
 const HOW_TO_USE = [
-  'These are design rules the author keeps, each drawn from a note they wrote on a screenshot. Follow them in design and front-end work for this author.',
+  'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
+  'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
   'Refer to rules by number ("R4"), so the author can find them.',
-  'Each rule names its close-up in `evidence/` and the note it came from. Open the close-up when you need to see what the rule means; the note says what the author saw there.',
+  'Each rule lists the notes it comes from and their close-ups in `evidence/`. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
   "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.",
-  "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its note and close-up first.",
+  "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its notes and close-ups first.",
 ];
 
 /** The rules file an agent reads: `design-rules.md`. */
-export function rulesMarkdown(c: Collection, rules: Rule[], exportedAt: string): string {
+export function rulesMarkdown(c: Collection, rules: ExportedRule[], exportedAt: string): string {
   const lines = [
     `# Design rules: ${oneLine(c.name)}`,
     '',
@@ -242,70 +451,74 @@ export function rulesMarkdown(c: Collection, rules: Rule[], exportedAt: string):
     '',
     ...HOW_TO_USE.map((l) => `- ${l}`),
   ];
-  for (const group of byTopic(rules.map((r) => r.learning))) {
+  for (const group of byTopic(rules.map((r) => r.rule))) {
     lines.push('', `## ${group.label}`);
-    for (const l of group.learnings) {
-      const r = rules.find((x) => x.learning === l) as Rule;
-      const others = l.topics.slice(1).map(topicLabel);
-      lines.push(
-        '',
-        `**${r.id}.** ${oneLine(l.text)}`,
-        '',
-        `Evidence: \`${r.evidence}\`, from ${fromLine(r)}.${others.length ? ` Also about: ${others.join(', ')}.` : ''}`,
-      );
-      if (r.note.works.trim()) lines.push(`What works: ${oneLine(r.note.works)}`);
-      if (r.note.doesNotWork.trim()) lines.push(`What doesn't: ${oneLine(r.note.doesNotWork)}`);
+    for (const rule of group.rules) {
+      const r = rules.find((x) => x.rule === rule) as ExportedRule;
+      const others = rule.topics.slice(1).map(topicLabel);
+      lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
+      if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
+      if (others.length || rule.tags.length)
+        lines.push(
+          '',
+          [
+            others.length ? `Also about: ${others.join(', ')}.` : '',
+            rule.tags.length ? `Tags: ${rule.tags.join(', ')}.` : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        );
+      lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
+      for (const n of r.notes) lines.push(`- \`${n.file}\`, ${fromLine(n)}: ${said(n.note)}`);
     }
   }
   return `${lines.join('\n')}\n`;
 }
 
 /** `rules.json`: the same rules as data. */
-export function rulesManifest(c: Collection, rules: Rule[], exportedAt: string) {
+export function rulesManifest(c: Collection, rules: ExportedRule[], exportedAt: string) {
   return {
     tool: 'Pinch',
     kind: 'rules',
-    version: 1,
+    version: 2,
     collection: c.name,
     exportedAt,
     guide: 'design-rules.md',
     rules: rules.map((r) => ({
       id: r.id,
-      text: oneLine(r.learning.text),
-      topics: r.learning.topics,
-      origin: originOf(r.learning),
-      evidence: r.evidence,
-      note: {
-        ref: r.note.ref,
-        batch: r.batch.name,
-        image: r.note.image,
-        source: r.note.source,
-        ...(r.note.works.trim() ? { works: r.note.works.trim() } : {}),
-        ...(r.note.doesNotWork.trim() ? { doesNotWork: r.note.doesNotWork.trim() } : {}),
-      },
+      text: oneLine(r.rule.text),
+      ...(r.rule.context.trim() ? { where: oneLine(r.rule.context) } : {}),
+      topics: r.rule.topics,
+      tags: r.rule.tags,
+      origin: originOf(r.rule),
+      notes: r.notes.map((n) => ({
+        evidence: n.file,
+        ref: n.note.ref,
+        batch: n.batch.name,
+        image: n.note.image,
+        source: n.note.source,
+        ...(n.note.works.trim() ? { works: n.note.works.trim() } : {}),
+        ...(n.note.doesNotWork.trim() ? { doesNotWork: n.note.doesNotWork.trim() } : {}),
+      })),
     })),
   };
 }
 
 /**
- * The rules as text to paste into a chat with an agent for one task: the same
- * rules and notes as `design-rules.md`, without the close-ups.
+ * The rules as text to paste into a chat with an agent for one task: the same rules and
+ * notes as `design-rules.md`, without the close-ups.
  */
-export function rulesText(c: Collection, rules: Rule[]): string {
+export function rulesText(c: Collection, rules: ExportedRule[]): string {
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
   ];
   for (const r of rules) {
-    const about = r.learning.topics.map(topicLabel).join(', ');
-    const said = [
-      r.note.works.trim() ? `works: "${oneLine(r.note.works)}"` : '',
-      r.note.doesNotWork.trim() ? `doesn't: "${oneLine(r.note.doesNotWork)}"` : '',
-    ].filter(Boolean);
+    const about = [...r.rule.topics.map(topicLabel), ...r.rule.tags].join(', ');
     lines.push(
       '',
-      `${r.id}. ${oneLine(r.learning.text)} ${about ? `(${about})` : ''}`,
-      `   From a note on ${r.note.image}${r.note.source ? ` (${sourceLabel(r.note.source)})` : ''}: ${said.join('; ')}`,
+      `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}`,
     );
+    for (const n of r.notes) lines.push(`   - ${fromLine(n)}: ${said(n.note)}`);
   }
   return `${lines.join('\n')}\n`;
 }

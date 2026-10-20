@@ -3,22 +3,42 @@ import { describe, it } from 'node:test';
 import { deflateRawSync, crc32 as nodeCrc } from 'node:zlib';
 
 import { assetsOf, batchNotes, readExport } from '../import';
-import { cleanLearnings, learnPrompt, learnRequestSchema, learnSystem } from '../learn';
 import {
+  cleanReading,
+  learnPrompt,
+  learnRequestSchema,
+  learnSchema,
+  learnSystem,
+  PREVIEW_RULES,
+  previewReading,
+} from '../learn';
+import {
+  applyReading,
   type Batch,
   byTopic,
   type Collection,
+  cleanTag,
   collectionSlug,
+  imagesOf,
+  knownNotes,
   mergeCollection,
+  type NoteRef,
   newCollection,
+  newNotes,
+  noteFingerprint,
+  noteKey,
   originOf,
+  picked,
   rulesManifest,
   rulesMarkdown,
   rulesOf,
   rulesText,
-  unwritten,
+  tagsOf,
+  unlockRules,
+  unreadNotes,
+  upgradeCollection,
   withBatch,
-  withLearning,
+  withRule,
 } from '../learnings';
 import { type Asset, type Mark, manifest } from '../model';
 import { unzip } from '../unzip';
@@ -226,150 +246,435 @@ function collection(): Collection {
     images: 2,
     notes: batchNotes(readExport(exportFiles())),
   };
-  return withBatch(newCollection('Acme', 'c1', '2026-10-20T11:00:00Z'), batch, 'now', newId);
+  return withBatch(newCollection('Acme', 'c1', '2026-10-20T11:00:00Z'), batch, 'now');
 }
 
-describe('collections and learnings', () => {
-  it('adds an empty learning per note', () => {
-    const c = collection();
-    assert.equal(c.learnings.length, 3);
-    assert.deepEqual(
-      c.learnings.map((l) => [l.note, l.text]),
-      [
-        ['01.1', ''],
-        ['01.2', ''],
-        ['02.1', ''],
+/** The ids the AI sees for the three notes of `collection()`. */
+const sent = () =>
+  new Map<string, NoteRef>([
+    ['n1', { batchId: 'b1', note: '01.1' }],
+    ['n2', { batchId: 'b1', note: '01.2' }],
+    ['n3', { batchId: 'b1', note: '02.1' }],
+  ]);
+
+/** Two rules read from the notes: one drawing on notes across both images, one on a single note. */
+function read(): Collection {
+  return applyReading(
+    collection(),
+    {
+      strengthen: [],
+      propose: [
+        {
+          rule: 'Lead with a short headline that states the price.',
+          context: 'on pricing cards',
+          topics: ['copy', 'visual'],
+          notes: ['n1', 'n3', 'n1', 'zz'],
+        },
+        {
+          rule: 'Align related controls.',
+          context: '',
+          topics: ['layout'],
+          notes: ['n3'],
+        },
       ],
+    },
+    sent(),
+    '2026-10-20T12:00:00Z',
+    newId,
+  );
+}
+
+describe('the taste library', () => {
+  it('keeps a batch whose notes wait to be read, and adds only notes it hasn’t seen', () => {
+    const c = collection();
+    assert.equal(c.rules.length, 0);
+    assert.deepEqual(
+      unreadNotes(c).map((x) => x.note.ref),
+      ['01.1', '01.2', '02.1'],
     );
-    assert.equal(unwritten(c).length, 3);
-    // A note the AI found no rule in isn't asked about again.
-    const drafted = withLearning(c, c.learnings[0].id, { drafted: '' }, 'x');
-    assert.equal(unwritten(drafted).length, 2);
+    const notes = batchNotes(readExport(exportFiles()));
+    assert.equal(newNotes(c, notes).length, 0, 'the same notes again are nothing new');
+    const reworded = notes.map((n, i) => (i === 0 ? { ...n, works: 'A shorter headline.' } : n));
+    assert.deepEqual(
+      newNotes(c, reworded).map((n) => n.ref),
+      ['01.1'],
+    );
+    assert.ok(knownNotes(c).has(noteFingerprint('Pricing.png', 'Short headline.', '')));
   });
 
-  it('groups by first topic, untagged last, and says whose words a learning is', () => {
-    const c = collection();
+  it('reads notes into rules: one rule on notes across images, one note in two rules', () => {
+    const c = read();
     assert.deepEqual(
-      byTopic(c.learnings).map((g) => [g.label, g.learnings.map((l) => l.note)]),
+      c.rules.map((r) => [r.text, r.context, r.status, r.evidence.map((e) => e.note)]),
       [
-        ['Visual', ['02.1']],
-        ['Copy', ['01.1']],
-        ['Not tagged', ['01.2']],
+        [
+          'Lead with a short headline that states the price.',
+          'on pricing cards',
+          'approved',
+          ['01.1', '02.1'],
+        ],
+        ['Align related controls.', '', 'approved', ['02.1']],
       ],
     );
-    const [l] = c.learnings;
-    assert.equal(originOf(l), 'author');
-    assert.equal(originOf({ ...l, text: 'Rule.', drafted: 'Rule.' }), 'ai');
-    assert.equal(originOf({ ...l, text: 'Better rule.', drafted: 'Rule.' }), 'ai-edited');
+    assert.deepEqual(c.rules[0].topics, ['visual', 'copy'], 'topics in their order');
+    assert.equal(imagesOf(c, c.rules[0]), 2);
+    assert.equal(originOf(c.rules[0]), 'ai');
+    assert.equal(unreadNotes(c).length, 0, 'every note it was given counts as read');
   });
 
-  /** Two written rules and one left empty. */
-  function written(): Collection {
-    let c = collection();
-    const [a, , d] = c.learnings;
-    c = withLearning(c, a.id, { text: 'Lead with a short headline.' }, 'x');
-    c = withLearning(c, d.id, { text: 'Align related controls.', drafted: 'Align controls.' }, 'x');
+  it('strengthens a rule, flags a conflict, and keeps a new note once', () => {
+    let c = read();
+    const [first, second] = c.rules;
+    c = withRule(c, first.id, { status: 'approved' }, 'x');
+    c = withBatch(
+      c,
+      { ...c.batches[0], id: 'b2', notes: c.batches[0].notes.map((n) => ({ ...n })) },
+      'x',
+    );
+    c = applyReading(
+      c,
+      {
+        strengthen: [
+          { rule: first.id, notes: ['m1', 'm1'] },
+          { rule: 'gone', notes: ['m2'] },
+        ],
+        propose: [
+          {
+            rule: 'Keep controls loose in onboarding.',
+            context: 'in onboarding',
+            topics: ['layout'],
+            notes: ['m2'],
+            conflictsWith: second.id,
+            conflict: 'One wants controls together, the other apart.',
+          },
+          { rule: '', context: '', topics: [], notes: ['m3'] },
+        ],
+      },
+      new Map([
+        ['m1', { batchId: 'b2', note: '01.1' }],
+        ['m2', { batchId: 'b2', note: '01.2' }],
+        ['m3', { batchId: 'b2', note: '02.1' }],
+      ]),
+      'later',
+      newId,
+    );
+    const strong = c.rules.find((r) => r.id === first.id);
+    assert.deepEqual(strong?.evidence.map(noteKey), ['b1/01.1', 'b1/02.1', 'b2/01.1']);
+    assert.equal(strong?.fresh, 1, 'a rule says it has a new note');
+    assert.equal(c.rules.length, 3, 'a proposal with no words is dropped');
+    assert.deepEqual(c.rules[2].conflict, {
+      ruleId: second.id,
+      why: 'One wants controls together, the other apart.',
+    });
+    assert.equal(unreadNotes(c).length, 0);
+  });
+
+  it('keeps a preview’s hidden rules without their words, and reads them again once bought', () => {
+    let c = applyReading(
+      collection(),
+      {
+        strengthen: [],
+        propose: [
+          { rule: 'Shown.', context: '', topics: ['copy'], notes: ['n1'] },
+          { rule: '', context: '', topics: ['layout'], notes: ['n2', 'n3'], locked: true },
+        ],
+      },
+      sent(),
+      'x',
+      newId,
+    );
+    assert.deepEqual(
+      c.rules.map((r) => [r.text, Boolean(r.locked)]),
+      [
+        ['Shown.', false],
+        ['', true],
+      ],
+    );
+    assert.deepEqual(
+      rulesOf(c).map((r) => r.rule.text),
+      ['Shown.'],
+      'a hidden rule never exports',
+    );
+    c = unlockRules(c, 'bought');
+    assert.equal(c.rules.length, 1);
+    assert.deepEqual(
+      unreadNotes(c).map((x) => x.note.ref),
+      ['01.2', '02.1'],
+    );
+  });
+
+  it('brings a collection of learnings, from before, up to date', () => {
+    const old = {
+      ...collection(),
+      rules: undefined,
+      read: undefined,
+      learnings: [
+        {
+          id: 'l1',
+          batchId: 'b1',
+          note: '01.1',
+          text: 'Lead with a short headline.',
+          drafted: 'Lead.',
+          topics: ['copy'],
+        },
+        { id: 'l2', batchId: 'b1', note: '01.2', text: '', drafted: '', topics: [] },
+        { id: 'l3', batchId: 'b1', note: '02.1', text: '', topics: ['visual'] },
+      ],
+    } as unknown as Collection;
+    const c = upgradeCollection(old, newId);
+    assert.equal(c.learnings, undefined);
+    assert.equal(
+      upgradeCollection({ ...read(), rules: [{ ...read().rules[0], status: 'proposed' }] }, newId)
+        .rules[0].status,
+      'approved',
+      'a rule proposed before D88 is guidance now',
+    );
+    assert.deepEqual(
+      c.rules.map((r) => [r.text, r.status, r.evidence.map(noteKey), originOf(r)]),
+      [['Lead with a short headline.', 'approved', ['b1/01.1'], 'ai-edited']],
+    );
+    assert.deepEqual(
+      unreadNotes(c).map((x) => x.note.ref),
+      ['02.1'],
+      'a note the AI found nothing in stays read; one never drafted waits',
+    );
+  });
+
+  it('slices by topic and by the author’s own tags', () => {
+    let c = read();
+    c = withRule(c, c.rules[1].id, { tags: ['Acme'] }, 'x');
+    const [a, b] = c.rules;
+    assert.equal(picked(a, { topics: ['copy'] }), true);
+    assert.equal(picked(b, { topics: ['copy'] }), false);
+    assert.equal(picked(b, { tags: ['Acme'] }), true);
+    assert.equal(picked(a, { tags: [null] }), true, 'null takes the rules without a tag');
+    assert.equal(picked(b, { tags: [null] }), false);
+    assert.deepEqual(tagsOf(c.rules), ['Acme']);
+    assert.equal(cleanTag('  Client   X  '), 'Client X');
+    assert.deepEqual(
+      byTopic(c.rules).map((g) => [g.label, g.rules.length]),
+      [
+        ['Visual', 1],
+        ['Layout', 1],
+      ],
+    );
+  });
+
+  /** The two rules approved, the second edited and tagged. */
+  function approved(): Collection {
+    let c = read();
+    const [a, b] = c.rules;
+    c = withRule(c, a.id, { status: 'approved' }, 'x');
+    c = withRule(
+      c,
+      b.id,
+      { status: 'approved', text: 'Align related controls on one edge.', tags: ['Acme'] },
+      'x',
+    );
     return c;
   }
 
-  it('exports every written rule, grouped by topic, numbered', () => {
-    const c = written();
+  it('exports rules as soon as they are written, numbered, each with every note it draws on', () => {
+    const old = withRule(read(), read().rules[0].id, { status: 'dismissed' }, 'x');
+    assert.equal(rulesOf(old).length, 1, 'a rule dismissed before D88 stays out');
+    const c = approved();
     const rules = rulesOf(c);
     assert.deepEqual(
-      rules.map((r) => [r.id, r.learning.note, r.evidence]),
+      rules.map((r) => [r.id, r.notes.map((n) => n.file)]),
       [
-        ['R1', '02.1', 'evidence/r01.jpg'],
-        ['R2', '01.1', 'evidence/r02.jpg'],
+        ['R1', ['evidence/r01-1.jpg', 'evidence/r01-2.jpg']],
+        ['R2', ['evidence/r02-1.jpg']],
       ],
     );
     const md = rulesMarkdown(c, rules, '2026-10-20T12:00:00Z');
     assert.match(md, /^# Design rules: Acme$/m);
     assert.match(md, /2 rules\./);
-    assert.match(md, /design rules the author keeps/);
-    assert.ok(md.indexOf('## Visual') < md.indexOf('## Copy'));
-    assert.doesNotMatch(md, /Personal taste|This project/);
-    assert.match(md, /^\*\*R2\.\*\* Lead with a short headline\.$/m);
-    assert.match(md, /from note 01\.1 on Pricing\.png \(Competitor\), pinch-2026-10-20\./);
-    assert.match(md, /^What works: Short headline\.$/m);
-    assert.match(md, /Also about: Layout\./);
+    assert.match(md, /^\*\*R1\.\*\* Lead with a short headline that states the price\.$/m);
+    assert.match(md, /^Where: on pricing cards\.$/m);
+    assert.match(md, /^From 2 notes:$/m);
+    assert.match(
+      md,
+      /^- `evidence\/r01-1\.jpg`, note 01\.1 on Pricing\.png \(Competitor\): works: "Short headline\."$/m,
+    );
+    assert.match(md, /Tags: Acme\./);
     const data = rulesManifest(c, rules, 'x');
-    assert.equal(data.rules[0].origin, 'ai-edited');
-    assert.equal(data.rules[1].note.source, 'competitor');
-    assert.equal('scope' in data.rules[0], false);
+    assert.equal(data.version, 2);
+    assert.equal(data.rules[0].where, 'on pricing cards');
+    assert.equal(data.rules[1].origin, 'ai-edited');
+    assert.equal(data.rules[0].notes[1].source, 'ours');
     assert.equal(collectionSlug('Acme Dashboard, v2'), 'acme-dashboard-v2');
   });
 
-  it('picks the rules a task needs, by topic', () => {
-    const c = written();
-    const notes = (pick: Parameters<typeof rulesOf>[1]) =>
-      rulesOf(c, pick).map((r) => r.learning.note);
-    assert.deepEqual(notes({ topics: ['copy'] }), ['01.1']);
-    assert.deepEqual(notes({ topics: ['layout'] }), ['02.1'], 'any of its topics counts');
-    assert.deepEqual(notes({ topics: [null] }), [], 'the untagged rule is empty, so not a rule');
-    // Numbering follows the pick, so a task's file reads R1, R2, …
-    assert.equal(rulesOf(c, { topics: ['copy'] })[0].id, 'R1');
+  it('picks the rules a task needs, and copies them as text', () => {
+    const c = approved();
+    assert.deepEqual(
+      rulesOf(c, { tags: ['Acme'] }).map((r) => [r.id, r.rule.text]),
+      [['R1', 'Align related controls on one edge.']],
+      'numbering follows the pick',
+    );
+    assert.equal(rulesOf(c, { topics: ['copy'] }).length, 1);
     const text = rulesText(c, rulesOf(c));
     assert.match(text, /^Design rules from Acme \(Pinch\), 2 rules\./);
-    assert.match(text, /^R1\. Align related controls\. \(Visual, Layout\)$/m);
     assert.match(
       text,
-      /From a note on Home\.jpg \(Ours\): works: "Aligned\."; doesn't: "Too far\."/,
+      /^R1\. Lead with a short headline that states the price\. \(where: on pricing cards\) \[Visual, Copy\]$/m,
+    );
+    assert.match(
+      text,
+      /^ {3}- note 02\.1 on Home\.jpg \(Ours\): works: "Aligned\."; doesn't: "Too far\."$/m,
     );
     assert.doesNotMatch(text, /evidence/);
   });
 
-  it('merges another collection into the one kept, leaving its own as they are', () => {
-    const c = written();
+  it('merges another collection into the one kept, never holding a note or a rule twice', () => {
+    const c = approved();
+    const [note1, note2, note3] = c.batches[0].notes;
     const other: Collection = {
       ...newCollection('Other', 'c2', 'x'),
-      batches: [{ ...c.batches[0], id: 'b2' }],
-      learnings: [{ ...c.learnings[0], id: 'o1', batchId: 'b2' }, c.learnings[1]],
+      batches: [
+        { ...c.batches[0], id: 'b2', notes: [note1, { ...note2, works: 'Room to breathe.' }] },
+        { ...c.batches[0], id: 'b3', notes: [note3] },
+      ],
+      rules: [
+        { ...c.rules[0], id: 'o1', evidence: [{ batchId: 'b2', note: '01.1' }] },
+        {
+          ...c.rules[1],
+          id: 'o2',
+          text: 'Give each section room to breathe.',
+          evidence: [{ batchId: 'b2', note: '01.2' }],
+        },
+      ],
+      read: ['b2/01.1', 'b2/01.2'],
     };
     const merged = mergeCollection(c, other, 'later');
     assert.equal(merged.id, c.id);
     assert.equal(merged.name, 'Acme');
     assert.deepEqual(
-      merged.batches.map((b) => b.id),
-      ['b1', 'b2'],
+      merged.batches.map((b) => [b.id, b.notes.map((n) => n.ref)]),
+      [
+        ['b1', ['01.1', '01.2', '02.1']],
+        ['b2', ['01.2']],
+      ],
+      'only the reworded note is new; a batch of known notes goes',
     );
-    assert.equal(merged.learnings.length, c.learnings.length + 1, 'a rule it already has is not added twice');
+    assert.equal(merged.rules.length, 3, 'the same rule, worded the same, shows once');
+    assert.deepEqual(merged.rules[0].evidence.map(noteKey), ['b1/01.1', 'b1/02.1']);
+    assert.deepEqual(merged.rules[2].evidence.map(noteKey), ['b2/01.2']);
+    assert.ok(merged.read.includes('b1/01.1') && merged.read.includes('b2/01.2'));
     assert.equal(merged.updatedAt, 'later');
   });
 });
 
-describe('drafting learnings', () => {
-  it('takes only note words, and sends them as data', () => {
-    const ok = learnRequestSchema.safeParse({
-      notes: [{ id: 'l1', works: 'Short headline.', topics: ['copy'], source: 'competitor' }],
+describe('reading notes into rules', () => {
+  const request = () =>
+    learnRequestSchema.parse({
+      notes: [{ id: 'n1', works: 'Short headline.', topics: ['copy'], source: 'competitor' }],
+      rules: [
+        {
+          id: 'r1',
+          text: 'Separate content with spacing.',
+          context: '',
+          topics: ['layout'],
+          status: 'approved',
+        },
+      ],
+      shown: 1,
     });
-    assert.ok(ok.success);
+
+  it('takes only words, and sends the library and the notes as data', () => {
     assert.equal(learnRequestSchema.safeParse({ notes: [] }).success, false);
     assert.equal(
-      learnRequestSchema.safeParse({ notes: [{ id: 'l1', topics: ['nope'] }] }).success,
+      learnRequestSchema.safeParse({ notes: [{ id: 'n1', topics: ['nope'] }] }).success,
       false,
     );
-    const prompt = learnPrompt(ok.success ? ok.data.notes : []);
+    assert.deepEqual(learnRequestSchema.parse({ notes: [{ id: 'n1' }] }).rules, []);
+    const prompt = learnPrompt(request());
     assert.match(prompt, /"whatWorks": "Short headline\."/);
     assert.match(prompt, /"whoseDesign": "Competitor"/);
-    assert.match(prompt, /"about": \[\s*"copy"\s*\]/);
+    assert.match(prompt, /"rule": "Separate content with spacing\."/);
+    assert.match(prompt, /"status": "approved"/);
     assert.doesNotMatch(prompt, /whatDoesnt/);
+    assert.match(learnSchema.shape.propose.description ?? '', /New rules/);
+    assert.match(learnSystem, /One judgment, one rule/);
+    assert.match(learnSystem, /dense tables/);
+    assert.match(learnSystem, /conflictsWith/);
     assert.match(learnSystem, /flow \(steps, navigation/);
   });
 
-  it('keeps one tidy rule per note it was sent', () => {
+  it('keeps the answer to what it was sent', () => {
+    const clean = cleanReading(
+      {
+        strengthen: [
+          { rule: 'r1', notes: ['n1', 'n1', 'zz'] },
+          { rule: 'r9', notes: ['n1'] },
+        ],
+        propose: [
+          {
+            rule: '  Lead with\n a short headline. ',
+            context: ' on pricing cards ',
+            topics: ['copy', 'visual', 'layout', 'flow'],
+            notes: ['n1', 'zz'],
+            conflictsWith: 'r1',
+            conflict: 'r1 wants spacing; n1 wants density.',
+          },
+          {
+            rule: 'No notes.',
+            context: '',
+            topics: [],
+            notes: ['zz'],
+            conflictsWith: '',
+            conflict: '',
+          },
+          {
+            rule: 'Unknown conflict.',
+            context: '',
+            topics: [],
+            notes: ['n1'],
+            conflictsWith: 'r7',
+            conflict: 'x',
+          },
+        ],
+      },
+      ['n1'],
+      ['r1'],
+    );
+    assert.deepEqual(clean.strengthen, [{ rule: 'r1', notes: ['n1'] }]);
+    assert.deepEqual(clean.propose, [
+      {
+        rule: 'Lead with a short headline.',
+        context: 'on pricing cards',
+        topics: ['visual', 'layout', 'copy'],
+        notes: ['n1'],
+        conflictsWith: 'r1',
+        conflict: 'The other rule wants spacing; a note wants density.',
+      },
+      { rule: 'Unknown conflict.', context: '', topics: [], notes: ['n1'] },
+    ]);
+  });
+
+  it('shows a visitor the first rules and hides the rest’s words', () => {
+    const r = {
+      strengthen: [{ rule: 'r1', notes: ['n1'] }],
+      propose: [1, 2, 3].map((i) => ({
+        rule: `Rule ${i}.`,
+        context: 'here',
+        topics: ['copy' as const],
+        notes: ['n1'],
+      })),
+    };
+    const preview = previewReading(r, PREVIEW_RULES - 1);
     assert.deepEqual(
-      cleanLearnings(
-        {
-          rules: [
-            { id: 'l1', rule: '  Lead with\n a short headline. ' },
-            { id: 'l1', rule: 'A second one.' },
-            { id: 'zz', rule: 'Not asked for.' },
-            { id: 'l2', rule: '' },
-          ],
-        },
-        ['l1', 'l2'],
-      ),
-      { l1: 'Lead with a short headline.', l2: '' },
+      preview.propose.map((p) => [p.rule, 'locked' in p]),
+      [
+        ['Rule 1.', false],
+        ['', true],
+        ['', true],
+      ],
+    );
+    assert.equal(JSON.stringify(preview).includes('Rule 2'), false, 'hidden words never go out');
+    assert.equal(
+      previewReading(r, 0).propose.every((p) => 'locked' in p),
+      true,
     );
   });
 });

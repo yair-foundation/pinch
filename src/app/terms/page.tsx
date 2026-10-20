@@ -31,8 +31,9 @@ export default function Terms() {
         <section>
           <h2>What you buy</h2>
           <p>
-            Pinch is a paid tool: one payment of $19 for early access. You sign in with Google and
-            pay through Lemon Squeezy, who sell Pinch for us as the merchant of record: they take
+            Marking screenshots in Pinch is free, and so are the first rules Pinch finds in your
+            notes. Seeing every rule, keeping them in your account and exporting anything is one
+            payment of $19, for early access. You sign in with Google and pay through Lemon Squeezy, who sell Pinch for us as the merchant of record: they take
             the payment, charge any sales tax or VAT, and send your receipt. The purchase belongs to
             the email you bought with; sign in with the Google account of that email to use it on
             any device.
@@ -42,7 +43,7 @@ export default function Terms() {
           <h2>What it includes</h2>
           <p>
             Pinch as it is today, and every update we ship in the twelve months after you buy. The
-            AI steps, suggestions and rule drafts, have daily fair-use limits shared by everyone;
+            AI steps, suggestions and reading your notes into rules, have daily fair-use limits shared by everyone;
             when a limit is reached they pause until the next day, and the rest of Pinch keeps
             working.
           </p>
@@ -58,7 +59,7 @@ export default function Terms() {
           <h2>Your content</h2>
           <p>
             Your screenshots, notes and rules are yours. The batch you are tagging stays in your
-            browser. Collections you keep in your account, screenshots included, are stored
+            browser. Your rules, kept in your account once you buy with their screenshots, are stored
             privately for you alone; delete your account in Pinch and they are deleted. In Pinch,
             “How Pinch uses your data” says what is sent where.
           </p>
