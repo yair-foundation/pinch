@@ -33,6 +33,10 @@
 html {
   scrollbar-gutter: stable;
 }
+/* The landing never scrolls the page; a reserved gutter would show as a strip beside the painting. */
+html:has([data-landing]) {
+  scrollbar-gutter: auto;
+}
 
 @theme inline {
   --font-sans: var(--font-sans);

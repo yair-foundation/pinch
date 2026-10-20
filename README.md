@@ -67,7 +67,7 @@ src/lib/pin/             the pure model, suggestion prompt and filter, export su
                          notes log, store, tags and tagger, AI ledgers; tests in __tests__/
 src/lib/                 blob-doc (compare-and-swap JSON in Blob), budget (prices, refusal, visitor key),
                          jev (one request to Jev), auth (admin Basic auth, same-origin check), image (type sniffing)
-public/pin-notes/        icon.svg (favicon), landing.webp (the painting)
+public/pin-notes/        icon.svg (favicon), landing.webp, landing-night.webp (the paintings)
 scripts/                 jev-stub.mjs, format.mjs
 docs/                    architecture, decisions, design, status
 ```
