@@ -56,6 +56,8 @@ export async function updateDocument<T, R>(
         error instanceof BlobPreconditionFailedError ||
         (!etag && error instanceof Error && /already exists/i.test(error.message));
       if (!conflict) throw error;
+      if (attempt === 0)
+        console.warn('[pin] blob conflict', key, error instanceof Error ? error.name : '', etag);
       await new Promise((r) => setTimeout(r, 40 + Math.random() * 120 * (attempt + 1)));
     }
   }
