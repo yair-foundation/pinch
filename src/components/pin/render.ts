@@ -15,6 +15,7 @@ import {
   type Rect,
   SHEET_FILE,
   settleCrop,
+  type Shape,
   verdictOf,
 } from '@/lib/pin/model';
 import { layoutSheet } from '@/lib/pin/sheet';
@@ -36,6 +37,8 @@ export const VERDICT_COLOR = {
 /** The marker the AI sees for a suggestion: a colour no interface uses for chrome, so it isn't read as part of the design. */
 const AI_MARK_COLOR = '#ff00c8';
 const SHEET_BG = '#1c1d22';
+/** A crop's longest side: smaller than the 1800px marked copy, so a wide crop still costs less. */
+const CROP_MAX_SIDE = 1200;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 export const bitmapOf = (blob: Blob) => createImageBitmap(blob);
@@ -139,6 +142,10 @@ const FAN_LEADERS = [...LEADERS, 3.2];
  * nothing; a short one sits on the words it marks.
  */
 const FAR_LEADERS = [3.4, 4.4, 5.6];
+/** Points along a leader where what it crosses is measured. */
+const LINE_SAMPLES = 6;
+/** A leader counts as crossing nothing when this share or less of what it passes over is ink. */
+const CLEAR_LINE = 0.02;
 
 /**
  * The numbered disc beside a ring, on a leader. It sits off the point in
@@ -204,9 +211,34 @@ function drawLeaderDisc(
         if (fits(s.x, s.y)) spots.push(s);
       }
     if (avoid) spots = [...spots.filter((s) => !avoid(s.x, s.y)), ...spots.filter((s) => avoid(s.x, s.y))];
-    const scored = spots.map((s) => ({ ...s, score: busy ? busy(s.x, s.y, r + 3 * unit) : 0 }));
-    const quiet = scored.find((s) => s.score <= QUIET_DISC);
-    ({ x: cx, y: cy } = quiet ?? scored.reduce((a, b) => (b.score < a.score ? b : a)));
+    // The leader crosses what lies between the ring and the disc: sampled along its length.
+    const lineOver = (x: number, y: number) => {
+      if (!busy) return 0;
+      const len = Math.hypot(x - x0, y - y0);
+      const from = ring + 2 * unit;
+      const to = len - r - 2.5 * unit;
+      if (to <= from) return 0;
+      let total = 0;
+      for (let i = 0; i < LINE_SAMPLES; i++) {
+        const d = from + ((to - from) * (i + 0.5)) / LINE_SAMPLES;
+        total += busy(x0 + ((x - x0) * d) / len, y0 + ((y - y0) * d) / len, 2.5 * unit);
+      }
+      return total / LINE_SAMPLES;
+    };
+    const scored = spots.map((s) => ({
+      ...s,
+      score: busy ? busy(s.x, s.y, r + 3 * unit) : 0,
+      line: lineOver(s.x, s.y),
+    }));
+    // A clear place whose leader crosses (almost) nothing, nearest first; else the clear place
+    // whose leader crosses least; else the place covering least, its leader counted at half.
+    const quiet = scored.filter((s) => s.score <= QUIET_DISC);
+    const pick =
+      quiet.find((s) => s.line <= CLEAR_LINE) ??
+      (quiet.length
+        ? quiet.reduce((a, b) => (b.line < a.line ? b : a))
+        : scored.reduce((a, b) => (b.score + b.line / 2 < a.score + a.line / 2 ? b : a)));
+    ({ x: cx, y: cy } = pick);
   }
   const len = Math.hypot(cx - x0, cy - y0);
   if (len > ring + r + 2 * unit) {
@@ -218,6 +250,7 @@ function drawLeaderDisc(
     strokeHalo(ctx, color, 2.2 * unit);
   }
   drawDisc(ctx, cx, cy, r, unit, number, color);
+  return { x: cx, y: cy };
 }
 
 /**
@@ -236,6 +269,49 @@ function busyOn(grid: LumaGrid | undefined, scale: number, origin: Rect | null):
     };
     // Edges catch small text and outlines; ink catches the inside of big type and filled badges.
     return Math.max(busyShare(grid, rect), inkShare(grid, rect));
+  };
+}
+
+/**
+ * `busy` that also counts the other notes on the same picture as taken: their
+ * rings, boxes, arrows and the discs already placed. A disc or its leader then
+ * never lands on another note's marker, so a number can't read as tagging
+ * that note's element.
+ */
+function withOthers(
+  busy: Busy | undefined,
+  others: Shape[],
+  px: (x: number, y: number) => [number, number],
+  unit: number,
+  placed: { x: number; y: number }[],
+): Busy {
+  const disc = 14 * unit;
+  const near = (x: number, y: number, ax: number, ay: number, d: number) =>
+    Math.hypot(x - ax, y - ay) < d;
+  const toSegment = (x: number, y: number, a: [number, number], b: [number, number]) => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+    return Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy));
+  };
+  return (x, y, r) => {
+    for (const p of placed) if (near(x, y, p.x, p.y, r + disc + 2 * unit)) return 1;
+    for (const s of others) {
+      const a = px(s.x, s.y);
+      if (s.kind === 'dot') {
+        if (near(x, y, a[0], a[1], r + 9 * unit)) return 1;
+      } else if (s.kind === 'arrow') {
+        const b = px(s.x2, s.y2);
+        if (near(x, y, a[0], a[1], r + 8 * unit) || near(x, y, b[0], b[1], r + 14 * unit)) return 1;
+        if (toSegment(x, y, a, b) < r + 2 * unit) return 1;
+      } else {
+        const b = px(s.x + s.w, s.y + s.h);
+        const dx = Math.max(a[0] - x, 0, x - b[0]);
+        const dy = Math.max(a[1] - y, 0, y - b[1]);
+        if (Math.hypot(dx, dy) < r) return 1;
+      }
+    }
+    return busy?.(x, y, r) ?? 0;
   };
 }
 
@@ -290,7 +366,7 @@ function drawMark(
       ({ x: cx, y: cy } = quiet ?? scored.reduce((a, b) => (b.score < a.score ? b : a)));
     }
     drawDisc(ctx, cx, cy, r, unit, number, color);
-    return;
+    return { x: cx, y: cy };
   }
   if (mark.shape.kind === 'arrow') {
     const [x1, y1] = px(mark.shape.x2, mark.shape.y2);
@@ -330,7 +406,7 @@ function drawMark(
     };
     // The disc behind the tail, off the line; beside it when the tail is near an edge or on
     // a wide element; on the line only when nothing else has room.
-    drawLeaderDisc(
+    return drawLeaderDisc(
       ctx,
       x0,
       y0,
@@ -347,7 +423,6 @@ function drawMark(
       busy,
       onLine,
     );
-    return;
   }
   const ring = 5 * unit;
   drawRing(ctx, x0, y0, ring, unit, color);
@@ -357,7 +432,7 @@ function drawMark(
   const dx = x0 - off - edge >= 0 || x0 + off + edge > W ? -1 : 1;
   const dy = y0 - off - edge >= 0 || y0 + off + edge > H ? -1 : 1;
   // The diagonals are not unit vectors on purpose: the disc sits √2 further out on them, as before.
-  drawLeaderDisc(
+  return drawLeaderDisc(
     ctx,
     x0,
     y0,
@@ -383,6 +458,25 @@ function drawMark(
 const written = (a: Asset) => a.marks.filter((m) => verdictOf(m) !== 'empty');
 
 /**
+ * Every note of one picture, numbered in order, each number kept off the
+ * other notes' markers and the numbers already placed (`withOthers`).
+ */
+function drawAll(
+  ctx: CanvasRenderingContext2D,
+  marks: Mark[],
+  px: (x: number, y: number) => [number, number],
+  unit: number,
+  busy?: Busy,
+) {
+  const placed: { x: number; y: number }[] = [];
+  for (const [i, m] of marks.entries()) {
+    const others = marks.filter((o) => o !== m).map((o) => o.shape);
+    const room = withOthers(busy, others, px, unit, placed);
+    placed.push(drawMark(ctx, m, i + 1, px, unit, undefined, room));
+  }
+}
+
+/**
  * The whole image with every note drawn on it, at most `maxSide` pixels on
  * the long side. `grid` (the image's luma, `lumaGrid`) keeps each number off
  * text and controls; sampled here when not given.
@@ -399,9 +493,7 @@ export async function markedImage(
   const { canvas, ctx } = canvasOf(w, h);
   ctx.drawImage(bitmap, 0, 0, w, h);
   const unit = Math.max(1, Math.max(w, h) / 1200);
-  const busy = busyOn(grid, scale, null);
-  for (const [i, m] of written(asset).entries())
-    drawMark(ctx, m, i + 1, (x, y) => [x * w, y * h], unit, undefined, busy);
+  drawAll(ctx, written(asset), (x, y) => [x * w, y * h], unit, busyOn(grid, scale, null));
   return toBlob(canvas, 'image/jpeg', 0.88);
 }
 
@@ -449,6 +541,7 @@ function drawCrop(
   rect: Rect,
   grid: LumaGrid | undefined,
   color?: string,
+  others: Shape[] = [],
 ) {
   const side = Math.max(rect.w, rect.h);
   const scale = Math.min(maxSide / side, Math.max(1, Math.min(2, 480 / side)));
@@ -457,12 +550,13 @@ function drawCrop(
   const { canvas, ctx } = canvasOf(w, h);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
-  const unit = Math.max(1.4, Math.max(w, h) / 420);
+  const unit = Math.max(1.4, Math.max(w, h) / 700);
   const px = (x: number, y: number): [number, number] => [
     (x * bitmap.width - rect.x) * scale,
     (y * bitmap.height - rect.y) * scale,
   ];
-  drawMark(ctx, mark, number, px, unit, color, busyOn(grid, scale, rect));
+  const room = withOthers(busyOn(grid, scale, rect), others, px, unit, []);
+  drawMark(ctx, mark, number, px, unit, color, room);
   return canvas;
 }
 
@@ -484,8 +578,10 @@ export async function contextForAi(
 
 /**
  * A close-up of one note, its marker drawn in, upscaled when the crop is
- * small. `rect` is the crop already settled (`settledCrop`) and `grid` the
- * image's luma; both are sampled here when not given.
+ * small and at most CROP_MAX_SIDE on its long side. `rect` is the crop
+ * already settled (`settledCrop`) and `grid` the image's luma; both are
+ * sampled here when not given. `others` are the picture's other notes, which
+ * its number keeps off.
  */
 export function cropImage(
   bitmap: ImageBitmap,
@@ -493,15 +589,18 @@ export function cropImage(
   number: number,
   rect?: Rect,
   grid: LumaGrid | undefined = lumaGrid(bitmap),
+  others: Shape[] = [],
 ) {
   return toBlob(
     drawCrop(
       bitmap,
       mark,
       number,
-      Number.POSITIVE_INFINITY,
+      CROP_MAX_SIDE,
       rect ?? settledCrop(bitmap, mark, grid),
       grid,
+      undefined,
+      others,
     ),
     'image/jpeg',
     0.92,
@@ -604,8 +703,7 @@ function contactSheet(sizes: { width: number; height: number }[]) {
       const onImage = busyOn(grid, s, null);
       const busy: Busy = (x, y, r) =>
         x - r < badge.w && y - r < badge.h ? 1 : (onImage?.(x, y, r) ?? 0);
-      for (const [i, m] of written(asset).entries())
-        drawMark(tile.ctx, m, i + 1, (x, y) => [x * dw, y * dh], unit, undefined, busy);
+      drawAll(tile.ctx, written(asset), (x, y) => [x * dw, y * dh], unit, busy);
       const dx = cell.x + Math.round((cell.w - dw) / 2);
       const dy = cell.y + Math.round((cell.h - dh) / 2);
       ctx.drawImage(tile.canvas, dx, dy);
@@ -653,7 +751,18 @@ export async function buildExport(
       crops.set(`${asset.id}/${mark.id}`, rect);
       files.push({
         name: root + names.crop(j),
-        data: await bytes(await cropImage(bitmap, mark, j + 1, rect, grid)),
+        data: await bytes(
+          await cropImage(
+            bitmap,
+            mark,
+            j + 1,
+            rect,
+            grid,
+            written(asset)
+              .filter((o) => o !== mark)
+              .map((o) => o.shape),
+          ),
+        ),
       });
     }
     bitmap.close();

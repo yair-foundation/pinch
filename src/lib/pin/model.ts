@@ -170,10 +170,11 @@ export const centreOf = (s: Shape) =>
 export type Rect = { x: number; y: number; w: number; h: number };
 
 /**
- * The part of the image to crop for a mark, in pixels. An area gets a margin
- * so its edges show; a dot gets a square around it, big enough to see what
- * it sits on; an arrow gets both its ends with a wide margin, so what each
- * end points at shows. Either way the crop stays inside the image.
+ * The part of the image to crop for a mark, in pixels. An area gets a wide
+ * margin, so its edges and what sits beside it show; a dot gets a landscape
+ * window around it, big enough to see what it sits on; an arrow gets a window
+ * around each end, so what each end touches shows. Either way the crop stays
+ * inside the image.
  */
 export function cropRect(shape: Shape, width: number, height: number): Rect {
   const fit = (cx: number, cy: number, w: number, h: number): Rect => {
@@ -190,22 +191,27 @@ export function cropRect(shape: Shape, width: number, height: number): Rect {
     return fit(shape.x * width, shape.y * height, w, Math.max(360, Math.round(w * 0.65)));
   }
   if (shape.kind === 'arrow') {
-    const w = Math.abs(shape.x2 - shape.x) * width;
-    const h = Math.abs(shape.y2 - shape.y) * height;
-    const pad = Math.max(96, Math.round(Math.max(w, h) * 0.3));
-    const cw = Math.max(320, w + pad * 2);
-    const ch = Math.max(320, h + pad * 2);
+    // A window around each end, wide enough to show the element it touches (the form an arrow
+    // points at, not only its bottom edge), and the two joined.
+    const ew = Math.min(1100, Math.max(480, Math.round(width * 0.35)));
+    const eh = Math.round(ew * 0.8);
+    const xs = [shape.x * width, shape.x2 * width];
+    const ys = [shape.y * height, shape.y2 * height];
+    const left = Math.min(...xs) - ew / 2;
+    const right = Math.max(...xs) + ew / 2;
+    const top = Math.min(...ys) - eh / 2;
+    const bottom = Math.max(...ys) + eh / 2;
+    const cw = right - left;
+    const ch = bottom - top;
     // Never a thin strip: a near-vertical or near-horizontal arrow still shows what is beside its ends.
-    return fit(
-      ((shape.x + shape.x2) / 2) * width,
-      ((shape.y + shape.y2) / 2) * height,
-      Math.max(cw, ch * 0.6),
-      Math.max(ch, cw * 0.6),
-    );
+    const cx = (left + right) / 2;
+    const cy = (top + bottom) / 2;
+    return fit(cx, cy, Math.max(cw, ch * 0.6), Math.max(ch, cw * 0.6));
   }
   const w = shape.w * width;
   const h = shape.h * height;
-  const pad = Math.max(16, Math.round(Math.max(w, h) * 0.08));
+  // A wide margin: a note on an area often compares it with what is next to it.
+  const pad = Math.max(48, Math.round(Math.max(w, h) * 0.25));
   return fit(
     (shape.x + shape.w / 2) * width,
     (shape.y + shape.h / 2) * height,
@@ -457,15 +463,15 @@ const plainCrop: CropOf = (a, m) => cropRect(m.shape, a.width, a.height);
 /** How an agent should read the export: the same words in the README and in AGENTS.md. */
 const HOW_TO_USE = [
   `Start with \`${SHEET_FILE}\`: thumbnails of the whole batch, numbered 01, 02, … in the order below, each with its notes drawn on and numbered, to see what is in it and roughly where each note sits. Take exact positions from the notes below.`,
-  'For each note, read its crop in `crops/` first. Open the marked copy in `marked/` when the crop seems cut off or you need to see where the spot sits on the screen, and the original in `images/` only when you need more detail. Each image costs context; the crop is usually enough.',
+  'For each note, read its crop in `crops/` first. Open the marked copy in `marked/` when the crop seems cut off or you need to see where the spot sits on the screen, and the original in `images/` only when you need more detail. Each image costs context; the crop is usually enough. When a note compares its spot with something else, check the crop shows both; if not, open the marked copy.',
   "The notes say what the author saw and why. Don't ask the author to explain again what a note already says; when one is unclear, look closer at its crop and the marked copy first.",
   'Refer to notes by number, "02.3" for the third note on image 02, so the author can find them.',
-  'An arrow points from its tail (where its number sits) to its head. The note is about the two spots and how they relate: "move this there", "align this with that", "this should point to that". Read the tail as "this" and the head as "that".',
+  'An arrow points from its tail (where its number sits) to its head. The note is about the two spots and how they relate: "move this there", "align this with that", "this should point to that". Read the tail as "this" and the head as "that". An arrow can also show an order or a relation without asking for a change ("this reads before that", "this sits under that"): the note says which, so move nothing the note doesn\'t ask to move.',
 ];
 
 const FILES = [
   `\`${SHEET_FILE}\`: every image on one sheet with its notes drawn on, each with its number.`,
-  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image, scaled to 1800 px on its long side, with every note drawn on it (positions are always in the pixels of `images/`): a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: a close-up of each note with its marker drawn in. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
+  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image, scaled down to 1800 px on its long side when it is larger, with every note drawn on it (positions are always in the pixels of `images/`): a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: each note with what is around it and its marker drawn in, at most 1200 px on its long side; for a big area or a long arrow it can show much of the image. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',

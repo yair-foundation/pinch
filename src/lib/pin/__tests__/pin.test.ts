@@ -103,23 +103,24 @@ describe('cropRect', () => {
 
   it('crops an area with a margin, never beyond the image', () => {
     const r = cropRect({ kind: 'area', x: 0.1, y: 0.1, w: 0.5, h: 0.2 }, 1600, 1000);
-    assert.deepEqual(r, { x: 96, y: 36, w: 928, h: 328 });
+    // A quarter of the long side on every edge, so what sits beside the area shows.
+    assert.deepEqual(r, { x: 0, y: 0, w: 1200, h: 600 });
     const full = cropRect({ kind: 'area', x: 0, y: 0, w: 1, h: 1 }, 1600, 1000);
     assert.deepEqual(full, { x: 0, y: 0, w: 1600, h: 1000 });
   });
 
-  it('crops an arrow around both ends with a wide margin, and at least 320px', () => {
+  it('crops a window around each end of an arrow, never a thin strip', () => {
     // 1600 × 1000: the arrow spans x 192–1280 (1088px), y 400–410.
     const r = cropRect({ kind: 'arrow', x: 0.12, y: 0.4, x2: 0.8, y2: 0.41 }, 1600, 1000);
     // 30% of the long side on every edge, so what each end points at shows; the width reaches the image's edges.
-    assert.deepEqual(r, { x: 0, y: 0, w: 1600, h: 1000 });
+    assert.deepEqual(r, { x: 0, y: 0, w: 1600, h: 989 });
     // A near-vertical arrow gets a crop at least 60% as wide as it is tall, not a strip.
     const tall = cropRect({ kind: 'arrow', x: 0.5, y: 0.2, x2: 0.52, y2: 0.8 }, 1600, 1000);
     assert.ok(tall.w >= tall.h * 0.6 - 1, `${tall.w}x${tall.h}`);
     assert.ok(r.x <= 192 && r.x + r.w >= 1280, 'both ends inside');
     // A short arrow in a corner: the floor size, kept inside the image.
     const short = cropRect({ kind: 'arrow', x: 0.98, y: 0.02, x2: 0.95, y2: 0.05 }, 1600, 1000);
-    assert.deepEqual(short, { x: 1280, y: 0, w: 320, h: 320 });
+    assert.deepEqual(short, { x: 992, y: 0, w: 608, h: 478 });
   });
 });
 
