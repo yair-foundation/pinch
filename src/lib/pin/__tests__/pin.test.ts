@@ -178,10 +178,10 @@ describe('arrows', () => {
     const [entry] = logEntries([a]);
     assert.equal(entry.shape, 'arrow');
     assert.ok(logEntrySchema.safeParse(entry).success);
-    const arrowPrompt = suggestPrompt('', undefined, 'arrow');
+    const arrowPrompt = suggestPrompt(undefined, 'arrow');
     assert.match(arrowPrompt, /at its tail, where the number sits/);
     assert.doesNotMatch(arrowPrompt, /marker/i);
-    assert.doesNotMatch(suggestPrompt('', undefined, 'dot'), /tail/);
+    assert.doesNotMatch(suggestPrompt(undefined, 'dot'), /tail/);
   });
 });
 
@@ -478,24 +478,16 @@ describe('Pinch sources and suggestions', () => {
   });
 
   it('tidies the model answer and the prompt', () => {
+    assert.deepEqual(cleanSuggestion({ works: '  Big\n number. ', doesNotWork: '' }), {
+      works: 'Big number.',
+      doesNotWork: '',
+    });
     assert.deepEqual(
-      cleanSuggestion({ works: '  Big\n number. ', doesNotWork: '', label: ' revenue\nheadline ' }),
-      { works: 'Big number.', doesNotWork: '', label: 'revenue headline' },
+      cleanSuggestion({ works: 'Clear title.', doesNotWork: 'The marker covers the label.' }),
+      { works: 'Clear title.', doesNotWork: '' },
     );
-    assert.deepEqual(
-      cleanSuggestion({
-        works: 'Clear title.',
-        doesNotWork: 'The marker covers the label.',
-        label: 'magenta box',
-      }),
-      { works: 'Clear title.', doesNotWork: '', label: '' },
-    );
-    assert.equal(
-      cleanSuggestion({ works: '', doesNotWork: '', label: 'x'.repeat(80) }).label?.length,
-      60,
-    );
-    assert.match(suggestPrompt('revenue headline', 'ours'), /"revenue headline"[\s\S]*Ours/);
-    assert.equal(suggestPrompt('', undefined).split('\n').length, 1);
+    assert.match(suggestPrompt('ours'), /Ours/);
+    assert.equal(suggestPrompt(undefined).split('\n').length, 1);
     assert.match(suggestSystem, /Never describe the overlay/);
     assert.match(suggestSystem, /never as "the marked point", "the dot" or "the spot"/);
   });
@@ -551,10 +543,9 @@ describe('Pinch sources and suggestions', () => {
     ];
     for (const s of overlay) assert.ok(aboutTheMarker(s), `about the overlay: ${s}`);
     for (const s of design) assert.ok(!aboutTheMarker(s), `about the design: ${s}`);
-    assert.deepEqual(cleanSuggestion({ works: design[0], doesNotWork: overlay[0], label: 'date line' }), {
+    assert.deepEqual(cleanSuggestion({ works: design[0], doesNotWork: overlay[0] }), {
       works: design[0],
       doesNotWork: '',
-      label: 'date line',
     });
   });
 });

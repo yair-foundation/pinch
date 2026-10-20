@@ -1,6 +1,5 @@
 import {
   type Asset,
-  hasNotes,
   type Mark,
   type Shape,
   sourceLine,
@@ -73,19 +72,6 @@ export function imageSummary(asset: Asset, index: number, total: number): string
     `[pinch · ${oneLine(asset.name)} · ${count(notes.length, 'note')}]`,
     ...imageLines(asset, numberOf(index, total)),
   ];
-  if (notes.length) lines.push(COORDINATES);
-  return `${lines.join('\n')}\n`;
-}
-
-/** The summary for the whole batch, as text: every image with something written on it. */
-export function batchSummary(assets: Asset[]): string {
-  const tagged = assets.map((a, i) => [a, i] as const).filter(([a]) => hasNotes(a));
-  const notes = tagged.flatMap(([a]) => written(a));
-  const lines = [`[pinch · ${count(tagged.length, 'image')} · ${count(notes.length, 'note')}]`];
-  for (const [a, i] of tagged) {
-    const number = numberOf(i, assets.length);
-    lines.push(`${number} · ${oneLine(a.name)}`, ...imageLines(a, number));
-  }
   if (notes.length) lines.push(COORDINATES);
   return `${lines.join('\n')}\n`;
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Asset, Mark } from '../model';
-import { batchSummary, imageSummary, noteLine, whereText } from '../summary';
+import { imageSummary, noteLine, whereText } from '../summary';
 
 const mark = (over: Partial<Mark> = {}): Mark => ({
   id: 'm1',
@@ -96,30 +96,5 @@ describe('clipboard summary', () => {
     );
     // An image with nothing written: the header alone, no coordinates line.
     assert.equal(imageSummary(asset(), 0, 1), '[pinch · Pricing page.png · 0 notes]\n');
-  });
-
-  it('summarises a batch, leaving out images with nothing on them but keeping their numbers', () => {
-    const blank = asset({ id: 'a0', name: 'blank.png' });
-    const first = asset({ marks: [mark({ good: 'Clear.' })] });
-    const third = asset({
-      id: 'a3',
-      name: 'Settings.png',
-      marks: [mark({ bad: 'Dense.' }), mark({ id: 'm2', good: 'Aligned.' })],
-    });
-    const text = batchSummary([blank, first, third]);
-    assert.equal(
-      text,
-      [
-        '[pinch · 2 images · 3 notes]',
-        '02 · Pricing page.png',
-        '- 02.1 dot at x 30%, y 33% · works: "Clear."',
-        '03 · Settings.png',
-        '- 03.1 dot at x 30%, y 33% · doesn\'t: "Dense."',
-        '- 03.2 dot at x 30%, y 33% · works: "Aligned."',
-        'Positions are percentages of the image: x from the left edge, y from the top.',
-        '',
-      ].join('\n'),
-    );
-    assert.equal(batchSummary([blank]), '[pinch · 0 images · 0 notes]\n');
   });
 });

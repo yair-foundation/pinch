@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
   Copy,
   Download,
   Globe,
@@ -12,11 +11,12 @@ import {
   Keyboard,
   Lightbulb,
   Loader2,
+  Lock,
   MapPin,
   MoveUpRight,
   Plus,
   RotateCcw,
-  Square,
+  SquareDashed,
   Swords,
   ThumbsDown,
   ThumbsUp,
@@ -32,6 +32,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { ThemeToggle } from '@/components/site/theme-toggle';
 import { Switch } from '@/components/ui/switch';
@@ -58,7 +59,7 @@ import {
 } from '@/lib/pin/model';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import type { SuggestResult } from '@/lib/pin/suggest';
-import { batchSummary, imageSummary } from '@/lib/pin/summary';
+import { imageSummary } from '@/lib/pin/summary';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
 import { Dialog, hit } from './dialog';
@@ -381,7 +382,6 @@ function Workspace() {
   const suggestStopped = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
-  const [copyMenu, setCopyMenu] = useState(false);
   // The one dialog open, and what had focus before it, so closing it puts focus back.
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -891,7 +891,7 @@ function Workspace() {
   /** A move or resize in progress joins one step; a text edit joins the typing before it. */
   const changeMark = (id: string, change: Partial<Mark>) => {
     if (!asset) return;
-    const field = (['good', 'bad', 'label'] as const).find((f) => f in change);
+    const field = (['good', 'bad'] as const).find((f) => f in change);
     const coalesce: Coalesce | undefined =
       'shape' in change
         ? { key: `shape:${id}`, within: DRAG_PAUSE }
@@ -941,9 +941,9 @@ function Workspace() {
         // While a field is still being typed in, the browser's own undo keeps the keystrokes.
         if (isTyping(e.target) && !isRedo) {
           const el = e.target as HTMLElement;
-          const field = el.id.match(/^(works|doesnt|label)-(.+)$/);
+          const field = el.id.match(/^(works|doesnt)-(.+)$/);
           const openKey = field
-            ? `text:${field[2]}:${{ works: 'good', doesnt: 'bad', label: 'label' }[field[1]]}`
+            ? `text:${field[2]}:${{ works: 'good', doesnt: 'bad' }[field[1]]}`
             : null;
           if (openKey && history.current.isOpen(openKey, TYPING_PAUSE)) return;
         }
@@ -996,7 +996,14 @@ function Workspace() {
       }
       if (asset && key === 'n') {
         e.preventDefault();
-        addMark({ kind: 'dot', x: 0.5, y: 0.5 });
+        // The selected tool decides what appears at the centre: a dot, a standard area or an arrow.
+        addMark(
+          tool === 'area'
+            ? standardAreaAt({ x: 0.5, y: 0.5 })
+            : tool === 'arrow'
+              ? { kind: 'arrow', x: 0.35, y: 0.5, x2: 0.65, y2: 0.5 }
+              : { kind: 'dot', x: 0.5, y: 0.5 },
+        );
         return;
       }
       // P, R and A pick a tool; Esc with nothing open goes back to Pin.
@@ -1081,7 +1088,6 @@ function Workspace() {
         const form = new FormData();
         form.set('image', crop, 'crop.jpg');
         form.set('context', context, 'context.jpg');
-        form.set('label', mark.label);
         form.set('shape', mark.shape.kind);
         if (target.source) form.set('source', target.source.kind);
         const res = await fetch('/api/pin/suggest', { method: 'POST', body: form });
@@ -1143,22 +1149,6 @@ function Workspace() {
       return false;
     } finally {
       setExporting(null);
-    }
-  };
-
-  /** The whole batch as text, for a chat that takes no image or an agent that reads files. */
-  const copyAllAsText = async () => {
-    setCopyMenu(false);
-    try {
-      await navigator.clipboard.writeText(batchSummary(assets));
-      markExported();
-      setCopied(true);
-      setStatus({
-        tone: 'info',
-        text: `Copied ${count(allMarks.length, 'note')} on ${count(tagged.length, 'image')} as text. The marked images are in the zip export.`,
-      });
-    } catch {
-      setStatus({ tone: 'error', text: "The browser didn't allow copying." });
     }
   };
 
@@ -1331,56 +1321,23 @@ function Workspace() {
           )}
           {assets.length > 0 && (
             <TooltipProvider>
-              <div className="relative flex items-center">
-                <ToolbarButton
-                  onClick={(e) => (e.shiftKey ? copyAllAsText() : copyForAgent())}
-                  title="Copy the open image with its notes drawn on, plus the notes as text. Shift-click: all notes as text."
-                  aria-live="polite"
-                  className="justify-center rounded-r-none min-[900px]:min-w-[8.75rem]"
-                >
-                  {copied ? (
-                    <Check className="size-4" aria-hidden />
-                  ) : (
-                    <Copy className="size-4" aria-hidden />
-                  )}
-                  {copied ? (
-                    'Copied'
-                  ) : (
-                    <>
-                      Copy<span className="max-[900px]:hidden"> for agent</span>
-                    </>
-                  )}
-                </ToolbarButton>
-                <ToolbarButton
-                  aria-label="More ways to copy"
-                  aria-haspopup="menu"
-                  aria-expanded={copyMenu}
-                  onClick={() => setCopyMenu((m) => !m)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowDown' && !copyMenu) {
-                      e.preventDefault();
-                      setCopyMenu(true);
-                    }
-                  }}
-                  // Joined to the button on its left, so its hit area grows only up and down.
-                  className="-ml-px rounded-l-none px-1.5 after:min-w-0"
-                >
-                  <ChevronDown className="size-4" aria-hidden />
-                </ToolbarButton>
-                {copyMenu && (
-                  <CopyMenu
-                    onClose={() => setCopyMenu(false)}
-                    items={[
-                      {
-                        label: 'Copy all notes as text',
-                        hint: `${count(allMarks.length, 'note')} on ${count(tagged.length, 'image')}`,
-                        run: copyAllAsText,
-                        disabled: !tagged.length,
-                      },
-                    ]}
-                  />
+              <ToolbarButton
+                onClick={copyForAgent}
+                title="Copy the open image with its notes drawn on, plus the notes as text."
+                aria-live="polite"
+                className="justify-center min-[900px]:min-w-[8.75rem]"
+              >
+                {copied ? (
+                  <Check className="size-4" aria-hidden />
+                ) : (
+                  <Copy className="size-4" aria-hidden />
                 )}
-              </div>
+                {/* One element, so the button's gap doesn't open a second space after "Copy". */}
+                <span>
+                  {copied ? 'Copied' : 'Copy'}
+                  {!copied && <span className="max-[900px]:hidden"> for agent</span>}
+                </span>
+              </ToolbarButton>
               <button
                 type="button"
                 onClick={exportZip}
@@ -1391,11 +1348,14 @@ function Workspace() {
                 )}
               >
                 <Download className="size-4" aria-hidden />
-                {exporting ?? (
-                  <>
-                    Export<span className="max-[900px]:hidden"> for agent</span>
-                  </>
-                )}
+                {/* One element, so the button's gap doesn't open a second space after "Export". */}
+                <span>
+                  {exporting ?? (
+                    <>
+                      Export<span className="max-[900px]:hidden"> for agent</span>
+                    </>
+                  )}
+                </span>
               </button>
               <Tooltip>
                 <TooltipTrigger
@@ -1423,17 +1383,28 @@ function Workspace() {
           )}
           <ThemeToggle />
           {assets.length > 0 && (
-            <button
-              type="button"
-              data-privacy-trigger
-              onClick={() => openDialog('privacy')}
-              className={cn(
-                hit,
-                'flex min-h-9 items-center rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-              )}
-            >
-              Privacy
-            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="How Pinch uses your data"
+                      aria-expanded={dialog === 'privacy'}
+                      data-privacy-trigger
+                      onClick={() => openDialog('privacy')}
+                      className={cn(
+                        hit,
+                        'flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+                      )}
+                    >
+                      <Lock className="size-4" aria-hidden />
+                    </button>
+                  }
+                />
+                <TooltipContent>How Pinch uses your data</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
         {/* Driven by the Add images buttons; hidden from assistive tech, which would read it as an unreachable "Choose files". */}
@@ -1551,7 +1522,6 @@ function Workspace() {
             onChangeMark={changeMark}
             onRemoveMark={removeMark}
             onDone={closeNote}
-            onAddCentre={addMark}
             onPrev={() => go(index - 1)}
             onNext={() => go(index + 1)}
             onRemove={() => removeAsset(asset.id)}
@@ -1678,59 +1648,6 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
   );
 }
 
-/** A one-column menu under the copy button; Escape, a click outside or a choice closes it. */
-function CopyMenu({
-  items,
-  onClose,
-}: {
-  items: { label: string; hint?: string; run: () => void; disabled?: boolean }[];
-  onClose: () => void;
-}) {
-  const first = useRef<HTMLButtonElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    first.current?.focus();
-    const onDown = (e: PointerEvent) => {
-      if (!box.current?.parentElement?.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey, { capture: true });
-    return () => {
-      window.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('keydown', onKey, { capture: true });
-    };
-  }, [onClose]);
-  return (
-    <div
-      ref={box}
-      role="menu"
-      aria-label="More ways to copy"
-      className="absolute top-full right-0 z-30 mt-1 min-w-56 rounded-lg border border-border bg-background p-1 shadow-lg dark:shadow-none"
-    >
-      {items.map((item, i) => (
-        <button
-          key={item.label}
-          ref={i === 0 ? first : undefined}
-          type="button"
-          role="menuitem"
-          disabled={item.disabled}
-          onClick={item.run}
-          className="flex w-full flex-col items-start rounded-md px-2.5 py-2 text-left text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:opacity-50"
-        >
-          {item.label}
-          {item.hint && <span className="text-[13px] text-muted-foreground">{item.hint}</span>}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** Every key, by group. A row lists alternatives; each alternative is the keys pressed together. */
 type ShortcutRow = { combos: string[][]; join?: 'or' | 'to'; what: string };
 const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
@@ -1753,7 +1670,7 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
     rows: [
       { combos: [['1'], ['9']], join: 'to', what: 'Open note 1 to 9 on this image' },
       { combos: [['['], [']']], join: 'or', what: 'Open the previous or next note' },
-      { combos: [['N']], what: 'Add a note at the centre' },
+      { combos: [['N']], what: 'Add a note at the centre: a dot, or an area or arrow when that tool is on' },
       { combos: [['⇧', 'Drag']], what: 'Draw an arrow from one spot to another' },
       { combos: [['P']], what: 'Pin tool: click for a dot, drag for an area' },
       { combos: [['R']], what: 'Area tool: drag for an area, click for a standard box' },
@@ -1791,7 +1708,6 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
     rows: [
       { combos: [['⌘', 'Z']], what: 'Undo' },
       { combos: [['⇧', '⌘', 'Z']], what: 'Redo' },
-      { combos: [['⇧', 'Click']], what: 'On Copy for agent: copy all notes as text' },
       { combos: [['?']], what: 'These shortcuts' },
     ],
   },
@@ -2098,19 +2014,11 @@ function Filmstrip({
                   {marks.length > 0 && (
                     <span className="flex items-center gap-2 font-mono text-[13px] text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
-                        <ThumbsUp
-                          aria-hidden
-                          className="size-4"
-                          style={{ color: VERDICT_COLOR.good }}
-                        />
+                        <ThumbsUp aria-hidden className="size-4" />
                         {good}
                       </span>
                       <span className="inline-flex items-center gap-1">
-                        <ThumbsDown
-                          aria-hidden
-                          className="size-4"
-                          style={{ color: VERDICT_COLOR.bad }}
-                        />
+                        <ThumbsDown aria-hidden className="size-4" />
                         {bad}
                       </span>
                     </span>
@@ -2164,7 +2072,7 @@ const TOOLS: { kind: Tool; label: string; hint: string; icon: typeof MapPin }[] 
     kind: 'area',
     label: 'Area',
     hint: 'Drag to mark an area; click for a standard box. Key: R',
-    icon: Square,
+    icon: SquareDashed,
   },
   {
     kind: 'arrow',
@@ -2809,7 +2717,6 @@ function Panel({
   onChangeMark,
   onRemoveMark,
   onDone,
-  onAddCentre,
   onPrev,
   onNext,
   onRemove,
@@ -2828,8 +2735,6 @@ function Panel({
   onChangeMark: (id: string, change: Partial<Mark>) => void;
   onRemoveMark: (id: string) => void;
   onDone: () => void;
-  /** Add a note from the keyboard: a dot, an area or an arrow, at the centre of the image. */
-  onAddCentre: (shape: Shape) => void;
   onPrev: () => void;
   onNext: () => void;
   onRemove: () => void;
@@ -2840,10 +2745,6 @@ function Panel({
   const mark = asset.marks.find((m) => m.id === selected);
   const markNumber = asset.marks.findIndex((m) => m.id === selected) + 1;
   const suggestion = mark && suggestionsOn ? currentSuggestion(mark) : undefined;
-  const addButton = cn(
-    hit,
-    'flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-  );
 
   return (
     <aside
@@ -2908,33 +2809,6 @@ function Panel({
                 ))}
               </ol>
             )}
-            {/* Each makes a note at the centre of the image, open and ready to type; the arrow keys then place it. 8px apart, so their hit areas don't overlap. */}
-            <div className="mt-2 space-y-2">
-              <button
-                type="button"
-                onClick={() => onAddCentre({ kind: 'dot', x: 0.5, y: 0.5 })}
-                className={addButton}
-              >
-                <Plus className="size-4" aria-hidden />
-                Add a note without the mouse
-              </button>
-              <button
-                type="button"
-                onClick={() => onAddCentre({ kind: 'area', x: 0.35, y: 0.35, w: 0.3, h: 0.3 })}
-                className={addButton}
-              >
-                <Plus className="size-4" aria-hidden />
-                Add an area without the mouse
-              </button>
-              <button
-                type="button"
-                onClick={() => onAddCentre({ kind: 'arrow', x: 0.35, y: 0.5, x2: 0.65, y2: 0.5 })}
-                className={addButton}
-              >
-                <Plus className="size-4" aria-hidden />
-                Add an arrow without the mouse
-              </button>
-            </div>
           </section>
         )}
       </div>
@@ -2992,10 +2866,10 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
             <>
               {' · '}
               {(v === 'good' || v === 'both') && (
-                <ThumbsUp aria-hidden className="size-3.5" style={{ color: VERDICT_COLOR.good }} />
+                <ThumbsUp aria-hidden className="size-3.5" />
               )}
               {(v === 'bad' || v === 'both') && (
-                <ThumbsDown aria-hidden className="size-3.5" style={{ color: VERDICT_COLOR.bad }} />
+                <ThumbsDown aria-hidden className="size-3.5" />
               )}
               {v === 'both' ? 'works and doesn’t' : v === 'good' ? 'works' : 'doesn’t work'}
             </>
@@ -3007,7 +2881,7 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
 }
 
 /** The fields a suggestion fills, by the suggestion's own names. */
-type SuggestedKey = 'works' | 'doesNotWork' | 'label';
+type SuggestedKey = 'works' | 'doesNotWork';
 
 function MarkEditor({
   mark,
@@ -3094,17 +2968,6 @@ function MarkEditor({
           onChange({ bad, accepted: withAccepted(mark.accepted, 'bad', bad, accepted) })
         }
         onDismiss={() => onDismiss('doesNotWork')}
-        onKeyDown={doneOnShortcut}
-      />
-      <SuggestedInput
-        id={`label-${mark.id}`}
-        label="Short name (optional)"
-        value={mark.label}
-        suggestion={ghost('label')}
-        suggesting={suggesting}
-        example="revenue headline"
-        onChange={(label) => onChange({ label })}
-        onDismiss={() => onDismiss('label')}
         onKeyDown={doneOnShortcut}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -3194,11 +3057,9 @@ function useLingers(on: boolean, ms: number) {
 function Ghost({
   text,
   field,
-  oneLine,
 }: {
   text: string;
   field: React.RefObject<HTMLElement | null>;
-  oneLine?: boolean;
 }) {
   const last = useRef(text);
   if (text) last.current = text;
@@ -3214,10 +3075,7 @@ function Ghost({
     <div
       aria-hidden
       className={cn(
-        'pointer-events-none absolute top-0 left-0 size-full overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm text-[#737373] dark:text-[#7a7a7a]',
-        oneLine
-          ? 'flex items-center truncate whitespace-nowrap'
-          : 'whitespace-pre-wrap [overflow-wrap:break-word]',
+        'pointer-events-none absolute top-0 left-0 size-full overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm whitespace-pre-wrap text-[#737373] [overflow-wrap:break-word] dark:text-[#7a7a7a]',
         ghostFade,
       )}
       style={{ opacity: text ? 1 : 0, width: size?.w, height: size?.h }}
@@ -3227,35 +3085,93 @@ function Ghost({
   );
 }
 
-/** A key chip inside a tooltip, whose colours are the page's inverted. */
-const tipKbd = 'border-background/30 bg-background/15 text-background';
-
-/** The keys for a grey suggestion, shown over the field while it is hovered or focused. */
-function GhostTip({ open, children }: { open: boolean; children: React.ReactElement }) {
-  return (
-    <Tooltip open={open}>
-      <TooltipTrigger render={children} />
-      <TooltipContent side="top" align="start" className="text-[13px]">
-        AI suggestion · <Kbd className={tipKbd}>Tab</Kbd> to use · <Kbd className={tipKbd}>Esc</Kbd>{' '}
-        to dismiss
-      </TooltipContent>
-    </Tooltip>
-  );
+/*
+ * The suggestion hint ("AI suggestion · Tab to use · Esc to dismiss") shows once: the first time a
+ * suggestion appears, on one field, until the owner closes it or uses a suggestion (Tab, Esc,
+ * Delete, or typing in that field). Then it never comes back, in this browser.
+ */
+const HINT_KEY = 'pinch-suggestion-hint';
+const hintListeners = new Set<() => void>();
+let hintOwner: string | null = null;
+let hintSeen: boolean | null = null;
+const emitHint = () => {
+  for (const l of hintListeners) l();
+};
+const subscribeHint = (l: () => void) => {
+  hintListeners.add(l);
+  return () => {
+    hintListeners.delete(l);
+  };
+};
+const readHintSeen = () => {
+  if (hintSeen === null) hintSeen = local.get(HINT_KEY) === '1';
+  return hintSeen;
+};
+function dismissHint() {
+  if (readHintSeen()) return;
+  hintSeen = true;
+  hintOwner = null;
+  local.set(HINT_KEY, '1');
+  emitHint();
 }
 
-/** Hover and focus on a field, for the suggestion tooltip. */
-function useAttention() {
-  const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  return {
-    on: focused || hovered,
-    props: {
-      onFocus: () => setFocused(true),
-      onBlur: () => setFocused(false),
-      onPointerEnter: () => setHovered(true),
-      onPointerLeave: () => setHovered(false),
+/** Whether this field shows the one-time hint now, and how to close it for good. */
+function useSuggestionHint(id: string, ghost: string) {
+  // On the server it counts as seen, so the page never flashes a hint before it knows.
+  const seen = useSyncExternalStore(subscribeHint, readHintSeen, () => true);
+  const owner = useSyncExternalStore(subscribeHint, () => hintOwner, () => null);
+  // The first field to show a suggestion claims the hint; if it goes away unused (another note
+  // opens), the next one may.
+  useEffect(() => {
+    if (ghost && !seen && hintOwner === null) {
+      hintOwner = id;
+      emitHint();
+    }
+  }, [ghost, seen, id]);
+  useEffect(
+    () => () => {
+      if (hintOwner === id) {
+        hintOwner = null;
+        emitHint();
+      }
     },
-  };
+    [id],
+  );
+  return { visible: !seen && owner === id && Boolean(ghost), dismiss: dismissHint };
+}
+
+/** A key chip inside the hint, whose colours are the page's inverted. */
+const tipKbd = 'border-background/30 bg-background/15 text-background';
+
+/** The hint above a field: the keys for a grey suggestion, with a close button. */
+function SuggestionTip({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <div
+      role="status"
+      aria-hidden={!visible}
+      className={cn(
+        'absolute bottom-full left-0 z-20 mb-2 flex w-max max-w-full items-center gap-1 rounded-md bg-foreground py-1.5 pr-1 pl-2.5 text-[13px] leading-tight text-background shadow-lg transition-opacity duration-200 motion-reduce:transition-none dark:shadow-none',
+        visible ? 'opacity-100' : 'pointer-events-none opacity-0',
+      )}
+    >
+      <span>
+        AI suggestion · <Kbd className={tipKbd}>Tab</Kbd> to use · <Kbd className={tipKbd}>Esc</Kbd>{' '}
+        to dismiss
+      </span>
+      <button
+        type="button"
+        tabIndex={visible ? 0 : -1}
+        aria-label="Close this hint"
+        onClick={onClose}
+        className={cn(
+          hit,
+          'relative flex size-6 shrink-0 items-center justify-center rounded text-background transition-colors duration-150 outline-none motion-reduce:transition-none hover:bg-background/20 focus-visible:ring-2 focus-visible:ring-background/60',
+        )}
+      >
+        <X aria-hidden className="size-3.5" />
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -3298,86 +3214,48 @@ function SuggestedField({
     },
     [ref],
   );
-  const attention = useAttention();
+  const hint = useSuggestionHint(id, ghost);
   const ghostLingers = useLingers(Boolean(ghost), 220);
   const Icon = verdict === 'good' ? ThumbsUp : ThumbsDown;
   return (
     <div className="relative text-[13px] text-muted-foreground">
       <SuggestionLabel id={id} working={!value && suggesting}>
-        <Icon aria-hidden className="size-4 shrink-0" style={{ color: VERDICT_COLOR[verdict] }} />
+        <Icon aria-hidden className="size-4 shrink-0" />
         {label}
       </SuggestionLabel>
       <div className="relative">
-        <GhostTip open={Boolean(ghost) && attention.on}>
-          <textarea
-            ref={setRef}
-            id={id}
-            rows={3}
-            maxLength={1000}
-            value={value}
-            onChange={(e) => onChange(e.target.value, false)}
-            onKeyDown={(e) => {
-              if (!ghostKey(e, ghost, () => onChange(ghost, true), onDismiss)) onKeyDown(e);
-            }}
-            {...attention.props}
-            aria-describedby={ghost ? `${id}-hint` : undefined}
-            className={field}
-            placeholder={ghostLingers || suggesting ? '' : example}
-          />
-        </GhostTip>
-        <Ghost text={ghost} field={inner} />
-      </div>
-      <SuggestionHint id={id} ghost={ghost} />
-    </div>
-  );
-}
-
-/** The short name, one line and unlabelled, with the suggestion's name for the spot as its ghost text. */
-function SuggestedInput({
-  id,
-  label,
-  value,
-  suggestion,
-  suggesting,
-  example,
-  onChange,
-  onDismiss,
-  onKeyDown,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  suggestion?: string;
-  suggesting: boolean;
-  example: string;
-  onChange: (value: string) => void;
-  onDismiss: () => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-}) {
-  const ghost = !value && suggestion ? suggestion : '';
-  const inner = useRef<HTMLInputElement | null>(null);
-  const attention = useAttention();
-  const ghostLingers = useLingers(Boolean(ghost), 220);
-  return (
-    <div className="relative text-[13px] text-muted-foreground">
-      <GhostTip open={Boolean(ghost) && attention.on}>
-        <input
-          ref={inner}
+        <SuggestionTip visible={hint.visible} onClose={hint.dismiss} />
+        <textarea
+          ref={setRef}
           id={id}
-          aria-label={label}
-          maxLength={60}
+          rows={3}
+          maxLength={1000}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (!ghostKey(e, ghost, () => onChange(ghost), onDismiss)) onKeyDown(e);
+          onChange={(e) => {
+            if (hint.visible) hint.dismiss();
+            onChange(e.target.value, false);
           }}
-          {...attention.props}
+          onKeyDown={(e) => {
+            const used = ghostKey(
+              e,
+              ghost,
+              () => {
+                if (hint.visible) hint.dismiss();
+                onChange(ghost, true);
+              },
+              () => {
+                if (hint.visible) hint.dismiss();
+                onDismiss();
+              },
+            );
+            if (!used) onKeyDown(e);
+          }}
           aria-describedby={ghost ? `${id}-hint` : undefined}
           className={field}
           placeholder={ghostLingers || suggesting ? '' : example}
         />
-      </GhostTip>
-      <Ghost text={ghost} field={inner} oneLine />
+        <Ghost text={ghost} field={inner} />
+      </div>
       <SuggestionHint id={id} ghost={ghost} />
     </div>
   );

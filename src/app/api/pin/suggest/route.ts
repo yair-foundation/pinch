@@ -9,12 +9,11 @@ import { clientIp } from '@/lib/pin/visitor';
 import { costUsd, visitorKey } from '@/lib/budget';
 
 /*
- * Pinch's suggestions (/pin): POST multipart { image, context, label?,
+ * Pinch's suggestions (/pin): POST multipart { image, context,
  * source?, shape? }: the crop of one empty note with its marker drawn in, and
  * the whole screen scaled down with the same marker (`shape` says whether it
  * is a dot, an area or an arrow). Get back a draft of
- * what works and what doesn't there, and a short name for the spot
- * (`label`). Nothing is stored. A small, fast model
+ * what works and what doesn't there. Nothing is stored. A small, fast model
  * (PIN_SUGGEST_MODEL), because it runs on every new note; off with
  * PIN_SUGGEST=0, or without an API key.
  */
@@ -48,7 +47,6 @@ export async function POST(request: Request) {
     return fail(400, 'Send the crop.');
   }
   const file = form.get('image');
-  const label = String(form.get('label') ?? '');
   const sourceValue = String(form.get('source') ?? '');
   const source = SOURCES.some((s) => s.kind === sourceValue)
     ? (sourceValue as SourceKind)
@@ -91,7 +89,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: 'user',
-          content: [...images, { type: 'text', text: suggestPrompt(label, source, shape) }],
+          content: [...images, { type: 'text', text: suggestPrompt(source, shape) }],
         },
       ],
     });
