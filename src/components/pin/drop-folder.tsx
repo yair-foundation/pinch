@@ -2,18 +2,22 @@ import { useId } from 'react';
 import { cn } from '@/lib/utils';
 
 /*
- * The landing card's attention cue (D93): a glassy folder on its side, after
- * affectUI's Side Folder, mirrored so its documents peek out to the left. A
- * screenshot chip comes in with the cursor from the top left, slides in behind
- * the frosted pocket, and the pocket swings open as it lands and the
- * documents shift. A 3.7 s CSS loop. Hovering the folder opens it and holds
- * it open; `active` (a real drag over the window) does the same, with the chip
- * and cursor out of the way. Under prefers-reduced-motion it is a still.
+ * The landing card's attention cue (D93): a glassy folder lying landscape,
+ * after affectUI's Side Folder turned a quarter so its documents peek out of
+ * the top and its tab sits top left. A screenshot chip comes in with the
+ * cursor from the top right, drops in behind the frosted pocket, and the
+ * pocket tips forward as it lands while the documents rise. A 3.7 s CSS
+ * loop. Hovering the folder opens it and holds it open; `active` (a real drag
+ * over the window) does the same, with the chip and cursor out of the way.
+ * Under prefers-reduced-motion it is a still.
  *
- * The folder is drawn as the original (documents to the right) and flipped as
- * a whole; the chip and cursor ride inside it, between the documents and the
- * pocket, each flipped back so they read the right way. Sizes are in `cqw` of
- * the folder, so it scales with its box.
+ * Only the folder turns: its art is drawn as the original (documents to the
+ * right) in two turned layers, the back with the documents and the pocket,
+ * and the chip and cursor ride upright between and above them. The turn
+ * (a quarter clockwise of the mirrored art) maps the art's right to the top
+ * and its bottom to the left, so the shadow and the pocket's shading are set
+ * along the art's x axis to fall down the screen. Sizes are in `cqw`, so it
+ * scales with its box.
  */
 
 /* The front pocket on a 380 × 520 grid: a narrow top part and a wider tab towards the bottom. */
@@ -38,20 +42,30 @@ const CSS = `
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 40%;
-  aspect-ratio: 440 / 520;
+  width: 52%;
+  aspect-ratio: 520 / 440;
+  container-type: inline-size;
+  transform: translate(-50%, -50%);
+  transition: transform 0.6s var(--pin-sf-ease);
+}
+/* The folder's art, upright on the 440 × 520 grid, turned to lie landscape in the icon. */
+.pin-sf-turn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 84.6154cqw;
+  height: 100cqw;
   container-type: inline-size;
   perspective: 260cqw;
   perspective-origin: 40% 50%;
-  transform: translate(-50%, -50%) scaleX(-1);
-  transition: transform 0.6s var(--pin-sf-ease);
+  transform: translate(-50%, -50%) rotate(90deg) scaleX(-1);
 }
 .pin-sf-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .pin-sf-back {
   filter:
-    drop-shadow(0 5.4cqw 6.4cqw rgba(60, 130, 180, 0.28))
-    drop-shadow(0 1.8cqw 2.7cqw rgba(60, 130, 180, 0.16))
-    drop-shadow(0 0.45cqw 0.9cqw rgba(60, 130, 180, 0.1));
+    drop-shadow(-5.4cqw 0 6.4cqw rgba(60, 130, 180, 0.28))
+    drop-shadow(-1.8cqw 0 2.7cqw rgba(60, 130, 180, 0.16))
+    drop-shadow(-0.45cqw 0 0.9cqw rgba(60, 130, 180, 0.1));
 }
 .pin-sf-doc {
   transform-box: fill-box;
@@ -71,8 +85,8 @@ const CSS = `
   -webkit-mask: ${MASK};
   mask: ${MASK};
   background:
-    linear-gradient(180deg, rgba(0, 40, 75, 0) 76%, rgba(0, 40, 75, 0.26) 100%),
-    linear-gradient(160deg, rgba(132, 214, 248, 0.45) 0%, rgba(69, 170, 220, 0.45) 100%);
+    linear-gradient(270deg, rgba(0, 40, 75, 0) 76%, rgba(0, 40, 75, 0.26) 100%),
+    linear-gradient(250deg, rgba(132, 214, 248, 0.45) 0%, rgba(69, 170, 220, 0.45) 100%);
   -webkit-backdrop-filter: blur(4.5cqw) saturate(1.1);
   backdrop-filter: blur(4.5cqw) saturate(1.1);
   transform-origin: 0 50%;
@@ -80,26 +94,25 @@ const CSS = `
 }
 .pin-sf-front svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-/* The chip and the cursor, in the folder's own (unflipped) space: they come from its right. */
+/* The chip and the cursor, upright in the icon: they come from its top right. */
 .pin-sf-chip, .pin-sf-cursor { position: absolute; left: 0; top: 0; opacity: 0; }
-.pin-sf-chip > *, .pin-sf-cursor > * { transform: scaleX(-1); }
-.pin-sf-chip > * {
+.pin-sf-chip {
   display: flex;
   align-items: center;
-  gap: 4cqw;
-  width: 84cqw;
-  height: 21cqw;
-  padding: 0 5cqw;
-  border-radius: 6cqw;
+  gap: 3cqw;
+  width: 65cqw;
+  height: 16cqw;
+  padding: 0 3.8cqw;
+  border-radius: 4.6cqw;
   background: rgb(28 28 34 / 0.92);
-  box-shadow: inset 0 0 0 0.8cqw rgb(255 255 255 / 0.3), 0 2cqw 5cqw rgb(0 0 0 / 0.25);
+  box-shadow: inset 0 0 0 0.6cqw rgb(255 255 255 / 0.3), 0 1.5cqw 4cqw rgb(0 0 0 / 0.25);
   color: rgb(255 255 255 / 0.88);
-  font-size: 9.5cqw;
+  font-size: 7.3cqw;
   line-height: 1;
   white-space: nowrap;
 }
-.pin-sf-chip svg { width: 11cqw; height: 11cqw; flex: none; }
-.pin-sf-cursor svg { width: 17cqw; height: 17cqw; display: block; }
+.pin-sf-chip svg { width: 8.5cqw; height: 8.5cqw; flex: none; }
+.pin-sf-cursor svg { width: 13cqw; height: 13cqw; display: block; }
 
 .pin-sf-chip, .pin-sf-cursor, .pin-sf-front, .pin-sf-doc {
   animation-duration: 3.7s;
@@ -113,20 +126,20 @@ const CSS = `
 .pin-sf-doc--bottom { animation-name: pin-sf-doc-bottom; }
 .pin-sf-doc--middle { animation-name: pin-sf-doc-middle; }
 @keyframes pin-sf-chip {
-  0%, 12% { transform: translate(100cqw, -34cqw); opacity: 0; }
+  0%, 12% { transform: translate(70cqw, -40cqw); opacity: 0; }
   18% { opacity: 1; }
-  40%, 48% { transform: translate(52cqw, 22cqw); opacity: 1; }
-  62% { transform: translate(16cqw, 30cqw) scale(0.92); opacity: 1; }
-  70%, 100% { transform: translate(8cqw, 32cqw) scale(0.9); opacity: 0; }
+  40%, 48% { transform: translate(18cqw, -14cqw); opacity: 1; }
+  62% { transform: translate(18cqw, 12cqw) scale(0.92); opacity: 1; }
+  70%, 100% { transform: translate(18cqw, 22cqw) scale(0.9); opacity: 0; }
 }
-/* The cursor's tip rides on the chip: in this flipped space that is 4cqw right of it, 9cqw down. */
+/* The cursor's tip rides on the chip's right part, then lets go and moves off. */
 @keyframes pin-sf-cursor {
-  0%, 12% { transform: translate(104cqw, -25cqw); opacity: 0; }
+  0%, 12% { transform: translate(118cqw, -34cqw); opacity: 0; }
   18% { opacity: 1; }
-  40%, 48% { transform: translate(56cqw, 31cqw); opacity: 1; }
-  60% { transform: translate(22cqw, 38cqw); opacity: 1; }
-  74% { transform: translate(0cqw, 58cqw); opacity: 1; }
-  84%, 100% { transform: translate(-6cqw, 62cqw); opacity: 0; }
+  40%, 48% { transform: translate(66cqw, -8cqw); opacity: 1; }
+  60% { transform: translate(66cqw, 14cqw); opacity: 1; }
+  74% { transform: translate(82cqw, 28cqw); opacity: 1; }
+  84%, 100% { transform: translate(86cqw, 32cqw); opacity: 0; }
 }
 @keyframes pin-sf-front {
   0%, 50% { transform: none; }
@@ -148,7 +161,7 @@ const CSS = `
 
 /* Hovered, or a real drag over the window: open and still, the chip and cursor gone. */
 .pin-sf-icon:hover, .pin-sf[data-active] .pin-sf-icon {
-  transform: translate(-50%, -50%) scaleX(-1) scale(1.03);
+  transform: translate(-50%, -50%) scale(1.03);
 }
 .pin-sf-icon:hover *, .pin-sf[data-active] .pin-sf-icon * { animation: none; }
 .pin-sf-icon:hover .pin-sf-chip, .pin-sf-icon:hover .pin-sf-cursor,
@@ -172,12 +185,13 @@ export function DropFolder({ active, className }: { active?: boolean; className?
         {CSS}
       </style>
       <div className="pin-sf-icon">
+        <div className="pin-sf-turn">
         {/* The back of the folder. */}
         <svg className="pin-sf-layer pin-sf-back" viewBox="0 0 440 520" aria-hidden>
           <defs>
             <filter id={`${id}-hl`} x="-10%" y="-10%" width="120%" height="120%">
               <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur" />
-              <feOffset in="blur" dy="3" result="offset" />
+              <feOffset in="blur" dx="-3" result="offset" />
               <feComposite in="blur" in2="offset" operator="arithmetic" k2="1" k3="-1" result="diff" />
               <feFlood floodColor="#fff" floodOpacity="0.65" />
               <feComposite in2="diff" operator="in" result="light" />
@@ -206,13 +220,14 @@ export function DropFolder({ active, className }: { active?: boolean; className?
                 stroke="rgba(0,0,0,0.12)"
                 strokeWidth="1.2"
               />
+              {/* The page's lines, drawn across the art's grain so they read across the turned page. */}
               {LINES.map((w, i) => (
                 <rect
                   key={w}
-                  x="30"
-                  y={87 + i * 28}
-                  width={w}
-                  height="9"
+                  x={184 - i * 28}
+                  y={320 - w}
+                  width="9"
+                  height={w}
                   rx="4.5"
                   fill="rgba(0,0,0,0.12)"
                 />
@@ -225,10 +240,10 @@ export function DropFolder({ active, className }: { active?: boolean; className?
             <use className="pin-sf-doc pin-sf-doc--middle" href={`#${id}-doc`} />
           </g>
         </svg>
+        </div>
 
         {/* The screenshot going in, between the documents and the pocket. */}
         <div className="pin-sf-chip">
-          <div>
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -243,19 +258,19 @@ export function DropFolder({ active, className }: { active?: boolean; className?
               <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
             </svg>
             screen-01.png
-          </div>
         </div>
 
         {/* The frosted front pocket. */}
-        <div className="pin-sf-front">
-          <svg viewBox="0 0 380 520" aria-hidden>
-            <path d={FRONT} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="4" />
-          </svg>
+        <div className="pin-sf-turn">
+          <div className="pin-sf-front">
+            <svg viewBox="0 0 380 520" aria-hidden>
+              <path d={FRONT} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="4" />
+            </svg>
+          </div>
         </div>
 
         {/* The cursor carrying it. */}
         <div className="pin-sf-cursor">
-          <div>
             <svg viewBox="0 0 24 24" aria-hidden>
               <path
                 d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"
@@ -265,7 +280,6 @@ export function DropFolder({ active, className }: { active?: boolean; className?
                 strokeLinejoin="round"
               />
             </svg>
-          </div>
         </div>
       </div>
     </div>
