@@ -8,7 +8,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 | # | Question | Until decided |
 | --- | --- | --- |
-| D96 | **The pack's size.** $19.99 for 500 readings is the hypothesis, about 4 cents a reading; even 500 could lose money under the worst estimates. Measure a reading's cost at 1, 5 and 30 notes against libraries of 0, 50 and 200 rules, with a cold cache and a warm one; the price has to hold when the cache is cold. | No pack size is fixed. |
+| D96 | **The pack's size.** $19.99 for 500 readings is the hypothesis, about 4 cents a reading. Measured on 2026-10-20 ([cost-bench.md](cost-bench.md)): it holds when notes are read five or more at a time ($14.19 at most), and loses money on notes read one at a time against a library of 50 or more with a cold cache ($26 to $64 a pack). A smaller pack can't fix that; cutting a call's fixed cost can: cache the prompt, and test sending fewer library rules when few notes are read. | No pack size is fixed. |
 | D96 | **Whether the reading sees each note's crop.** Benchmark words only against words with the crop, on precise notes, vague ones and ones whose meaning depends on the marked spot. Judge faithfulness to what the author meant and unsupported assumptions, as well as cost: more detailed rules aren't better by themselves. | The reading sees words only, as now. |
 
 ## Settled
