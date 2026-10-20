@@ -125,6 +125,19 @@ On the finance case, two of the foundation's three explicit misses are the key a
 
 A reading of ten to thirteen notes now costs about $0.065, against $0.029 before the foundation: the prompt is longer and the answers carry readings, questions and principles.
 
+### The library one rule a line (D97)
+
+To cut what a reading of a few notes costs, the library now goes one rule a line, not as indented JSON, and the notes as JSON on one line (D97, [cost-bench.md](cost-bench.md)). Stage 1 only, the prompt before (`pretty`, kept in `baseline.ts`) and after (`foundation`) in the same run, two runs each, with `BENCH_VARIANTS=pretty,foundation` and no builds. $2.55.
+
+| Cases | Prompt | Explicit faithful | Unsupported | Corrections | Vague right | Context kept | Conflicts | Strengthened |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tuning | before | 40/42 | 2.0 | 2.8 | 13/24 | 7/8 | 6/6 | 6/6 |
+| Tuning | one rule a line | 42/42 | 2.0 | 2.5 | 17/24 | 8/8 | 6/6 | 6/6 |
+| Held out | before | 9/10 | 3.5 | 4.5 | 2/6 | 2/2 | 2/2 | – |
+| Held out | one rule a line | 9/10 | 3.5 | 5.0 | 1/6 | 2/2 | 2/2 | – |
+
+As good or better on every tuning count, and within noise on the held-out case's two readings. The cases' libraries hold at most a few rules, so this doesn't test strengthening and conflicts against a large library, where the layout matters most.
+
 ## What it shows
 
 - **The rules got better, as the designer counts.** Across the tuning cases the foundation needed the fewest corrections every round. In round 3 that was 3.0 a reading, against 4.9 for current Pinch and 5.6 for the plain prompt. It handled vague notes far better than current Pinch (15 of 24 against 4), and kept unsupported assumptions near current Pinch's low (1.8 against 1.5; the plain prompt made 6.8). It kept context apart every time.
@@ -138,4 +151,4 @@ So the foundation makes Pinch's rules more faithful and its uncertainty visible,
 1. **Several answers to one question.** Each answer makes its own rule, from the same notes. In round 3, three questions had the meaning split across two answers.
 2. **Settle a conflict in one step.** "Each in its place" asks where each holds; "this one wins" retires the other. Open conflicts are among the tastes every rule set misses.
 3. **Test with designers.** Five designers' own notes, their own verdicts on the rules, and their agents' work on a task of theirs, judged from screenshots, not markup.
-4. **Cache the reading's instructions.** They are the same on every call, about 4,000 tokens, so caching them would cut a reading's cost by about a quarter.
+4. **Strengthening and conflicts against a large library.** Done for the instructions' cache (D97); still to test: a case whose library holds a couple of hundred rules, with notes that strengthen or contradict rules deep in it, before any reading sends only part of the library.
