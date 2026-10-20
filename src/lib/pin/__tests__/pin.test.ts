@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { crc32 as nodeCrc } from 'node:zlib';
 
-import { toMarks } from '../locate';
+import { pinRefusal, VISITOR_SHARE } from '../ai-budget';
 import {
   agentGuide,
   type Asset,
   areaFrom,
   arrowFrom,
   assetFiles,
+  busyShare,
   centreOf,
   cropRect,
   currentSuggestion,
@@ -35,11 +36,14 @@ import {
   emptyLogDay,
   expiredDays,
   fingerprint,
+  incomingBatchSchema,
+  LOG_CAPS,
   logBatchSchema,
   logEntries,
   logEntrySchema,
 } from '../notes-log';
-import { cleanSuggestion, suggestPrompt } from '../suggest';
+import { aboutTheMarker, cleanSuggestion, suggestPrompt, suggestSystem } from '../suggest';
+import { clientIp } from '../visitor';
 import { crc32, zip } from '../zip';
 
 const mark = (over: Partial<Mark> = {}): Mark => ({
@@ -163,7 +167,10 @@ describe('arrows', () => {
       /Where: arrow from x 12\.0%, y 40\.0% to x 80\.0%, y 41\.0% \(pixels 192,400 to 1280,410\)/,
     );
     assert.match(text, /An arrow points from its tail \(where its number sits\) to its head/);
-    assert.match(text, /a numbered arrow from its tail to its head/);
+    assert.match(text, /an arrow from its tail to its head, each with its number on a disc beside it/);
+    // The spot is the ring, box or arrow ends, never the number, and the text coordinates win.
+    assert.match(text, /never the numbered disc/);
+    assert.match(text, /trust the numbers/);
     assert.match(agentGuide(), /dots, areas and arrows/);
     const note = manifest([a], 'x').assets[0].notes[0];
     assert.deepEqual(note.shape, { kind: 'arrow', x: 0.12, y: 0.4, x2: 0.8, y2: 0.41 });
@@ -171,8 +178,32 @@ describe('arrows', () => {
     const [entry] = logEntries([a]);
     assert.equal(entry.shape, 'arrow');
     assert.ok(logEntrySchema.safeParse(entry).success);
-    assert.match(suggestPrompt('', undefined, 'arrow'), /tail \(with the numbered disc\)/);
+    const arrowPrompt = suggestPrompt('', undefined, 'arrow');
+    assert.match(arrowPrompt, /at its tail, where the number sits/);
+    assert.doesNotMatch(arrowPrompt, /marker/i);
     assert.doesNotMatch(suggestPrompt('', undefined, 'dot'), /tail/);
+  });
+});
+
+describe('busyShare', () => {
+  /** A white 100×100 image sampled per pixel with a checkerboard in one box. */
+  const grid = (box: { x: number; y: number; w: number; h: number }): LumaGrid => {
+    const cols = 100;
+    const rows = 100;
+    const luma = new Uint8Array(cols * rows).fill(255);
+    for (let y = box.y; y < box.y + box.h; y++)
+      for (let x = box.x; x < box.x + box.w; x++) luma[y * cols + x] = (x + y) % 2 ? 20 : 235;
+    return { width: cols, height: rows, cell: 1, cols, rows, luma };
+  };
+  it('tells a disc on text from one on white', () => {
+    const g = grid({ x: 40, y: 40, w: 20, h: 20 });
+    assert.equal(busyShare(g, { x: 0, y: 0, w: 20, h: 20 }), 0);
+    assert.ok(busyShare(g, { x: 42, y: 42, w: 10, h: 10 }) > 0.9);
+    // Half on, half off.
+    const half = busyShare(g, { x: 30, y: 42, w: 20, h: 10 });
+    assert.ok(half > 0.3 && half < 0.7, `${half}`);
+    // Outside the image: nothing to cover.
+    assert.equal(busyShare(g, { x: -50, y: -50, w: 20, h: 20 }), 0);
   });
 });
 
@@ -344,7 +375,12 @@ describe('export names and text', () => {
     assert.ok(text.indexOf('## How to use this') < text.indexOf('## Files'));
     assert.ok(text.indexOf('## Files') < text.indexOf('## 01 ·'));
     assert.match(text, /`notes\.json` has all of this as data\. `AGENTS\.md` repeats/);
+    assert.match(
+      text,
+      /`images\/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit\./,
+    );
     const guide = agentGuide();
+    assert.match(guide, /screenshots over 16 megapixels were scaled down to fit/);
     assert.match(guide, /^# Pinch export\n/);
     for (const line of text.split('\n').filter((l) => l.startsWith('- '))) assert.ok(guide.includes(line), line);
   });
@@ -392,96 +428,25 @@ describe('zip', () => {
   });
 });
 
-describe('toMarks', () => {
-  const ids = (() => {
-    let n = 0;
-    return () => `id${++n}`;
-  })();
-  it('turns pixel boxes into marks, a dot for tiny ones, and drops empty points', () => {
-    const marks = toMarks(
-      {
-        points: [
-          {
-            quote: 'headline is great',
-            label: 'headline',
-            works: 'The headline is great.',
-            doesNotWork: '',
-            kind: 'area',
-            left: 160,
-            top: 50,
-            right: 800,
-            bottom: 150,
-          },
-          {
-            quote: 'icon',
-            label: 'help icon',
-            works: '',
-            doesNotWork: 'The help icon is hidden.',
-            kind: 'dot',
-            left: 1500,
-            top: 20,
-            right: 1520,
-            bottom: 40,
-          },
-          {
-            quote: 'hm',
-            label: 'x',
-            works: '',
-            doesNotWork: '',
-            kind: 'area',
-            left: 0,
-            top: 0,
-            right: 10,
-            bottom: 10,
-          },
-          {
-            quote: 'off',
-            label: 'y',
-            works: 'Fine.',
-            doesNotWork: '',
-            kind: 'area',
-            left: 1500,
-            top: 900,
-            right: 2400,
-            bottom: 1300,
-          },
-        ],
-        unplaced: ['Calm overall.'],
-      },
-      1600,
-      1000,
-      ids,
-    );
-    assert.equal(marks.length, 3);
-    const s = marks[0].shape;
-    assert.ok(s.kind === 'area');
-    for (const [got, want] of [[s.x, 0.1], [s.y, 0.05], [s.w, 0.4], [s.h, 0.1]]) {
-      assert.ok(Math.abs(got - want) < 1e-9, `${got} ≈ ${want}`);
-    }
-    assert.equal(marks[0].origin, 'ai');
-    assert.equal(marks[0].confirmed, false);
-    assert.deepEqual(marks[1].shape, { kind: 'dot', x: 0.94375, y: 0.03 });
-    // Boxes past the edge are clipped to the image.
-    assert.equal(marks[2].shape.kind === 'area' && marks[2].shape.x + marks[2].shape.w, 1);
-  });
-});
-
 describe('Pinch sources and suggestions', () => {
-  it('names the source in the README and notes.json', () => {
+  it('names the source kind in the README and notes.json, and nothing else', () => {
     const a = asset({
-      source: { kind: 'competitor', by: ' Linear ', link: 'https://linear.app' },
+      source: { kind: 'competitor' },
       marks: [mark({ good: 'Calm' })],
     });
     const text = readme([a], '2026-10-19T10:00:00Z');
-    assert.match(text, /Source: Competitor · made by Linear · <https:\/\/linear\.app>/);
+    assert.match(text, /^Source: Competitor$/m);
     assert.match(text, /Source says whose design an image is/);
     const data = manifest([a], '2026-10-19T10:00:00Z');
-    assert.deepEqual(data.assets[0].source, {
-      kind: 'competitor',
-      label: 'Competitor',
-      madeBy: 'Linear',
-      link: 'https://linear.app',
+    assert.deepEqual(data.assets[0].source, { kind: 'competitor', label: 'Competitor' });
+    // A session saved before the maker and link were dropped (D61) still loads; neither is exported.
+    const old = asset({
+      source: { kind: 'competitor', by: ' Linear ', link: 'https://linear.app' },
+      marks: [mark({ good: 'Calm' })],
     });
+    assert.match(readme([old], 'x'), /^Source: Competitor$/m);
+    assert.doesNotMatch(readme([old], 'x'), /Linear|linear\.app/);
+    assert.doesNotMatch(JSON.stringify(manifest([old], 'x')), /Linear|linear\.app|madeBy|link/);
     // No source picked: no line, no field.
     assert.doesNotMatch(readme([asset({ marks: [mark({ good: 'x' })] })], 'x'), /^Source:/m);
   });
@@ -531,6 +496,100 @@ describe('Pinch sources and suggestions', () => {
     );
     assert.match(suggestPrompt('revenue headline', 'ours'), /"revenue headline"[\s\S]*Ours/);
     assert.equal(suggestPrompt('', undefined).split('\n').length, 1);
+    assert.match(suggestSystem, /Never describe the overlay/);
+    assert.match(suggestSystem, /never as "the marked point", "the dot" or "the spot"/);
+  });
+
+  it('drops a sentence about the overlay, and keeps one about a dot or arrow in the design', () => {
+    const overlay = [
+      'The marked point sits on the last digit of the figure, so the dot cuts into the number and reads as a glitch against the type.',
+      'The dot cuts into the number and reads as a glitch against the type.',
+      'The ring sits over the icon, hiding its shape.',
+      'The numbered disc covers the label.',
+      'The dot overlaps the text of the button.',
+      'The magenta arrow runs across the table.',
+      "The arrow's tail lands on the primary button.",
+      'The arrow head points at the second row.',
+      'The pink circle hides the price.',
+      'The close-up shows a chip cut in half.',
+      'The crop cuts the heading off.',
+      'In the second image the total is hard to read.',
+      'The disc with the 3 obscures the save button.',
+      'The leader line crosses the headline.',
+      'The marked element is a filter chip.',
+      'The marked area holds six chips.',
+      'The marked region is empty.',
+      'The marker covers the label.',
+      'The little dot is placed on the icon.',
+      'The tail rests on the button text.',
+      'The outline cuts through the avatar.',
+      'The number disc blocks the button label.',
+      'The highlight hides the row.',
+      'The dot points at the wrong word.',
+    ];
+    const design = [
+      'A dot separator between the date and the author reads as a bullet.',
+      'The dot between the items is too faint to see.',
+      'The ring around the avatar is too thin to read as a status.',
+      'The arrow icon in the button points right, which suggests a next step.',
+      'The arrow icon is smaller than the text beside it.',
+      'The total is one big number with nothing competing.',
+      'Six filter chips in one row; none reads as the default.',
+      'The pink badge reads as an error, not a tag.',
+      'The circle avatar sits flush with the name, with no gap.',
+      'The leaderboard rows alternate colour, which helps scanning.',
+      'The head of the table is bold, which separates it from the rows.',
+      'The status dot is the same green as the button, so it looks clickable.',
+      'The notification dot sits on the bell icon, which is the convention.',
+      'The arrow points right but the link opens a modal.',
+      'The headline is cropped by the card edge on narrow screens.',
+      'The number is huge and alone, so it reads first.',
+      'The line under the tab is too thin.',
+      'The circle sits inside a square tile, which wastes the corners.',
+      'The red dot on the tab marks unread items.',
+      'The pin icon on the map is hard to see on the grey road.',
+    ];
+    for (const s of overlay) assert.ok(aboutTheMarker(s), `about the overlay: ${s}`);
+    for (const s of design) assert.ok(!aboutTheMarker(s), `about the design: ${s}`);
+    assert.deepEqual(cleanSuggestion({ works: design[0], doesNotWork: overlay[0], label: 'date line' }), {
+      works: design[0],
+      doesNotWork: '',
+      label: 'date line',
+    });
+  });
+});
+
+describe('Pinch AI budget', () => {
+  const caps = { usd: 3, perVisitor: 15, requests: 300 };
+  it('refuses a visitor past their calls or their share of the day, and the day past its budget', () => {
+    const empty = { usd: 0, requests: 0, visitors: {} };
+    assert.equal(pinRefusal(empty, 'v1', 0.08, caps), null);
+    assert.equal(pinRefusal({ ...empty, visitors: { v1: 15 } }, 'v1', 0.08, caps), 'visitor');
+    assert.equal(pinRefusal({ ...empty, visitors: { v1: 15 } }, 'v2', 0.08, caps), null);
+    // A third of $3 is $1: a visitor who has spent 95¢ can't reserve 8¢ more, another can.
+    const spent = { ...empty, usd: 0.95, spent: { v1: 0.95 } };
+    assert.equal(pinRefusal(spent, 'v1', 0.08, caps), 'visitor');
+    assert.equal(pinRefusal(spent, 'v2', 0.08, caps), null);
+    assert.equal(VISITOR_SHARE, 1 / 3);
+    assert.equal(pinRefusal({ ...empty, usd: 2.95 }, 'v1', 0.08, caps), 'budget');
+    assert.equal(pinRefusal({ ...empty, requests: 300 }, 'v1', 0.08, caps), 'busy');
+  });
+});
+
+describe('Pinch visitor address', () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+  it('trusts the platform header first, then the last hop of X-Forwarded-For', () => {
+    assert.equal(clientIp(h({ 'x-real-ip': '203.0.113.9', 'x-forwarded-for': '1.2.3.4' })), '203.0.113.9');
+    assert.equal(
+      clientIp(h({ 'x-vercel-forwarded-for': '203.0.113.9', 'x-forwarded-for': '1.2.3.4, 203.0.113.9' })),
+      '203.0.113.9',
+    );
+    // A client-written first hop never counts; the proxy's own last hop does.
+    assert.equal(clientIp(h({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9' })), '203.0.113.9');
+    assert.equal(clientIp(h({ 'x-forwarded-for': ' 203.0.113.9 ' })), '203.0.113.9');
+    assert.equal(clientIp(h({ 'x-forwarded-for': '1.2.3.4,' })), '1.2.3.4');
+    assert.equal(clientIp(h({})), 'local');
+    assert.equal(clientIp(h({ 'x-real-ip': '' })), 'local');
   });
 });
 
@@ -581,21 +640,41 @@ describe('Pinch saved note text', () => {
   it('replaces an edited note and holds the caps', () => {
     const doc = emptyLogDay();
     const [overall, note] = logEntries(session);
-    assert.deepEqual(addToDay(doc, [overall, note], 'v1', 't1', { day: 3, visitor: 2 }), { saved: 2 });
+    const caps = { ...LOG_CAPS, day: 3, visitor: 2 };
+    assert.deepEqual(addToDay(doc, [overall, note], 'v1', 't1', caps), { saved: 2 });
     // The same ids again replace, and don't count as new.
-    assert.deepEqual(addToDay(doc, [{ ...note, works: 'Edited.' }], 'v1', 't2', { day: 3, visitor: 2 }), {
+    assert.deepEqual(addToDay(doc, [{ ...note, works: 'Edited.' }], 'v1', 't2', caps), {
       saved: 1,
     });
     assert.equal(doc.entries.mark01.works, 'Edited.');
     assert.equal(doc.entries.mark01.at, 't2');
-    assert.deepEqual(addToDay(doc, [{ ...note, id: 'mark03' }], 'v1', 't3', { day: 3, visitor: 2 }), {
+    assert.deepEqual(addToDay(doc, [{ ...note, id: 'mark03' }], 'v1', 't3', caps), {
       refused: 'visitor',
     });
     assert.deepEqual(
-      addToDay(doc, [{ ...note, id: 'mark03' }, { ...note, id: 'mark04' }], 'v2', 't3', { day: 3, visitor: 9 }),
+      addToDay(doc, [{ ...note, id: 'mark03' }, { ...note, id: 'mark04' }], 'v2', 't3', { ...caps, visitor: 9 }),
       { refused: 'day' },
     );
     assert.equal(Object.keys(doc.entries).length, 2);
+  });
+
+  it('counts the characters of every save, re-sent ids included, against a day and a visitor cap', () => {
+    const doc = emptyLogDay();
+    const [, note] = logEntries(session);
+    const size = JSON.stringify(note).length;
+    const caps = { ...LOG_CAPS, visitorBytes: size * 2 + 1, dayBytes: size * 3 + 1 };
+    assert.deepEqual(addToDay(doc, [note], 'v1', 't1', caps), { saved: 1 });
+    assert.equal(doc.bytes, size);
+    assert.equal(doc.visitorBytes?.v1, size);
+    // The same id again is not a new note, but its text counts.
+    assert.deepEqual(addToDay(doc, [note], 'v1', 't2', caps), { saved: 1 });
+    assert.equal(doc.visitors.v1, 1);
+    assert.deepEqual(addToDay(doc, [note], 'v1', 't3', caps), { refused: 'visitor' });
+    assert.deepEqual(addToDay(doc, [note], 'v2', 't3', caps), { saved: 1 });
+    assert.deepEqual(addToDay(doc, [note], 'v3', 't3', caps), { refused: 'day' });
+    // A day saved before the cap has no counters and still takes a batch.
+    const old = { entries: {}, visitors: {} };
+    assert.deepEqual(addToDay(old, [note], 'v1', 't1'), { saved: 1 });
   });
 
   it('rejects anything but the expected fields', () => {
@@ -604,6 +683,36 @@ describe('Pinch saved note text', () => {
     assert.equal(logEntrySchema.safeParse(bad).success, false);
     const long = { id: 'mark01', image: 'asset01', kind: 'note', works: 'x'.repeat(1001) };
     assert.equal(logEntrySchema.safeParse(long).success, false);
+  });
+
+  it('cuts what the page sends to the limits, so no batch fails on length', () => {
+    const a = asset({
+      id: 'asset01',
+      note: ` ${'t'.repeat(2500)} `,
+      marks: [
+        mark({ id: 'mark01', label: 'l'.repeat(80), good: 'g'.repeat(1500), bad: ' ' }),
+        mark({ id: 'mark02', good: 'fine' }),
+      ],
+    });
+    const entries = logEntries([a]);
+    assert.equal(entries[0].text?.length, 2000);
+    assert.equal(entries[1].label?.length, 60);
+    assert.equal(entries[1].works?.length, 1000);
+    assert.equal(entries[1].doesNotWork, undefined);
+    assert.ok(logBatchSchema.safeParse({ entries }).success);
+  });
+
+  it('takes an over-long field from the wire by cutting it, and still refuses everything else', () => {
+    const entry = { id: 'mark01', image: 'asset01', kind: 'note', works: 'x'.repeat(1001), label: 'y'.repeat(61) };
+    const taken = incomingBatchSchema.safeParse({ entries: [entry] });
+    assert.ok(taken.success);
+    assert.equal(taken.data.entries[0].works?.length, 1000);
+    assert.equal(taken.data.entries[0].label?.length, 60);
+    assert.equal(incomingBatchSchema.safeParse({ entries: [] }).success, false);
+    assert.equal(incomingBatchSchema.safeParse({ entries: [{ ...entry, id: '../x' }] }).success, false);
+    assert.equal(incomingBatchSchema.safeParse({ entries: Array(41).fill(entry) }).success, false);
+    assert.equal(incomingBatchSchema.safeParse({ entries: [{ ...entry, works: 7 }] }).success, false);
+    assert.equal(incomingBatchSchema.safeParse('nope').success, false);
   });
 
   it('finds the days past the retention window', () => {

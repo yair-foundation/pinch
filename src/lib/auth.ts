@@ -36,15 +36,36 @@ export function adminAccess(
   return isAuthorized(header, password) ? 'allow' : 'ask';
 }
 
+/** Whether an Origin header names this site: the request's own origin, or the host the platform forwarded. */
+function originIsOurs(from: string, origin: string, headers: Headers): boolean {
+  if (from === origin) return true;
+  let host: string;
+  try {
+    host = new URL(from).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  const served = (headers.get('x-forwarded-host') ?? headers.get('host') ?? '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  return host.length > 0 && host === served;
+}
+
 /**
- * Writes come only from Pinch's own page. A browser sends the Basic
+ * Writes come only from the site's own pages. A browser sends the Basic
  * credentials it remembers with any request to this origin, a form posted from
- * another site included, so a write must also prove it is same-origin.
+ * another site included, so a write must also prove it is same-origin: by
+ * `Sec-Fetch-Site`, which no page can forge, with `Origin` as the fallback
+ * for browsers without it. A script can send any header it likes; this
+ * can't tell one from a browser, but when it sends both they must agree, so
+ * a copied `Sec-Fetch-Site: same-origin` next to a foreign `Origin` fails.
  */
 export function isSameOriginWrite(headers: Headers, origin: string): boolean {
   const site = headers.get('sec-fetch-site');
-  if (site) return site === 'same-origin';
-  return headers.get('origin') === origin;
+  const from = headers.get('origin');
+  if (site) return site === 'same-origin' && (!from || originIsOurs(from, origin, headers));
+  return !!from && originIsOurs(from, origin, headers);
 }
 
 /** What a request to an owner-only route may do, from its headers and the environment. */

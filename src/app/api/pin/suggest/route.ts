@@ -1,14 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { isSameOriginWrite } from '@/lib/auth';
-import { costUsd, visitorKey } from '@/lib/budget';
 import { sniffImage } from '@/lib/image';
 import { reserveSuggestion, settleSuggestion } from '@/lib/pin/ai-budget';
 import { type Shape, SOURCES, type SourceKind } from '@/lib/pin/model';
 import { cleanSuggestion, suggestPrompt, suggestSchema, suggestSystem } from '@/lib/pin/suggest';
+import { clientIp } from '@/lib/pin/visitor';
+import { costUsd, visitorKey } from '@/lib/budget';
 
 /*
- * Pinch's suggestions: POST multipart { image, context, label?,
+ * Pinch's suggestions (/pin): POST multipart { image, context, label?,
  * source?, shape? }: the crop of one empty note with its marker drawn in, and
  * the whole screen scaled down with the same marker (`shape` says whether it
  * is a dot, an area or an arrow). Get back a draft of
@@ -76,11 +77,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const ip =
-    request.headers.get('x-real-ip') ??
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    'local';
-  const reservation = await reserveSuggestion(await visitorKey(ip));
+  const reservation = await reserveSuggestion(await visitorKey(clientIp(request.headers)));
   if (!reservation.ok) return fail(429, 'Suggestions are done for today.');
 
   let spent = 0;
@@ -109,6 +106,6 @@ export async function POST(request: Request) {
     if (error instanceof Anthropic.RateLimitError) return fail(429, 'Busy. Try again in a minute.');
     return fail(502, 'No suggestion this time.');
   } finally {
-    await settleSuggestion(reservation.day, spent).catch((e) => console.error('[pin] settle', e));
+    await settleSuggestion(reservation, spent).catch((e) => console.error('[pin] settle', e));
   }
 }

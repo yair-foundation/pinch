@@ -7,16 +7,20 @@ import {
   ChevronDown,
   Copy,
   Download,
-  ImagePlus,
   Keyboard,
   Loader2,
   MapPin,
   MoveUpRight,
   Plus,
+  RotateCcw,
+  Square,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   X,
 } from 'lucide-react';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -28,7 +32,6 @@ import {
 import { ThemeToggle } from '@/components/site/theme-toggle';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { type LocateResult, toMarks } from '@/lib/pin/locate';
 import {
   type Area,
   type Arrow,
@@ -36,7 +39,6 @@ import {
   areaFrom,
   arrowFrom,
   currentSuggestion,
-  hasNotes,
   isTinyArea,
   isTinyArrow,
   type Mark,
@@ -46,7 +48,6 @@ import {
   type Shape,
   sourceLabel,
   type Source,
-  type SourceKind,
   type Suggestion,
   shapeKey,
   verdictOf,
@@ -56,6 +57,7 @@ import type { SuggestResult } from '@/lib/pin/suggest';
 import { batchSummary, imageSummary } from '@/lib/pin/summary';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
+import { Dialog, hit } from './dialog';
 import { DropFolder } from './drop-folder';
 import {
   bitmapOf,
@@ -63,7 +65,6 @@ import {
   contextForAi,
   cropForAi,
   download,
-  imageForAi,
   markedImage,
   prepareImage,
   VERDICT_COLOR,
@@ -93,11 +94,18 @@ const FULL_MESSAGE = `Pinch holds up to ${MAX_IMAGES} images at a time. Export o
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-/** A toast; an information one can carry one action, such as Undo after something was removed. */
+/** An image with something written on a mark: what the progress line and the filmstrip count. */
+const hasMarks = (a: Asset) => a.marks.some((m) => verdictOf(m) !== 'empty');
+
+/**
+ * A toast; an information one can carry one action, such as Undo after something was removed.
+ * A sticky one stays until dismissed, like an error, without being one.
+ */
 type Status = {
   tone: 'info' | 'error';
   text: string;
   action?: { label: string; run: () => void };
+  sticky?: boolean;
 } | null;
 
 /*
@@ -181,23 +189,41 @@ const TYPING_PAUSE = 800;
 const DRAG_PAUSE = 250;
 
 /** A key in a shortcut hint. */
-function Kbd({ children }: { children: React.ReactNode }) {
+function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+    <kbd
+      className={cn(
+        'rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[13px]',
+        className,
+      )}
+    >
       {children}
     </kbd>
   );
 }
 
 /** A short-lived "working" state: a pill with a spinner, which reduced motion hides. */
-function WorkingPill({ children }: { children: React.ReactNode }) {
+function WorkingPill({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<'span'> & { children: React.ReactNode }) {
   return (
-    <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs text-muted-foreground">
+    <span
+      {...props}
+      className={cn(
+        'inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-[13px] text-muted-foreground',
+        className,
+      )}
+    >
       <Loader2 className="size-3 animate-spin motion-reduce:hidden" aria-hidden />
       {children}
     </span>
   );
 }
+
+/** Grey suggestion text and the "Suggesting…" pill fade: 200ms, opacity only, none under reduced motion. */
+const ghostFade = 'transition-opacity duration-200 ease-out motion-reduce:transition-none';
 
 /** Whether to show ⌘ or Ctrl in shortcut hints; read after mount so the server and client agree. */
 function useIsMac() {
@@ -227,6 +253,22 @@ const SUGGEST_KEY = 'pinch-suggestions';
 const SENT_KEY = 'pinch-sent';
 /** Images removed from the session but kept for Undo; deleted on the next visit if still listed. */
 const ORPHANS_KEY = 'pinch-orphans';
+/** The open image's id, so a reload comes back to it. */
+const OPEN_KEY = 'pinch-open';
+/** Written after every save, for browsers without BroadcastChannel: other tabs hear it as a `storage` event. */
+const SAVED_KEY = 'pinch-saved';
+const CHANNEL = 'pinch-session';
+
+/** Files Pinch takes: anything the browser calls an image, or an image by its name when the type is blank. */
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|bmp|heic|heif|tiff?)$/i;
+const isSvg = (f: File) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name);
+const isImageFile = (f: File) =>
+  f.type.startsWith('image/') || (!f.type && IMAGE_EXT.test(f.name)) || isSvg(f);
+
+/** Whether this browser says it is a small or touch device: a phone or a tablet, not a narrow window. */
+const isSmallDevice = () =>
+  window.matchMedia('(pointer: coarse)').matches ||
+  window.screen.width * window.devicePixelRatio < 768;
 
 /** Whether the clipboard takes images as well as text here. */
 const canCopyImages = () =>
@@ -253,13 +295,15 @@ async function toPng(blob: Blob): Promise<Blob> {
 function nextSource(source: Source | undefined): Source | undefined {
   const at = source ? SOURCES.findIndex((s) => s.kind === source.kind) : -1;
   const next = SOURCES[at + 1];
-  return next ? { kind: next.kind, by: source?.by ?? '', link: source?.link ?? '' } : undefined;
+  return next ? { kind: next.kind } : undefined;
 }
 
 /**
- * Pinch needs a pointer and room: drawing on an image, side by side with its notes. Under 768px
- * wide it shows one message instead, in the style of yair-works.vercel.app's: a black screen,
- * the line centred in a frame marked by four small squares.
+ * Pinch needs a pointer and room: drawing on an image, side by side with its notes. On a phone or
+ * tablet it shows one message instead, in the style of yair-works.vercel.app's: a black screen,
+ * the line centred in a frame marked by four small squares. The message is gated by width in CSS
+ * (so the server and the first paint agree), and lifted after mount on a desktop-class device:
+ * a laptop zoomed to 200% or a narrow window keeps the app (WCAG 1.4.4, 1.4.10).
  */
 function DesktopOnly() {
   const corner = 'absolute size-1 bg-white';
@@ -284,15 +328,39 @@ function DesktopOnly() {
 }
 
 export function PinApp() {
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => {
+    setDesktop(!isSmallDevice());
+  }, []);
   return (
     <>
-      <DesktopOnly />
-      <div className="max-md:hidden">
+      {!desktop && <DesktopOnly />}
+      <div className={desktop ? undefined : 'max-md:hidden'}>
         <Workspace />
       </div>
     </>
   );
 }
+
+/** A pin on the stage, by its note's id. */
+const pinOf = (id: string) =>
+  document.querySelector<HTMLElement>(`button[data-mark="${id}"]:not([data-end])`);
+
+/** One tab's name, so a tab can tell its own saves from another's. */
+const TAB_ID = newId();
+
+type DialogKind = 'shortcuts' | 'privacy' | 'home';
+
+/** A short digest of the session's notes, to tell whether anything changed since the last export. */
+const digestOf = (list: Asset[]) => {
+  const s = JSON.stringify(list);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return `${list.length}:${h >>> 0}`;
+};
+
+/** Ghost buttons and links: a muted fill on hover, with a short colour transition. */
+const hoverFill = 'transition-colors duration-150 motion-reduce:transition-none hover:bg-muted';
 
 function Workspace() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -302,8 +370,6 @@ function Workspace() {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Status>(null);
   const [exporting, setExporting] = useState<string | null>(null);
-  const [aiOn, setAiOn] = useState(false);
-  const [locating, setLocating] = useState<Set<string>>(new Set());
   // Suggestions: available on the server, and on in this browser (the default).
   const [suggestAvailable, setSuggestAvailable] = useState(false);
   const [suggestPref, setSuggestPref] = useState(true);
@@ -312,13 +378,37 @@ function Workspace() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
   const [copyMenu, setCopyMenu] = useState(false);
-  const [shortcuts, setShortcuts] = useState(false);
+  // The one dialog open, and what had focus before it, so closing it puts focus back.
+  const [dialog, setDialog] = useState<DialogKind | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const openDialog = useCallback((kind: DialogKind) => {
+    opener.current = document.activeElement as HTMLElement | null;
+    setDialog(kind);
+  }, []);
+  const closeDialog = useCallback(() => setDialog(null), []);
+  // The session as last exported (or copied whole), kept with it, so going home can ask first.
+  const exported = useRef<string | undefined>(undefined);
+  const markExported = useCallback(() => {
+    exported.current = digestOf(assetsRef.current);
+    store.saveExported(exported.current).catch(() => undefined);
+  }, []);
+  const pathname = usePathname() ?? '/pin';
+  // The session is in memory only: the browser blocked its storage.
+  const [volatile, setVolatile] = useState(false);
+  // Another tab saved this session since it was loaded here; this tab stops saving until reloaded.
+  const stale = useRef(false);
+  // A tall image fills the stage's width and scrolls, or fits whole. Per visit.
+  const [fitWidth, setFitWidth] = useState(true);
+  // Suggestions the user dismissed, by note and field, with the shape they were written for.
+  const [dismissed, setDismissed] = useState<Record<string, string>>({});
   // What a drag draws: a dot or area (Pin), or an arrow. Per visit; A toggles it, Esc leaves it.
   const [tool, setTool] = useState<Tool>('pin');
   const history = useRef<History>(null as unknown as History);
   history.current ??= new History();
   // The latest session, kept in step with history so handlers never read a stale render.
   const assetsRef = useRef(assets);
+  // The session as last written to storage; saving it again would only alarm the other tabs.
+  const lastSaved = useRef<Asset[] | null>(null);
   const indexRef = useRef(index);
   indexRef.current = index;
   const urlsRef = useRef(urls);
@@ -402,24 +492,32 @@ function Workspace() {
           const blob = await store.getImage(a.id);
           if (blob) next[a.id] = URL.createObjectURL(blob);
         }
-        const kept = saved.filter((a) => next[a.id]);
+        // Marks an older session had the AI place are ordinary marks now, nothing left to check.
+        const kept = saved
+          .filter((a) => next[a.id])
+          .map((a) => ({
+            ...a,
+            marks: a.marks.map((m) =>
+              m.origin === 'ai' && !m.confirmed ? { ...m, confirmed: true } : m,
+            ),
+          }));
         history.current.reset(kept);
         assetsRef.current = kept;
+        lastSaved.current = kept;
+        exported.current = await store.loadExported().catch(() => undefined);
         setAssets(kept);
         setUrls(next);
+        // Back to the image that was open, if it is still here.
+        const at = kept.findIndex((a) => a.id === local.get(OPEN_KEY));
+        if (at > 0) setIndex(at);
       } catch {
-        setStatus({
-          tone: 'error',
-          text: "This browser won't keep a session; export before you close the tab.",
-        });
+        // Storage opened but failed mid-way: keep the visit in memory rather than lose each change.
+        store.forceMemory();
       } finally {
+        setVolatile(store.inMemory());
         setLoaded(true);
       }
     })();
-    fetch('/api/pin/locate')
-      .then((r) => r.json())
-      .then((r) => setAiOn(Boolean(r.available)))
-      .catch(() => setAiOn(false));
     fetch('/api/pin/suggest')
       .then((r) => r.json())
       .then((r) => setSuggestAvailable(Boolean(r.available)))
@@ -428,9 +526,9 @@ function Workspace() {
   }, []);
 
   // An information toast goes by itself, staying longer the more it says; an error stays until
-  // dismissed. One with an Undo button stays a little longer.
+  // dismissed, and so does a sticky one. One with an Undo button stays a little longer.
   useEffect(() => {
-    if (status?.tone !== 'info') return;
+    if (status?.tone !== 'info' || status.sticky) return;
     const timer = setTimeout(
       () => setStatus(null),
       status.action ? 8000 : Math.max(5000, status.text.length * 60),
@@ -446,21 +544,49 @@ function Workspace() {
   }, [copied]);
 
   // Save on every change. One write at a time; changes made meanwhile go in the next one, so
-  // closing the tab right after an edit loses nothing.
+  // closing the tab right after an edit loses nothing. Once another tab has saved, this one
+  // stops: its copy is older, and writing it would throw the other tab's work away.
   const saving = useRef<Promise<void> | null>(null);
   const dirty = useRef(false);
+  const channel = useRef<BroadcastChannel | null>(null);
+  const staleToast = useCallback(
+    () =>
+      setStatus({
+        tone: 'info',
+        sticky: true,
+        text: 'This session changed in another tab. Reload to see it; changes made here since are not being saved.',
+        action: { label: 'Reload', run: () => window.location.reload() },
+      }),
+    [],
+  );
   const persist = useCallback(() => {
+    if (assetsRef.current === lastSaved.current) return;
+    if (stale.current) {
+      staleToast();
+      return;
+    }
     if (saving.current) {
       dirty.current = true;
       return;
     }
+    const list = assetsRef.current;
     saving.current = store
-      .saveAssets(assetsRef.current)
-      .then(() => undefined)
-      .catch(() =>
+      .saveAssets(list)
+      .then(() => {
+        lastSaved.current = list;
+        // Tell the other tabs, so they stop writing over this.
+        const note = { tab: TAB_ID, at: Date.now() };
+        channel.current?.postMessage(note);
+        local.set(SAVED_KEY, JSON.stringify(note));
+      })
+      .catch((e) =>
         setStatus({
           tone: 'error',
-          text: "Couldn't save in this browser. Export to keep your notes.",
+          text: store.isQuotaError(e)
+            ? 'Browser storage is full. Remove images or export, then continue.'
+            : store.inMemory()
+              ? 'This browser blocks storage, so your session lasts until you close the tab. Export before you leave.'
+              : "Couldn't save in this browser. Export to keep your notes.",
         }),
       )
       .finally(() => {
@@ -470,11 +596,38 @@ function Workspace() {
           persist();
         }
       });
-  }, []);
+  }, [staleToast]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: persist reads the ref; this runs on every change to assets
   useEffect(() => {
     if (loaded) persist();
   }, [assets, loaded, persist]);
+
+  // Another tab saving the session makes this tab's copy stale. BroadcastChannel where it exists;
+  // the `storage` event on the saved-at key carries the same news elsewhere.
+  useEffect(() => {
+    const heard = (from: unknown) => {
+      if (!from || (from as { tab?: string }).tab === TAB_ID || stale.current) return;
+      stale.current = true;
+      staleToast();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== SAVED_KEY || !e.newValue) return;
+      try {
+        heard(JSON.parse(e.newValue));
+      } catch {}
+    };
+    if (typeof BroadcastChannel !== 'undefined') {
+      channel.current = new BroadcastChannel(CHANNEL);
+      channel.current.onmessage = (e) => heard(e.data);
+    } else {
+      window.addEventListener('storage', onStorage);
+    }
+    return () => {
+      channel.current?.close();
+      channel.current = null;
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [staleToast]);
 
   // The text of written notes is saved anonymously: a few seconds after typing stops, and when the
   // tab is hidden or closed. Each note is sent again only when its text changed.
@@ -534,6 +687,11 @@ function Workspace() {
 
   const asset = assets[index] as Asset | undefined;
 
+  // The open image is remembered per browser, so a reload comes back to it.
+  useEffect(() => {
+    if (asset?.id) local.set(OPEN_KEY, asset.id);
+  }, [asset?.id]);
+
   const update = useCallback(
     (id: string, change: (a: Asset) => Asset, opts?: { coalesce?: Coalesce; silent?: boolean }) =>
       commit((list) => list.map((a) => (a.id === id ? change(a) : a)), opts),
@@ -542,8 +700,13 @@ function Workspace() {
 
   const addFiles = useCallback(
     async (files: File[]) => {
-      const all = files.filter((f) => f.type.startsWith('image/'));
-      if (!all.length) return;
+      const all = files.filter(isImageFile);
+      const skipped = files.length - all.length;
+      const skippedLine = skipped ? `Skipped ${count(skipped, 'file')} that aren't images.` : '';
+      if (!all.length) {
+        if (skippedLine) setStatus({ tone: 'error', text: skippedLine });
+        return;
+      }
       // A session holds up to MAX_IMAGES; what doesn't fit is left out, and the message says so.
       const room = MAX_IMAGES - assetsRef.current.length;
       if (room <= 0) {
@@ -555,50 +718,71 @@ function Workspace() {
       setStatus({ tone: 'info', text: `Adding ${count(images.length, 'image')}…` });
       const added: Asset[] = [];
       const addedUrls: Record<string, string> = {};
-      // New images take the open image's source: a batch is usually from one place. Not its link.
+      // Files the browser couldn't read, with a reason when there is one to give.
+      const failed: string[] = [];
+      let scaled = 0;
+      let full = false;
+      // New images take the open image's source: a batch is usually from one place.
       const open = assetsRef.current[indexRef.current]?.source;
-      const source: Source | undefined = open
-        ? { kind: open.kind, by: open.by, link: '' }
-        : undefined;
+      const source: Source | undefined = open ? { kind: open.kind } : undefined;
       for (const file of images) {
-        try {
-          const { blob, type, width, height } = await prepareImage(file);
-          const id = newId();
-          await store.putImage(id, blob);
-          addedUrls[id] = URL.createObjectURL(blob);
-          added.push({
-            id,
-            name: file.name || 'Pasted image.png',
-            type,
-            width,
-            height,
-            note: '',
-            marks: [],
-            ...(source ? { source } : {}),
-          });
-        } catch {
-          setStatus({ tone: 'error', text: `Couldn't read ${file.name}.` });
+        const name = file.name || 'Pasted image.png';
+        if (isSvg(file)) {
+          failed.push(`${name} (SVG isn't supported)`);
+          continue;
         }
+        let prepared: Awaited<ReturnType<typeof prepareImage>>;
+        try {
+          prepared = await prepareImage(file);
+        } catch {
+          failed.push(name);
+          continue;
+        }
+        const id = newId();
+        try {
+          await store.putImage(id, prepared.blob);
+        } catch (e) {
+          // No room left in the browser: keep what got in, and say so once.
+          if (store.isQuotaError(e)) {
+            full = true;
+            break;
+          }
+          failed.push(name);
+          continue;
+        }
+        if (prepared.scaled) scaled++;
+        addedUrls[id] = URL.createObjectURL(prepared.blob);
+        added.push({
+          id,
+          name,
+          type: prepared.type,
+          width: prepared.width,
+          height: prepared.height,
+          note: '',
+          marks: [],
+          ...(source ? { source } : {}),
+        });
       }
       setUrls((u) => ({ ...u, ...addedUrls }));
       urlsRef.current = { ...urlsRef.current, ...addedUrls };
       // A fresh batch opens on its first image; added to work in progress, the place is kept.
       const before = assetsRef.current;
-      if (!before.some(hasNotes)) setIndex(before.length);
-      commit((list) => [...list, ...added]);
-      if (leftOut) {
-        setStatus({
-          tone: 'error',
-          text: `Added ${count(added.length, 'image')}; ${count(leftOut, 'image')} left out. ${FULL_MESSAGE}`,
-        });
-        return;
+      if (added.length) {
+        if (!before.some(hasMarks)) setIndex(before.length);
+        commit((list) => [...list, ...added]);
       }
-      setStatus({
-        tone: 'info',
-        text: before.length
-          ? `Added ${count(added.length, 'image')}.`
-          : `Added ${count(added.length, 'image')}. Click the image for a dot, drag across it for an area, or Shift-drag for an arrow, then say what works and what doesn’t.`,
-      });
+      // One message for the batch: what got in, what didn't and why, what was scaled.
+      const lines = [`Added ${count(added.length, 'image')}.`];
+      if (failed.length)
+        lines.push(`Couldn't read ${count(failed.length, 'file')}: ${failed.join(', ')}.`);
+      if (skippedLine) lines.push(skippedLine);
+      if (scaled)
+        lines.push(`Scaled down ${count(scaled, 'screenshot')} to fit (16 megapixel limit).`);
+      if (full) lines.push('Browser storage is full. Remove images or export, then continue.');
+      if (leftOut) lines.push(`${count(leftOut, 'image')} left out. ${FULL_MESSAGE}`);
+      const trouble = failed.length > 0 || skipped > 0 || full || leftOut > 0;
+      if (!trouble && !before.length && added.length) lines.push(HOW_TO_MARK);
+      setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
     [commit],
   );
@@ -661,6 +845,13 @@ function Workspace() {
     setSelected(null);
   }, [asset, selected, update]);
 
+  /** Close the open note and put focus back on its pin, so the keyboard stays where the user was. */
+  const closeNote = useCallback(() => {
+    const id = selected;
+    deselect();
+    if (id) requestAnimationFrame(() => pinOf(id)?.focus());
+  }, [selected, deselect]);
+
   const go = useCallback(
     (to: number) => {
       if (!assets.length) return;
@@ -713,47 +904,31 @@ function Workspace() {
   const setSource = useCallback(
     (source: Source | undefined) => {
       if (!asset) return;
-      // Typing a maker or link is one step per pause, like a note's text.
-      const typed =
-        source && asset.source && source.kind === asset.source.kind
-          ? source.by !== asset.source.by
-            ? 'by'
-            : 'link'
-          : undefined;
-      update(asset.id, (a) => ({ ...a, source }), {
-        coalesce: typed ? { key: `source:${asset.id}:${typed}`, within: TYPING_PAUSE } : undefined,
-      });
+      update(asset.id, (a) => ({ ...a, source }));
     },
     [asset, update],
   );
   const setSourceForAll = () => {
     const source = asset?.source;
     if (!source) return;
-    commit((list) =>
-      list.map((a) => ({
-        ...a,
-        source: { kind: source.kind, by: source.by, link: a.source?.link ?? '' },
-      })),
-    );
+    commit((list) => list.map((a) => ({ ...a, source: { kind: source.kind } })));
     setStatus({
       tone: 'info',
       text: `Set ${count(assets.length, 'image')} to ${sourceLabel(source.kind)}.`,
     });
   };
 
-  // Keys: arrows or J/K move between images, 1–9 open a note, N adds one, A toggles the Arrow
-  // tool, S cycles the source, Delete removes the open note, Escape closes it (then leaves the
-  // Arrow tool), ⌘Z and ⇧⌘Z undo and redo, ? lists them all.
+  // Keys: arrows or J/K move between images, 1–9 and [ ] open a note, N adds one, A toggles the
+  // Arrow tool, S cycles the source, Delete removes the note whose pin is focused, Escape closes
+  // the open note (then leaves the Arrow tool), ⌘Z and ⇧⌘Z undo and redo, ? lists them all.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A dialog holds the keyboard; it closes itself on Escape.
+      if (dialog) return;
       if (e.key === 'Escape') {
-        if (shortcuts) {
-          setShortcuts(false);
-          return;
-        }
         if (isTyping(e.target)) (e.target as HTMLElement).blur();
-        else if (!selected && tool === 'arrow') setTool('pin');
-        deselect();
+        else if (!selected && tool !== 'pin') setTool('pin');
+        closeNote();
         return;
       }
       const key = e.key.toLowerCase();
@@ -765,9 +940,7 @@ function Workspace() {
           const field = el.id.match(/^(works|doesnt|label)-(.+)$/);
           const openKey = field
             ? `text:${field[2]}:${{ works: 'good', doesnt: 'bad', label: 'label' }[field[1]]}`
-            : el.id === 'whole-note' && asset
-              ? `note:${asset.id}`
-              : null;
+            : null;
           if (openKey && history.current.isOpen(openKey, TYPING_PAUSE)) return;
         }
         e.preventDefault();
@@ -778,21 +951,43 @@ function Workspace() {
       if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === '?') {
         e.preventDefault();
-        setShortcuts((s) => !s);
+        openDialog('shortcuts');
         return;
       }
-      if (shortcuts) return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
+      // Delete removes the note whose pin (or arrow handle) has focus: never one merely open.
+      const focusedPin = (e.target as HTMLElement)?.closest?.<HTMLElement>('[data-mark]');
+      if ((e.key === 'Delete' || e.key === 'Backspace') && focusedPin?.dataset.mark) {
         e.preventDefault();
-        removeMark(selected);
+        removeMark(focusedPin.dataset.mark);
         return;
       }
-      if (asset && /^[1-9]$/.test(e.key)) {
-        const mark = asset.marks[Number(e.key) - 1];
+      const open = (mark: Mark | undefined) => {
         if (!mark) return;
         e.preventDefault();
         if (mark.id !== selected) deselect();
         setSelected(mark.id);
+      };
+      if (asset && /^[1-9]$/.test(e.key)) {
+        open(asset.marks[Number(e.key) - 1]);
+        return;
+      }
+      // [ and ] walk the notes on this image, for the tenth note and beyond: from the open note,
+      // else from the focused pin, else from either end.
+      if (asset && (e.key === '[' || e.key === ']') && asset.marks.length) {
+        const from = selected ?? focusedPin?.dataset.mark;
+        const at = asset.marks.findIndex((m) => m.id === from);
+        const last = asset.marks.length - 1;
+        open(
+          asset.marks[
+            e.key === ']'
+              ? at < 0
+                ? 0
+                : Math.min(last, at + 1)
+              : at < 0
+                ? last
+                : Math.max(0, at - 1)
+          ],
+        );
         return;
       }
       if (asset && key === 'n') {
@@ -800,16 +995,15 @@ function Workspace() {
         addMark({ kind: 'dot', x: 0.5, y: 0.5 });
         return;
       }
-      if (asset && key === 'a') {
+      // P, R and A pick a tool; Esc with nothing open goes back to Pin.
+      const picked = asset && ({ p: 'pin', r: 'area', a: 'arrow' } as Record<string, Tool>)[key];
+      if (picked) {
         e.preventDefault();
-        const next: Tool = tool === 'arrow' ? 'pin' : 'arrow';
-        setTool(next);
+        setTool(picked);
+        const name = TOOLS.find((t) => t.kind === picked)?.label;
         setStatus({
           tone: 'info',
-          text:
-            next === 'arrow'
-              ? 'Arrow tool: drag from one spot to another. Esc or A goes back to Pin.'
-              : 'Pin tool: click for a dot, drag for an area.',
+          text: `${name} tool: ${TOOL_WHAT[picked].charAt(0).toLowerCase()}${TOOL_WHAT[picked].slice(1)}${picked === 'pin' ? '' : ' Esc or P goes back to Pin.'}`,
         });
         return;
       }
@@ -837,11 +1031,13 @@ function Workspace() {
     index,
     selected,
     deselect,
+    closeNote,
     removeMark,
     addMark,
     setSource,
     asset,
-    shortcuts,
+    dialog,
+    openDialog,
     tool,
     undo,
     redo,
@@ -916,82 +1112,14 @@ function Workspace() {
     };
   }, [wanted, update]);
 
-  const locate = async (target: Asset) => {
-    const note = target.note.trim();
-    if (!note) return;
-    setLocating((s) => new Set(s).add(target.id));
-    try {
-      const blob = await store.getImage(target.id);
-      if (!blob) throw new Error('The image is missing.');
-      const small = await imageForAi(blob);
-      const form = new FormData();
-      form.set('image', small.blob, 'image.jpg');
-      form.set('width', String(small.width));
-      form.set('height', String(small.height));
-      form.set('note', note);
-      const res = await fetch('/api/pin/locate', { method: 'POST', body: form });
-      const body = await res.json().catch(() => null);
-      if (!res.ok)
-        throw new Error(body?.error ?? "Couldn't place the notes. Try again in a moment.");
-      const result = body as LocateResult;
-      const placed = toMarks(result, small.width, small.height, newId);
-      // A new run replaces the AI's unchecked marks from the last one; checked and own marks stay.
-      // One step per image placed, so Undo takes the whole placement back.
-      update(target.id, (a) => ({
-        ...a,
-        marks: [...a.marks.filter((m) => m.origin === 'user' || m.confirmed), ...placed],
-        locatedNote: note,
-        unplaced: result.unplaced,
-      }));
-      return placed.length;
-    } finally {
-      setLocating((s) => {
-        const next = new Set(s);
-        next.delete(target.id);
-        return next;
-      });
-    }
-  };
-
-  const locateOne = async () => {
-    if (!asset) return;
-    try {
-      const n = await locate(asset);
-      setStatus({
-        tone: 'info',
-        text: `Placed ${count(n ?? 0, 'note')}. Check each one and move it if it's off.`,
-      });
-    } catch (e) {
-      setStatus({ tone: 'error', text: (e as Error).message });
-    }
-  };
-
-  const pending = assets.filter((a) => a.note.trim() && a.note.trim() !== a.locatedNote);
-  const locateAll = async () => {
-    let placed = 0;
-    for (const [i, a] of pending.entries()) {
-      setStatus({ tone: 'info', text: `Placing notes: image ${i + 1} of ${pending.length}…` });
-      try {
-        placed += (await locate(a)) ?? 0;
-      } catch (e) {
-        setStatus({ tone: 'error', text: (e as Error).message });
-        return;
-      }
-    }
-    setStatus({
-      tone: 'info',
-      text: `Placed ${count(placed, 'note')} on ${count(pending.length, 'image')}. Check them before you export.`,
-    });
-  };
-
-  const tagged = assets.filter(hasNotes);
+  const tagged = assets.filter(hasMarks);
   const allMarks = tagged.flatMap((a) => a.marks.filter((m) => verdictOf(m) !== 'empty'));
-  const unchecked = allMarks.filter((m) => m.origin === 'ai' && !m.confirmed).length;
 
-  const exportZip = async () => {
+  /** Builds and downloads the zip; true when it went out. */
+  const exportZip = async (): Promise<boolean> => {
     if (!tagged.length) {
       setStatus({ tone: 'error', text: 'Write a note on at least one image first.' });
-      return;
+      return false;
     }
     deselect();
     try {
@@ -999,13 +1127,16 @@ function Workspace() {
         setExporting(`Preparing ${Math.min(done + 1, total)} of ${total}…`),
       );
       download(blob, name);
+      markExported();
       const skipped = assets.length - tagged.length;
       setStatus({
         tone: 'info',
         text: `Exported ${count(tagged.length, 'image')} and ${count(allMarks.length, 'note')}${skipped ? `; ${count(skipped, 'image')} without notes left out` : ''}. The zip holds README.md and notes.json, your images, a marked copy of each, and a close-up of every note. Give your agent the whole folder, starting with README.md.`,
       });
+      return true;
     } catch (e) {
       setStatus({ tone: 'error', text: (e as Error).message });
+      return false;
     } finally {
       setExporting(null);
     }
@@ -1016,6 +1147,7 @@ function Workspace() {
     setCopyMenu(false);
     try {
       await navigator.clipboard.writeText(batchSummary(assets));
+      markExported();
       setCopied(true);
       setStatus({
         tone: 'info',
@@ -1103,15 +1235,27 @@ function Workspace() {
     });
   };
 
+  /**
+   * The logo goes home, which in Pinch means a new batch: straight there when everything was
+   * exported since the last change, after a question when something wasn't.
+   */
+  const goHome = () => {
+    if (!assets.length) return;
+    if (digestOf(assetsRef.current) !== exported.current) openDialog('home');
+    else startOver();
+  };
+
   // The landing: no image yet, so the header floats over the painting in two glass pills.
   const landing = loaded && !asset;
 
   return (
     <div className="relative flex h-dvh min-h-0 flex-col bg-background text-foreground">
+      {/* While a dialog is open, everything behind it is inert: no focus, no clicks, nothing read. */}
       <header
+        inert={dialog !== null}
         className={cn(
-          'flex h-14 shrink-0 items-center gap-3 px-4',
-          landing ? 'absolute inset-x-0 top-0 z-10 h-16 px-5' : 'border-b border-border',
+          'flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1',
+          landing ? 'absolute inset-x-0 top-0 z-10 h-16 px-5 py-0' : 'border-b border-border',
         )}
       >
         <div
@@ -1121,7 +1265,28 @@ function Workspace() {
               'h-9 rounded-full bg-background/80 px-3.5 shadow-sm ring-1 ring-border/70 backdrop-blur-md',
           )}
         >
-          <PinchWordmark className="h-[15px]" />
+          {landing ? (
+            <PinchWordmark className="h-[15px]" />
+          ) : (
+            // Home is a new batch; a modified click still opens a new tab, as a link should.
+            <a
+              href={pathname}
+              data-home-trigger
+              aria-label="Pinch, start a new batch"
+              onClick={(e) => {
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                goHome();
+              }}
+              className={cn(
+                hoverFill,
+                hit,
+                '-mx-1.5 flex items-center rounded-md px-1.5 py-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+              )}
+            >
+              <PinchWordmark className="h-[15px]" />
+            </a>
+          )}
         </div>
         <div
           className={cn(
@@ -1131,30 +1296,34 @@ function Workspace() {
           )}
         >
           {assets.length > 0 && (
-            <p className="m-0 mr-2 text-[13px] text-muted-foreground" aria-live="polite">
+            <p
+              className="m-0 mr-2 text-[13px] text-muted-foreground max-[900px]:hidden"
+              aria-live="polite"
+            >
               {tagged.length} of {assets.length} tagged · {count(allMarks.length, 'note')}
-              {unchecked ? ` · ${unchecked} to check` : ''}
             </p>
-          )}
-          {aiOn && pending.length > 1 && (
-            <ToolbarButton onClick={locateAll} disabled={locating.size > 0}>
-              Place notes on {count(pending.length, 'image')}
-            </ToolbarButton>
           )}
           {suggestAvailable && assets.length > 0 && (
             <label
               htmlFor="suggestions"
               className="flex min-h-9 items-center gap-2 px-1 text-sm"
-              title="Grey suggestions in empty notes; Tab takes one"
+              title="Grey suggestions in empty notes; Tab takes one. Sends the marked area to Anthropic."
             >
               <Switch
                 id="suggestions"
                 size="sm"
                 checked={suggestPref}
                 onCheckedChange={toggleSuggestions}
+                aria-describedby="suggestions-note"
               />
               Suggestions
             </label>
+          )}
+          {suggestAvailable && assets.length > 0 && (
+            // The switch's description, outside its label so it doesn't join the name.
+            <span id="suggestions-note" className="sr-only">
+              Sends the marked area to Anthropic.
+            </span>
           )}
           {assets.length > 0 && (
             <TooltipProvider>
@@ -1163,14 +1332,20 @@ function Workspace() {
                   onClick={(e) => (e.shiftKey ? copyAllAsText() : copyForAgent())}
                   title="Copy the open image with its notes drawn on, plus the notes as text. Shift-click: all notes as text."
                   aria-live="polite"
-                  className="min-w-[8.75rem] justify-center rounded-r-none"
+                  className="justify-center rounded-r-none min-[900px]:min-w-[8.75rem]"
                 >
                   {copied ? (
                     <Check className="size-4" aria-hidden />
                   ) : (
                     <Copy className="size-4" aria-hidden />
                   )}
-                  {copied ? 'Copied' : 'Copy for agent'}
+                  {copied ? (
+                    'Copied'
+                  ) : (
+                    <>
+                      Copy<span className="max-[900px]:hidden"> for agent</span>
+                    </>
+                  )}
                 </ToolbarButton>
                 <ToolbarButton
                   aria-label="More ways to copy"
@@ -1183,7 +1358,8 @@ function Workspace() {
                       setCopyMenu(true);
                     }
                   }}
-                  className="-ml-px rounded-l-none px-1.5"
+                  // Joined to the button on its left, so its hit area grows only up and down.
+                  className="-ml-px rounded-l-none px-1.5 after:min-w-0"
                 >
                   <ChevronDown className="size-4" aria-hidden />
                 </ToolbarButton>
@@ -1205,10 +1381,17 @@ function Workspace() {
                 type="button"
                 onClick={exportZip}
                 disabled={Boolean(exporting)}
-                className="flex min-h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-60"
+                className={cn(
+                  hit,
+                  'flex min-h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-60',
+                )}
               >
                 <Download className="size-4" aria-hidden />
-                {exporting ?? 'Export for agent'}
+                {exporting ?? (
+                  <>
+                    Export<span className="max-[900px]:hidden"> for agent</span>
+                  </>
+                )}
               </button>
               <Tooltip>
                 <TooltipTrigger
@@ -1216,10 +1399,13 @@ function Workspace() {
                     <button
                       type="button"
                       aria-label="Keyboard shortcuts"
-                      aria-expanded={shortcuts}
+                      aria-expanded={dialog === 'shortcuts'}
                       data-shortcuts-trigger
-                      onClick={() => setShortcuts((s) => !s)}
-                      className="flex size-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                      onClick={() => (dialog ? closeDialog() : openDialog('shortcuts'))}
+                      className={cn(
+                        hit,
+                        'flex size-9 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+                      )}
                     >
                       <Keyboard className="size-4" aria-hidden />
                     </button>
@@ -1232,14 +1418,29 @@ function Workspace() {
             </TooltipProvider>
           )}
           <ThemeToggle />
+          {assets.length > 0 && (
+            <button
+              type="button"
+              data-privacy-trigger
+              onClick={() => openDialog('privacy')}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+              )}
+            >
+              Privacy
+            </button>
+          )}
         </div>
+        {/* Driven by the Add images buttons; hidden from assistive tech, which would read it as an unreachable "Choose files". */}
         <input
           ref={fileInput}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
+          accept="image/*"
           multiple
           className="sr-only"
           tabIndex={-1}
+          aria-hidden
           onChange={(e) => {
             addFiles([...(e.target.files ?? [])]);
             e.target.value = '';
@@ -1247,10 +1448,23 @@ function Workspace() {
         />
       </header>
 
+      {volatile && !landing && (
+        // The session can't be kept: a banner, not a toast, because it holds for the whole visit.
+        <p
+          role="status"
+          inert={dialog !== null}
+          className="m-0 shrink-0 border-b border-border bg-muted/60 px-4 py-2 text-center text-[13px] text-foreground"
+        >
+          This browser blocks storage, so your session lasts until you close the tab. Export before
+          you leave.
+        </p>
+      )}
+
       {status && (
         // A toast: it floats over the page, so a message never moves the layout.
         <div
           role={status.tone === 'error' ? 'alert' : 'status'}
+          inert={dialog !== null}
           className="fixed bottom-4 left-1/2 z-30 flex w-max max-w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground shadow-lg dark:shadow-none"
         >
           <span className="min-w-0 flex-1">{status.text}</span>
@@ -1261,7 +1475,10 @@ function Workspace() {
                 status.action?.run();
                 setStatus(null);
               }}
-              className="flex min-h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-sm font-medium hover:bg-muted"
+              className={cn(
+                hit,
+                'flex min-h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+              )}
             >
               {status.action.label}
             </button>
@@ -1270,7 +1487,10 @@ function Workspace() {
             type="button"
             aria-label="Dismiss"
             onClick={() => setStatus(null)}
-            className="-mr-2 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            className={cn(
+              hit,
+              '-mr-2 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+            )}
           >
             <X className="size-4" aria-hidden />
           </button>
@@ -1278,9 +1498,14 @@ function Workspace() {
       )}
 
       {!loaded ? null : !asset ? (
-        <EmptyState dragging={dragging} onChoose={() => fileInput.current?.click()} />
+        <EmptyState
+          dragging={dragging}
+          inert={dialog !== null}
+          onChoose={() => fileInput.current?.click()}
+          onPrivacy={() => openDialog('privacy')}
+        />
       ) : (
-        <div className="flex min-h-0 flex-1">
+        <div inert={dialog !== null} className="flex min-h-0 flex-1">
           <Filmstrip
             assets={assets}
             urls={urls}
@@ -1296,6 +1521,8 @@ function Workspace() {
             selected={selected}
             tool={tool}
             onTool={setTool}
+            fitWidth={fitWidth}
+            onFitWidth={setFitWidth}
             onSelect={(id) => {
               if (id !== selected) deselect();
               setSelected(id);
@@ -1309,8 +1536,6 @@ function Workspace() {
             number={index + 1}
             total={assets.length}
             selected={selected}
-            aiOn={aiOn}
-            locating={locating.has(asset.id)}
             suggestionsOn={suggestionsOn}
             suggesting={suggesting}
             onSource={setSource}
@@ -1321,22 +1546,131 @@ function Workspace() {
             }}
             onChangeMark={changeMark}
             onRemoveMark={removeMark}
-            onDone={deselect}
-            onNote={(note) =>
-              update(asset.id, (a) => ({ ...a, note }), {
-                coalesce: { key: `note:${asset.id}`, within: TYPING_PAUSE },
-              })
-            }
-            onLocate={locateOne}
-            onAddCentre={() => addMark({ kind: 'dot', x: 0.5, y: 0.5 })}
+            onDone={closeNote}
+            onAddCentre={addMark}
             onPrev={() => go(index - 1)}
             onNext={() => go(index + 1)}
             onRemove={() => removeAsset(asset.id)}
+            dismissed={dismissed}
+            onDismiss={(markId, field, shape) =>
+              setDismissed((d) => ({ ...d, [`${markId}:${field}`]: shape }))
+            }
           />
         </div>
       )}
-      {shortcuts && <ShortcutsDialog mac={mac} onClose={() => setShortcuts(false)} />}
+      {dialog === 'shortcuts' && (
+        <ShortcutsDialog mac={mac} opener={opener.current} onClose={closeDialog} />
+      )}
+      {dialog === 'privacy' && <PrivacyDialog opener={opener.current} onClose={closeDialog} />}
+      {dialog === 'home' && (
+        <Dialog
+          id="home-title"
+          title="Start a new batch?"
+          opener={opener.current}
+          onClose={closeDialog}
+        >
+          <p className="m-0 text-muted-foreground">
+            Your {count(assets.length, 'image')} and {count(allMarks.length, 'note')} are kept in
+            this browser until you start over. Export them first if you want to keep them.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                closeDialog();
+                if (await exportZip()) startOver();
+              }}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+              )}
+            >
+              Export and start over
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeDialog();
+                startOver();
+              }}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
+              )}
+            >
+              Start over
+            </button>
+            <button
+              type="button"
+              data-autofocus
+              onClick={closeDialog}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+              )}
+            >
+              Cancel
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
+  );
+}
+
+/** How Pinch uses what the user gives it, said plainly; opened from the landing footer and the header. */
+function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClose: () => void }) {
+  const item = (title: string, body: React.ReactNode) => (
+    <p className="m-0">
+      <strong className="font-medium text-foreground">{title}</strong> {body}
+    </p>
+  );
+  return (
+    <Dialog
+      id="privacy-title"
+      title="How Pinch uses your data"
+      opener={opener}
+      onClose={onClose}
+      fallback="[data-privacy-trigger]"
+    >
+      <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
+        {item(
+          'Your images',
+          'stay in this browser, stored in its IndexedDB. They are not uploaded, except for AI suggestions, as below.',
+        )}
+        {item(
+          'AI suggestions',
+          'are on by default; the switch is in the header. Only AI suggestions send anything to Anthropic: when you open an empty note, a 768px copy of the screenshot and a crop around the marked spot are sent to Anthropic’s API (Claude Haiku) to write a suggestion. We don’t store them. Turn suggestions off and nothing is sent.',
+        )}
+        {item(
+          'Notes text:',
+          'the words of your notes (what works, what doesn’t and the short name) are saved without your name, images, file names or links, and kept for 90 days, to learn how designers judge screens. This can’t be switched off. A salted hash of your IP address is used only to count daily limits.',
+        )}
+        {item(
+          'Topic tags:',
+          'each saved note’s words are sent to TypeSafe’s Jev to tag its topic (type, colour, layout, and so on). Nothing else goes with them.',
+        )}
+        {item(
+          'No accounts, no ads, no analytics.',
+          'Your theme and settings are kept in this browser.',
+        )}
+        {item(
+          'Contact:',
+          <>
+            Created by{' '}
+            <a
+              href="https://yair-works.vercel.app"
+              target="_blank"
+              rel="noopener"
+              className="-mx-1 rounded px-1 text-foreground underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted"
+            >
+              Yair Cohen
+            </a>
+            .
+          </>,
+        )}
+      </div>
+    </Dialog>
   );
 }
 
@@ -1383,10 +1717,10 @@ function CopyMenu({
           role="menuitem"
           disabled={item.disabled}
           onClick={item.run}
-          className="flex w-full flex-col items-start rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:opacity-50"
+          className="flex w-full flex-col items-start rounded-md px-2.5 py-2 text-left text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:opacity-50"
         >
           {item.label}
-          {item.hint && <span className="text-xs text-muted-foreground">{item.hint}</span>}
+          {item.hint && <span className="text-[13px] text-muted-foreground">{item.hint}</span>}
         </button>
       ))}
     </div>
@@ -1414,12 +1748,14 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
     group: 'Notes',
     rows: [
       { combos: [['1'], ['9']], join: 'to', what: 'Open note 1 to 9 on this image' },
+      { combos: [['['], [']']], join: 'or', what: 'Open the previous or next note' },
       { combos: [['N']], what: 'Add a note at the centre' },
       { combos: [['⇧', 'Drag']], what: 'Draw an arrow from one spot to another' },
-      { combos: [['A']], what: 'Arrow tool on or off: every drag draws an arrow' },
+      { combos: [['P']], what: 'Pin tool: click for a dot, drag for an area' },
+      { combos: [['R']], what: 'Area tool: drag for an area, click for a standard box' },
+      { combos: [['A']], what: 'Arrow tool: every drag draws an arrow' },
       { combos: [['S']], what: 'Cycle the source: Ours, Competitor, Other product, Concept, none' },
-      { combos: [['Delete']], what: 'Delete the open note' },
-      { combos: [['Esc']], what: 'Close the note, leave a field, or leave the Arrow tool' },
+      { combos: [['Esc']], what: 'Close the note, leave a field, or go back to the Pin tool' },
     ],
   },
   {
@@ -1428,13 +1764,22 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
       { combos: [['Arrows']], what: 'Move it 1%' },
       { combos: [['⇧', 'Arrows']], what: 'Move it 5%' },
       { combos: [['Enter']], what: 'Open its note' },
+      { combos: [['Delete']], what: 'Delete its note' },
+    ],
+  },
+  {
+    group: 'On a focused area’s corner handle',
+    rows: [
+      { combos: [['Arrows']], what: 'Resize the area 1%' },
+      { combos: [['⇧', 'Arrows']], what: 'Resize it 5%' },
     ],
   },
   {
     group: 'In a field',
     rows: [
-      { combos: [['Tab']], what: 'Take the grey suggestion' },
-      { combos: [['⌘', 'Enter']], what: 'Done with this note' },
+      { combos: [['Tab']], what: 'Take the grey suggestion; the next Tab moves on' },
+      { combos: [['Esc']], what: 'Dismiss the grey suggestion' },
+      { combos: [['⌘', 'Enter']], what: 'Done with this note; focus returns to its pin' },
     ],
   },
   {
@@ -1449,82 +1794,54 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
 ];
 
 /** The shortcuts, in a small dialog; Escape, the backdrop or the close button shuts it. */
-function ShortcutsDialog({ mac, onClose }: { mac: boolean; onClose: () => void }) {
-  const close = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    close.current?.focus();
-    return () => {
-      // Back to the button or key that opened it.
-      (opener?.isConnected
-        ? opener
-        : document.querySelector<HTMLElement>('[data-shortcuts-trigger]')
-      )?.focus();
-    };
-  }, []);
+function ShortcutsDialog({
+  mac,
+  opener,
+  onClose,
+}: {
+  mac: boolean;
+  opener: HTMLElement | null;
+  onClose: () => void;
+}) {
   const show = (k: string) => (mac ? k : k === '⌘' ? 'Ctrl' : k === '⇧' ? 'Shift' : k);
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Close"
-        tabIndex={-1}
-        onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/30"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="shortcuts-title"
-        className="relative w-full max-w-md rounded-xl border border-border bg-background p-5 text-sm shadow-lg dark:shadow-none"
-      >
-        <div className="mb-3 flex items-center gap-2">
-          <h2 id="shortcuts-title" className="m-0 text-sm font-medium">
-            Keyboard shortcuts
-          </h2>
-          <button
-            ref={close}
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-        </div>
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto">
-          {SHORTCUTS.map((g) => (
-            <section key={g.group}>
-              <h3 className="m-0 mb-1.5 text-[13px] font-medium text-muted-foreground">
-                {g.group}
-              </h3>
-              <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-                {g.rows.map((row) => (
-                  <div key={row.what} className="contents">
-                    <dt className="flex flex-wrap items-center gap-1">
-                      {row.combos.map((combo, j) => (
-                        <span key={combo.join('+')} className="flex items-center gap-1">
-                          {j > 0 && (
-                            <span className="text-[13px] text-muted-foreground">{row.join}</span>
-                          )}
-                          {combo.map((k) => (
-                            <Kbd key={k}>{show(k)}</Kbd>
-                          ))}
-                        </span>
-                      ))}
-                    </dt>
-                    <dd className="m-0 text-[13px]">{row.what}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          ))}
-        </div>
-        <p className="mt-4 mb-0 text-xs text-muted-foreground">
-          None of these fire while you type in a field; <Kbd>Esc</Kbd> leaves it first.
-        </p>
+    <Dialog
+      id="shortcuts-title"
+      title="Keyboard shortcuts"
+      opener={opener}
+      onClose={onClose}
+      fallback="[data-shortcuts-trigger]"
+    >
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+        {SHORTCUTS.map((g) => (
+          <section key={g.group}>
+            <h3 className="m-0 mb-1.5 text-[13px] font-medium text-muted-foreground">{g.group}</h3>
+            <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+              {g.rows.map((row) => (
+                <div key={row.what} className="contents">
+                  <dt className="flex flex-wrap items-center gap-1">
+                    {row.combos.map((combo, j) => (
+                      <span key={combo.join('+')} className="flex items-center gap-1">
+                        {j > 0 && (
+                          <span className="text-[13px] text-muted-foreground">{row.join}</span>
+                        )}
+                        {combo.map((k) => (
+                          <Kbd key={k}>{show(k)}</Kbd>
+                        ))}
+                      </span>
+                    ))}
+                  </dt>
+                  <dd className="m-0 text-[13px]">{row.what}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
       </div>
-    </div>
+      <p className="mt-4 mb-0 text-[13px] text-muted-foreground">
+        None of these fire while you type in a field; <Kbd>Esc</Kbd> leaves it first.
+      </p>
+    </Dialog>
   );
 }
 
@@ -1534,7 +1851,8 @@ function ToolbarButton({ children, className, ...props }: React.ComponentProps<'
       type="button"
       {...props}
       className={cn(
-        'flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50',
+        hit,
+        'flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-50',
         className,
       )}
     >
@@ -1554,7 +1872,17 @@ const PARALLAX = { x: 44, y: 28 };
 /** The painting is drawn this much larger, so its edges never show as it drifts. */
 const PARALLAX_SCALE = 1.1;
 
-function EmptyState({ dragging, onChoose }: { dragging: boolean; onChoose: () => void }) {
+function EmptyState({
+  dragging,
+  inert,
+  onChoose,
+  onPrivacy,
+}: {
+  dragging: boolean;
+  inert: boolean;
+  onChoose: () => void;
+  onPrivacy: () => void;
+}) {
   // Parallax: the painting drifts a little against the pointer, eased so it glides. Still under
   // reduced motion.
   const painting = useRef<HTMLDivElement>(null);
@@ -1584,7 +1912,13 @@ function EmptyState({ dragging, onChoose }: { dragging: boolean; onChoose: () =>
     };
   }, []);
   return (
-    <section data-landing aria-label="Start" className="relative flex min-h-0 flex-1 flex-col">
+    // The painting is drawn larger than the page for the parallax; this clips it, so the page never scrolls sideways.
+    <section
+      data-landing
+      aria-label="Start"
+      inert={inert}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
       <div
         ref={painting}
         aria-hidden
@@ -1632,7 +1966,7 @@ function EmptyState({ dragging, onChoose }: { dragging: boolean; onChoose: () =>
                   mask: 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)',
                 }}
               />
-              <div className="rounded-[1.625rem] bg-[#0e0e10]/90 px-7 pt-7 pb-6 text-[#f5f5f5] ring-1 ring-black/40">
+              <div className="overflow-hidden rounded-[1.625rem] bg-[#0e0e10]/90 px-7 pt-7 pb-6 text-[#f5f5f5] ring-1 ring-black/40">
                 <DropFolder
                   active={dragging}
                   className="mx-auto -mt-2 mb-5 w-52 [@media(max-height:760px)]:w-44"
@@ -1667,9 +2001,18 @@ function EmptyState({ dragging, onChoose }: { dragging: boolean; onChoose: () =>
               </div>
             </div>
           </div>
-          <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-xs leading-relaxed text-white">
+          <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
-              Free, no account. Your images stay in this browser.
+              Free, no account. Images stay in this browser; AI suggestions send the marked area to
+              Anthropic.{' '}
+              <button
+                type="button"
+                data-privacy-trigger
+                onClick={onPrivacy}
+                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                How Pinch uses your data
+              </button>
             </span>
             <span className="mx-auto mt-1 block">
               Created by{' '}
@@ -1677,7 +2020,7 @@ function EmptyState({ dragging, onChoose }: { dragging: boolean; onChoose: () =>
                 href="https://yair-works.vercel.app"
                 target="_blank"
                 rel="noopener"
-                className="underline underline-offset-2 hover:text-white/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Yair Cohen
               </a>
@@ -1711,7 +2054,10 @@ function Filmstrip({
     current.current?.scrollIntoView({ block: 'nearest' });
   }, [index]);
   return (
-    <nav aria-label="Images" className="flex w-52 shrink-0 flex-col border-r border-border">
+    <nav
+      aria-label="Images"
+      className="flex w-52 shrink-0 flex-col border-r border-border max-[900px]:w-36"
+    >
       <ol className="m-0 min-h-0 flex-1 list-none space-y-1 overflow-y-auto p-2">
         {assets.map((a, i) => {
           const marks = a.marks.filter((m) => verdictOf(m) !== 'empty');
@@ -1730,7 +2076,7 @@ function Filmstrip({
                   // The open image: a quiet fill and a 2px bar on its left edge.
                   i === index
                     ? 'bg-muted before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-foreground before:content-[""]'
-                    : 'hover:bg-muted',
+                    : 'transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
                 )}
               >
                 {/* biome-ignore lint/performance/noImgElement: a local image held by this browser */}
@@ -1740,26 +2086,26 @@ function Filmstrip({
                   className="h-12 w-16 shrink-0 rounded object-cover object-top"
                 />
                 <span className="flex min-w-0 flex-col justify-center gap-0.5">
-                  <span className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1 font-mono text-[13px] text-muted-foreground">
                     {String(i + 1).padStart(2, '0')}
-                    {hasNotes(a) && <Check className="size-3 text-foreground" aria-hidden />}
+                    {hasMarks(a) && <Check className="size-3 text-foreground" aria-hidden />}
                   </span>
                   <span className="truncate text-[13px]">{a.name}</span>
                   {marks.length > 0 && (
-                    <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                    <span className="flex items-center gap-2 font-mono text-[13px] text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
-                        <span
+                        <ThumbsUp
                           aria-hidden
-                          className="size-1.5 rounded-full"
-                          style={{ background: VERDICT_COLOR.good }}
+                          className="size-4"
+                          style={{ color: VERDICT_COLOR.good }}
                         />
                         {good}
                       </span>
                       <span className="inline-flex items-center gap-1">
-                        <span
+                        <ThumbsDown
                           aria-hidden
-                          className="size-1.5 rounded-full"
-                          style={{ background: VERDICT_COLOR.bad }}
+                          className="size-4"
+                          style={{ color: VERDICT_COLOR.bad }}
                         />
                         {bad}
                       </span>
@@ -1775,17 +2121,23 @@ function Filmstrip({
         <button
           type="button"
           onClick={onAdd}
-          className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted"
+          className={cn(
+            hit,
+            'flex min-h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+          )}
         >
-          <ImagePlus className="size-4" aria-hidden />
+          <Plus className="size-4" aria-hidden />
           Add more
         </button>
         <button
           type="button"
           onClick={onStartOver}
-          className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          className={cn(
+            hit,
+            'flex min-h-9 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+          )}
         >
-          <Trash2 className="size-4" aria-hidden />
+          <RotateCcw className="size-4" aria-hidden />
           Start over
         </button>
       </div>
@@ -1796,13 +2148,19 @@ function Filmstrip({
 /* ---------- Stage: the image and its marks ---------- */
 
 /** What a drag on the image makes: a dot or an area (the default), or an arrow. */
-type Tool = 'pin' | 'arrow';
+type Tool = 'pin' | 'area' | 'arrow';
 const TOOLS: { kind: Tool; label: string; hint: string; icon: typeof MapPin }[] = [
   {
     kind: 'pin',
     label: 'Pin',
-    hint: 'Click for a dot, drag for an area. Shift-drag for an arrow.',
+    hint: 'Click for a dot, drag for an area. Shift-drag for an arrow. Key: P',
     icon: MapPin,
+  },
+  {
+    kind: 'area',
+    label: 'Area',
+    hint: 'Drag to mark an area; click for a standard box. Key: R',
+    icon: Square,
   },
   {
     kind: 'arrow',
@@ -1811,8 +2169,40 @@ const TOOLS: { kind: Tool; label: string; hint: string; icon: typeof MapPin }[] 
     icon: MoveUpRight,
   },
 ];
+/** What each tool does, for the stage's name and the toast when a key picks one. */
+const TOOL_WHAT: Record<Tool, string> = {
+  pin: 'Click to add a dot, drag to mark an area, Shift-drag to draw an arrow.',
+  area: 'Drag to mark an area, or click for a standard box.',
+  arrow: 'Drag from one spot to another to draw an arrow.',
+};
+/** The box a click makes with the Area tool: a share of the image, centred on the click, kept inside. */
+const STANDARD_AREA = { w: 0.16, h: 0.1 };
+const standardAreaAt = (p: { x: number; y: number }): Area => ({
+  kind: 'area',
+  x: Math.min(1 - STANDARD_AREA.w, Math.max(0, p.x - STANDARD_AREA.w / 2)),
+  y: Math.min(1 - STANDARD_AREA.h, Math.max(0, p.y - STANDARD_AREA.h / 2)),
+  ...STANDARD_AREA,
+});
+/** What the first upload and an empty panel say. */
+const HOW_TO_MARK =
+  'Click the image for a dot, drag across it for an area, or pick Area or Arrow in the toolbar, then say what works and what doesn’t.';
 
 type ArrowEnd = 'tail' | 'head';
+
+/** An image this much taller than wide is a full-page capture: fitted whole it is a sliver. */
+const TALL = 2.2;
+const isTall = (a: { width: number; height: number }) => a.height / a.width > TALL;
+
+/** The pill style the stage's floating controls share: the Tool switch and the Fit switch. */
+const stagePill =
+  'absolute top-3 z-10 m-0 flex gap-0.5 rounded-full border border-border bg-background/90 p-1 shadow-sm backdrop-blur-sm dark:shadow-none';
+/**
+ * A pill in a segmented tray. Hover fills an unselected pill with the muted tone; the selected
+ * one is stronger: the accent fill plus a faint ring, so it still reads as selected beside a
+ * hovered neighbour.
+ */
+const stagePillButton =
+  'relative inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-muted-foreground transition-colors duration-150 outline-none motion-reduce:transition-none after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-11 after:-translate-x-1/2 after:-translate-y-1/2 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-foreground/15 aria-pressed:hover:bg-accent';
 
 type Gesture =
   | {
@@ -1844,6 +2234,8 @@ function Stage({
   selected,
   tool,
   onTool,
+  fitWidth,
+  onFitWidth,
   onSelect,
   onAdd,
   onChange,
@@ -1853,6 +2245,9 @@ function Stage({
   selected: string | null;
   tool: Tool;
   onTool: (tool: Tool) => void;
+  /** A tall image fills the width and scrolls; otherwise every image fits whole. */
+  fitWidth: boolean;
+  onFitWidth: (on: boolean) => void;
   onSelect: (id: string) => void;
   onAdd: (shape: Shape) => void;
   onChange: (id: string, change: Partial<Mark>) => void;
@@ -1861,8 +2256,12 @@ function Stage({
   const frame = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [gesture, setGesture] = useState<Gesture | null>(null);
+  const tall = isTall(asset);
+  const scrolls = tall && fitWidth;
 
-  // Fit the image inside the stage, whole.
+  // Fit the image inside the stage: whole, or to its width when a tall image is set to scroll.
+  // Marks are fractions of the frame and the pointer is read against the frame's rectangle, so
+  // scrolling changes nothing about drawing.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -1870,14 +2269,14 @@ function Stage({
       const pad = 32;
       const aw = Math.max(0, el.clientWidth - pad * 2);
       const ah = Math.max(0, el.clientHeight - pad * 2);
-      const scale = Math.min(aw / asset.width, ah / asset.height);
+      const scale = scrolls ? aw / asset.width : Math.min(aw / asset.width, ah / asset.height);
       setSize({ w: Math.floor(asset.width * scale), h: Math.floor(asset.height * scale) });
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [asset.width, asset.height]);
+  }, [asset.width, asset.height, scrolls]);
 
   const at = (e: { clientX: number; clientY: number }) => {
     const r = frame.current?.getBoundingClientRect();
@@ -1954,8 +2353,9 @@ function Stage({
       } else if (gesture.area && !isTinyArea(gesture.area)) {
         onAdd(gesture.area);
       } else {
-        // Clicking on while a note is open closes it and starts the next one: no extra click per pin.
-        onAdd({ kind: 'dot', ...at(e) });
+        // A click (or a drag too small to be an area). Clicking while a note is open closes it and
+        // starts the next one: no extra click per pin. With the Area tool it makes a standard box.
+        onAdd(tool === 'area' ? standardAreaAt(at(e)) : { kind: 'dot', ...at(e) });
       }
     } else if (gesture.kind === 'move' && !gesture.moved) {
       onSelect(gesture.id);
@@ -2035,6 +2435,28 @@ function Stage({
     onChange(mark.id, { shape, confirmed: true });
   };
 
+  /** Arrow keys on an area's corner handle resize it: 1% a press, 5% with Shift. Enter opens the note. */
+  const resizeByKey = (e: ReactKeyboardEvent, mark: Mark) => {
+    if (mark.shape.kind !== 'area') return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(mark.id);
+      return;
+    }
+    const step = e.shiftKey ? 0.05 : 0.01;
+    const d = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const s = mark.shape;
+    const area = areaFrom(s.x, s.y, s.x + s.w + d[0], s.y + s.h + d[1]);
+    if (!isTinyArea(area)) onChange(mark.id, { shape: area, confirmed: true });
+  };
+
   const draft = gesture?.kind === 'draw' ? gesture.area : null;
   const draftArrow = gesture?.kind === 'draw' ? gesture.arrow : null;
   // The open area dims the rest of the image. The dim is its own layer, clipped to the image,
@@ -2043,13 +2465,9 @@ function Stage({
   const dim = openArea?.kind === 'area' ? openArea : null;
 
   return (
-    <div
-      ref={box}
-      // A faint 24px grid behind the image, like a design canvas.
-      className="relative min-w-0 flex-1 overflow-hidden bg-muted/40 bg-[linear-gradient(to_right,rgb(0_0_0/0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgb(0_0_0/0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:bg-[linear-gradient(to_right,rgb(255_255_255/0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgb(255_255_255/0.05)_1px,transparent_1px)]"
-    >
+    <div className="relative min-w-0 flex-1">
       {/* The tool, floating over the top of the canvas: a segmented control, pills like the source picker. */}
-      <fieldset className="absolute top-3 left-1/2 z-10 m-0 flex -translate-x-1/2 gap-0.5 rounded-full border border-border bg-background/90 p-1 shadow-sm backdrop-blur-sm dark:shadow-none">
+      <fieldset className={cn(stagePill, 'left-1/2 -translate-x-1/2')}>
         <legend className="sr-only">Tool</legend>
         {TOOLS.map((t) => (
           <button
@@ -2058,77 +2476,115 @@ function Stage({
             aria-pressed={tool === t.kind}
             title={t.hint}
             onClick={() => onTool(t.kind)}
-            className="relative inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-muted-foreground transition-colors outline-none after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-11 after:-translate-x-1/2 after:-translate-y-1/2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-pressed:bg-accent aria-pressed:text-foreground"
+            className={stagePillButton}
           >
             <t.icon className="size-4" aria-hidden />
             {t.label}
           </button>
         ))}
       </fieldset>
+      {tall && (
+        // A full-page capture: fit it whole (a sliver), or to the width and scroll down it.
+        <fieldset className={cn(stagePill, 'right-3')}>
+          <legend className="sr-only">How the tall image fits</legend>
+          <button
+            type="button"
+            aria-pressed={!fitWidth}
+            title="Fit the whole image in the stage"
+            onClick={() => onFitWidth(false)}
+            className={stagePillButton}
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            aria-pressed={fitWidth}
+            title="Fit the image to the stage's width and scroll down it"
+            onClick={() => onFitWidth(true)}
+            className={stagePillButton}
+          >
+            Fit width
+          </button>
+        </fieldset>
+      )}
       <div
-        ref={frame}
-        role="application"
-        aria-label={
-          tool === 'arrow'
-            ? `${asset.name}. Drag from one spot to another to draw an arrow.`
-            : `${asset.name}. Click to add a dot, drag to mark an area, Shift-drag to draw an arrow.`
-        }
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={() => setGesture(null)}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 cursor-crosshair touch-none select-none shadow-sm"
-        style={{ width: size.w, height: size.h }}
+        ref={box}
+        // A faint 24px grid behind the image, like a design canvas. Scrolls only for a tall image.
+        className={cn(
+          'absolute inset-0 flex bg-muted/40 bg-[linear-gradient(to_right,rgb(0_0_0/0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgb(0_0_0/0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:bg-[linear-gradient(to_right,rgb(255_255_255/0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgb(255_255_255/0.05)_1px,transparent_1px)]',
+          scrolls
+            ? 'overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]'
+            : 'overflow-hidden',
+        )}
       >
-        {/* biome-ignore lint/performance/noImgElement: a local image held by this browser */}
-        <img src={url} alt="" draggable={false} className="pointer-events-none size-full" />
-        {dim && (
-          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Auto margins centre the frame and, unlike flex alignment, still let it scroll when it is taller than the stage. */}
+        <div
+          ref={frame}
+          role="application"
+          aria-label={`${asset.name}. ${TOOL_WHAT[tool]}`}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={() => setGesture(null)}
+          className="relative m-auto shrink-0 cursor-crosshair touch-none select-none shadow-sm"
+          style={{
+            width: size.w,
+            height: size.h,
+            marginTop: scrolls ? 32 : undefined,
+            marginBottom: scrolls ? 32 : undefined,
+          }}
+        >
+          {/* biome-ignore lint/performance/noImgElement: a local image held by this browser */}
+          <img src={url} alt="" draggable={false} className="pointer-events-none size-full" />
+          {dim && (
+            <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div
+                className="absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
+                style={{
+                  left: `${dim.x * 100}%`,
+                  top: `${dim.y * 100}%`,
+                  width: `${dim.w * 100}%`,
+                  height: `${dim.h * 100}%`,
+                }}
+              />
+            </div>
+          )}
+          {asset.marks.map((m, i) => (
+            <MarkView
+              key={m.id}
+              mark={m}
+              number={i + 1}
+              selected={m.id === selected}
+              size={size}
+              onDown={(e) => startMove(e, m)}
+              onResize={(e) => startResize(e, m)}
+              onResizeKey={(e) => resizeByKey(e, m)}
+              onEnd={(e, end) => startEnd(e, m, end)}
+              onKey={(e, end) => nudge(e, m, end)}
+            />
+          ))}
+          {draftArrow && (
+            <svg
+              aria-hidden
+              width={size.w}
+              height={size.h}
+              className="pointer-events-none absolute inset-0 overflow-visible"
+            >
+              <ArrowLine arrow={draftArrow} size={size} color="#ffffff" dashed />
+            </svg>
+          )}
+          {draft && (
             <div
-              className="absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
+              className="pointer-events-none absolute border-2 border-dashed border-white shadow-[0_0_0_1px_rgb(0_0_0/0.5)]"
               style={{
-                left: `${dim.x * 100}%`,
-                top: `${dim.y * 100}%`,
-                width: `${dim.w * 100}%`,
-                height: `${dim.h * 100}%`,
+                left: `${draft.x * 100}%`,
+                top: `${draft.y * 100}%`,
+                width: `${draft.w * 100}%`,
+                height: `${draft.h * 100}%`,
               }}
             />
-          </div>
-        )}
-        {asset.marks.map((m, i) => (
-          <MarkView
-            key={m.id}
-            mark={m}
-            number={i + 1}
-            selected={m.id === selected}
-            size={size}
-            onDown={(e) => startMove(e, m)}
-            onResize={(e) => startResize(e, m)}
-            onEnd={(e, end) => startEnd(e, m, end)}
-            onKey={(e, end) => nudge(e, m, end)}
-          />
-        ))}
-        {draftArrow && (
-          <svg
-            aria-hidden
-            width={size.w}
-            height={size.h}
-            className="pointer-events-none absolute inset-0 overflow-visible"
-          >
-            <ArrowLine arrow={draftArrow} size={size} color="#ffffff" dashed />
-          </svg>
-        )}
-        {draft && (
-          <div
-            className="pointer-events-none absolute border-2 border-dashed border-white shadow-[0_0_0_1px_rgb(0_0_0/0.5)]"
-            style={{
-              left: `${draft.x * 100}%`,
-              top: `${draft.y * 100}%`,
-              width: `${draft.w * 100}%`,
-              height: `${draft.h * 100}%`,
-            }}
-          />
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2193,6 +2649,7 @@ function MarkView({
   size,
   onDown,
   onResize,
+  onResizeKey,
   onEnd,
   onKey,
 }: {
@@ -2202,13 +2659,13 @@ function MarkView({
   size: { w: number; h: number };
   onDown: (e: ReactPointerEvent) => void;
   onResize: (e: ReactPointerEvent) => void;
+  onResizeKey: (e: ReactKeyboardEvent) => void;
   onEnd: (e: ReactPointerEvent, end: ArrowEnd) => void;
   onKey: (e: ReactKeyboardEvent, end?: ArrowEnd) => void;
 }) {
   const v = verdictOf(mark);
   const color = VERDICT_COLOR[v];
-  const unchecked = mark.origin === 'ai' && !mark.confirmed;
-  const label = `Note ${number}${mark.label ? `: ${mark.label}` : ''}${v === 'empty' ? ' (empty)' : ''}${unchecked ? ', placed by AI' : ''}`;
+  const label = `Note ${number}${mark.label ? `: ${mark.label}` : ''}${v === 'empty' ? ' (empty)' : ''}`;
   // An arrow's number sits just behind its tail, off the line, so the tail stays visible.
   const arrowPx = mark.shape.kind === 'arrow' ? arrowPixels(mark.shape, size) : null;
   const badgeAt = arrowPx
@@ -2222,14 +2679,14 @@ function MarkView({
   const pin = (
     <button
       type="button"
-      data-mark
+      data-mark={mark.id}
       aria-label={label}
       aria-pressed={selected}
       onPointerDown={onDown}
       onKeyDown={(e) => onKey(e)}
       className={cn(
         // The pin keeps its size; an invisible ::after takes the hit area to 44px or more.
-        'pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-neutral-900 font-mono text-xs font-semibold text-white shadow-[0_1px_5px_rgb(0_0_0/0.5)] dark:bg-white dark:text-neutral-900 after:absolute after:-inset-3 after:content-[""] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white active:cursor-grabbing',
+        'pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-neutral-900 font-mono text-[13px] font-semibold text-white shadow-[0_1px_5px_rgb(0_0_0/0.5)] dark:bg-white dark:text-neutral-900 after:absolute after:-inset-3 after:content-[""] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white active:cursor-grabbing',
         selected ? 'size-8 ring-4 ring-white/50' : 'size-6',
       )}
       style={badgeAt}
@@ -2250,7 +2707,7 @@ function MarkView({
           height={size.h}
           className="pointer-events-none absolute inset-0 overflow-visible"
         >
-          <ArrowLine arrow={a} size={size} color={color} dashed={unchecked} />
+          <ArrowLine arrow={a} size={size} color={color} />
           {selected && (
             // The open arrow moves by its line: a wide, invisible stroke takes the pointer.
             <line
@@ -2271,7 +2728,8 @@ function MarkView({
           <>
             <button
               type="button"
-              data-mark
+              data-mark={mark.id}
+              data-end
               aria-label={`${label}, tail`}
               onPointerDown={(e) => onEnd(e, 'tail')}
               onKeyDown={(e) => onKey(e, 'tail')}
@@ -2280,7 +2738,8 @@ function MarkView({
             />
             <button
               type="button"
-              data-mark
+              data-mark={mark.id}
+              data-end
               aria-label={`${label}, head`}
               onPointerDown={(e) => onEnd(e, 'head')}
               onKeyDown={(e) => onKey(e, 'head')}
@@ -2295,10 +2754,7 @@ function MarkView({
   const s = mark.shape as Area;
   return (
     <div
-      className={cn(
-        'pointer-events-none absolute',
-        unchecked ? 'border-2 border-dashed' : 'border-2',
-      )}
+      className="pointer-events-none absolute border-2"
       style={{
         left: `${s.x * 100}%`,
         top: `${s.y * 100}%`,
@@ -2314,10 +2770,16 @@ function MarkView({
       )}
       {pin}
       {selected && (
-        // The bottom-right corner resizes; the top-left one carries the number.
-        <div
+        // The bottom-right corner resizes, by drag or, once focused, by the arrow keys; the
+        // top-left one carries the number.
+        <button
+          type="button"
+          data-mark={mark.id}
+          data-end
+          aria-label={`${label}, corner: arrow keys resize`}
           onPointerDown={onResize}
-          className="pointer-events-auto absolute -right-2 -bottom-2 size-3.5 cursor-nwse-resize rounded-sm border-2 border-neutral-900 bg-white after:absolute after:-inset-3 after:content-['']"
+          onKeyDown={onResizeKey}
+          className="pointer-events-auto absolute -right-2 -bottom-2 size-3.5 cursor-nwse-resize rounded-sm border-2 border-neutral-900 bg-white after:absolute after:-inset-3 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         />
       )}
     </div>
@@ -2335,8 +2797,6 @@ function Panel({
   number,
   total,
   selected,
-  aiOn,
-  locating,
   suggestionsOn,
   suggesting,
   onSource,
@@ -2345,19 +2805,17 @@ function Panel({
   onChangeMark,
   onRemoveMark,
   onDone,
-  onNote,
-  onLocate,
   onAddCentre,
   onPrev,
   onNext,
   onRemove,
+  dismissed,
+  onDismiss,
 }: {
   asset: Asset;
   number: number;
   total: number;
   selected: string | null;
-  aiOn: boolean;
-  locating: boolean;
   suggestionsOn: boolean;
   suggesting: string | null;
   onSource: (source: Source | undefined) => void;
@@ -2366,21 +2824,30 @@ function Panel({
   onChangeMark: (id: string, change: Partial<Mark>) => void;
   onRemoveMark: (id: string) => void;
   onDone: () => void;
-  onNote: (note: string) => void;
-  onLocate: () => void;
-  onAddCentre: () => void;
+  /** Add a note from the keyboard: a dot, an area or an arrow, at the centre of the image. */
+  onAddCentre: (shape: Shape) => void;
   onPrev: () => void;
   onNext: () => void;
   onRemove: () => void;
+  /** Suggestions dismissed, by `note:field`, with the shape key they were written for. */
+  dismissed: Record<string, string>;
+  onDismiss: (markId: string, field: SuggestedKey, shape: string) => void;
 }) {
   const mark = asset.marks.find((m) => m.id === selected);
   const markNumber = asset.marks.findIndex((m) => m.id === selected) + 1;
-  const noteChanged = asset.note.trim() && asset.note.trim() !== asset.locatedNote;
+  const suggestion = mark && suggestionsOn ? currentSuggestion(mark) : undefined;
+  const addButton = cn(
+    hit,
+    'flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+  );
 
   return (
-    <aside aria-label="Notes" className="flex w-[22rem] shrink-0 flex-col border-l border-border">
+    <aside
+      aria-label="Notes"
+      className="flex w-[22rem] shrink-0 flex-col border-l border-border max-[900px]:w-64"
+    >
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        <span className="font-mono text-xs text-muted-foreground">
+        <span className="font-mono text-[13px] text-muted-foreground">
           {number} / {total}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={asset.name}>
@@ -2390,7 +2857,10 @@ function Panel({
           type="button"
           aria-label="Remove this image"
           onClick={onRemove}
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          className={cn(
+            hit,
+            'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+          )}
         >
           <Trash2 className="size-4" aria-hidden />
         </button>
@@ -2408,8 +2878,12 @@ function Panel({
             key={mark.id}
             mark={mark}
             number={markNumber}
-            suggestion={suggestionsOn ? currentSuggestion(mark) : undefined}
+            suggestion={suggestion}
             suggesting={suggestionsOn && suggesting === mark.id}
+            dismissed={(field) =>
+              Boolean(suggestion) && dismissed[`${mark.id}:${field}`] === suggestion?.shape
+            }
+            onDismiss={(field) => suggestion && onDismiss(mark.id, field, suggestion.shape)}
             onChange={(c) => onChangeMark(mark.id, c)}
             onRemove={() => onRemoveMark(mark.id)}
             onDone={onDone}
@@ -2420,10 +2894,7 @@ function Panel({
               Notes on this image
             </h2>
             {asset.marks.length === 0 ? (
-              <p className="m-0 text-sm text-muted-foreground">
-                Click the image for a dot, drag across it for an area, or Shift-drag for an arrow,
-                then say what works and what doesn’t.
-              </p>
+              <p className="m-0 text-sm text-muted-foreground">{HOW_TO_MARK}</p>
             ) : (
               <ol className="m-0 list-none space-y-1.5 p-0">
                 {asset.marks.map((m, i) => (
@@ -2433,67 +2904,33 @@ function Panel({
                 ))}
               </ol>
             )}
-            <button
-              type="button"
-              onClick={onAddCentre}
-              className="mt-2 flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Plus className="size-4" aria-hidden />
-              Add a note without the mouse
-            </button>
-          </section>
-        )}
-
-        {/* Hidden while a note is open, so the editor has the whole panel. */}
-        {!mark && (
-          <section>
-            <label
-              htmlFor="whole-note"
-              className="mb-2 block text-[13px] font-medium text-muted-foreground"
-            >
-              Or write freely about this image
-            </label>
-            <textarea
-              id="whole-note"
-              rows={5}
-              maxLength={2000}
-              value={asset.note}
-              onChange={(e) => onNote(e.target.value)}
-              placeholder="The revenue number is great: big and alone. The filter row is noisy, too many chips…"
-              className={field}
-            />
-            {aiOn ? (
-              <>
-                <button
-                  type="button"
-                  onClick={onLocate}
-                  disabled={!noteChanged || locating}
-                  className="mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-md border border-border text-sm hover:bg-muted disabled:opacity-50"
-                >
-                  {asset.locatedNote && !noteChanged ? 'Placed' : 'Find these in the image'}
-                </button>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  <span aria-live="polite">
-                    {locating && <WorkingPill>Finding the spots…</WorkingPill>}
-                  </span>
-                  {!locating && (
-                    <p className="m-0">
-                      Sends this image and note to Anthropic’s API to place each point as a note.
-                    </p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="mt-2 mb-0 text-xs text-muted-foreground">
-                Exported with the image as its overall note.
-              </p>
-            )}
-            {asset.unplaced && asset.unplaced.length > 0 && !noteChanged && (
-              <p className="mt-2 mb-0 text-xs text-muted-foreground">
-                About the whole image, so not pinned:{' '}
-                {asset.unplaced.map((u) => `“${u}”`).join(' ')}
-              </p>
-            )}
+            {/* Each makes a note at the centre of the image, open and ready to type; the arrow keys then place it. 8px apart, so their hit areas don't overlap. */}
+            <div className="mt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => onAddCentre({ kind: 'dot', x: 0.5, y: 0.5 })}
+                className={addButton}
+              >
+                <Plus className="size-4" aria-hidden />
+                Add a note without the mouse
+              </button>
+              <button
+                type="button"
+                onClick={() => onAddCentre({ kind: 'area', x: 0.35, y: 0.35, w: 0.3, h: 0.3 })}
+                className={addButton}
+              >
+                <Plus className="size-4" aria-hidden />
+                Add an area without the mouse
+              </button>
+              <button
+                type="button"
+                onClick={() => onAddCentre({ kind: 'arrow', x: 0.35, y: 0.5, x2: 0.65, y2: 0.5 })}
+                className={addButton}
+              >
+                <Plus className="size-4" aria-hidden />
+                Add an arrow without the mouse
+              </button>
+            </div>
           </section>
         )}
       </div>
@@ -2503,7 +2940,10 @@ function Panel({
           type="button"
           onClick={onPrev}
           disabled={number === 1}
-          className="flex min-h-10 items-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-40"
+          className={cn(
+            hit,
+            'flex min-h-10 items-center gap-1.5 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-40',
+          )}
         >
           <ArrowLeft className="size-4" aria-hidden />
           Back
@@ -2512,7 +2952,10 @@ function Panel({
           type="button"
           onClick={onNext}
           disabled={number === total}
-          className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted disabled:opacity-40"
+          className={cn(
+            hit,
+            'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-40',
+          )}
         >
           Next image
           <ArrowRight className="size-4" aria-hidden />
@@ -2528,10 +2971,10 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full items-start gap-2.5 rounded-lg border border-border p-2.5 text-left hover:bg-muted"
+      className="flex w-full items-start gap-2.5 rounded-lg border border-border p-2.5 text-left transition-colors duration-150 motion-reduce:transition-none hover:bg-muted"
     >
       <span
-        className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 font-mono text-xs font-semibold text-white dark:bg-white dark:text-neutral-900"
+        className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 font-mono text-[13px] font-semibold text-white dark:bg-white dark:text-neutral-900"
       >
         {number}
       </span>
@@ -2539,14 +2982,19 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
         <span className="block truncate font-medium">
           {mark.label || mark.good || mark.bad || 'Empty note'}
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
           {mark.shape.kind}
-          {v !== 'empty' &&
-            ` · ${v === 'both' ? 'works and doesn’t' : v === 'good' ? 'works' : 'doesn’t work'}`}
-          {mark.origin === 'ai' && !mark.confirmed && (
-            <span className="rounded bg-sky-500/10 px-1.5 text-xs text-sky-700 dark:text-sky-400">
-              AI, to check
-            </span>
+          {v !== 'empty' && (
+            <>
+              {' · '}
+              {(v === 'good' || v === 'both') && (
+                <ThumbsUp aria-hidden className="size-3.5" style={{ color: VERDICT_COLOR.good }} />
+              )}
+              {(v === 'bad' || v === 'both') && (
+                <ThumbsDown aria-hidden className="size-3.5" style={{ color: VERDICT_COLOR.bad }} />
+              )}
+              {v === 'both' ? 'works and doesn’t' : v === 'good' ? 'works' : 'doesn’t work'}
+            </>
           )}
         </span>
       </span>
@@ -2554,11 +3002,16 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
   );
 }
 
+/** The fields a suggestion fills, by the suggestion's own names. */
+type SuggestedKey = 'works' | 'doesNotWork' | 'label';
+
 function MarkEditor({
   mark,
   number,
   suggestion,
   suggesting,
+  dismissed,
+  onDismiss,
   onChange,
   onRemove,
   onDone,
@@ -2567,17 +3020,24 @@ function MarkEditor({
   number: number;
   suggestion?: Suggestion;
   suggesting: boolean;
+  dismissed: (field: SuggestedKey) => boolean;
+  onDismiss: (field: SuggestedKey) => void;
   onChange: (c: Partial<Mark>) => void;
   onRemove: () => void;
   onDone: () => void;
 }) {
   const first = useRef<HTMLTextAreaElement>(null);
   const mac = useIsMac();
-  // A new note opens ready to type; only when the editor opens.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per opened note
+  // A note opens ready to type, however it was opened (a click on its pin, a key), so the next
+  // keystrokes go into it and never fire a shortcut. The caret goes after any text already there.
   useEffect(() => {
-    if (mark.origin === 'user' && verdictOf(mark) === 'empty') first.current?.focus();
+    const el = first.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
   }, []);
+  const ghost = (field: SuggestedKey) =>
+    dismissed(field) ? undefined : suggestion?.[field] || undefined;
   const doneOnShortcut = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -2594,71 +3054,68 @@ function MarkEditor({
         <button
           type="button"
           onClick={onDone}
-          className="ml-auto flex min-h-8 items-center gap-1 rounded-md px-2 text-sm hover:bg-muted"
+          className={cn(
+            hit,
+            'ml-auto flex min-h-8 items-center gap-1 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+          )}
         >
           <Check className="size-4" aria-hidden />
           Done
         </button>
       </div>
-      {mark.origin === 'ai' && !mark.confirmed && (
-        <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-          <p className="m-0">Placed by the AI from: “{mark.quote}”. Drag it if it’s off.</p>
-          <button
-            type="button"
-            onClick={() => onChange({ confirmed: true })}
-            className="mt-2 min-h-8 rounded-md border border-border px-2 text-foreground hover:bg-muted"
-          >
-            It’s in the right place
-          </button>
-        </div>
-      )}
       <SuggestedField
         ref={first}
         id={`works-${mark.id}`}
         label="What works"
-        color={VERDICT_COLOR.good}
+        verdict="good"
         value={mark.good}
-        suggestion={suggestion?.works}
+        suggestion={ghost('works')}
         suggesting={suggesting}
         example="One big number with nothing competing"
         onChange={(good, accepted) =>
           onChange({ good, accepted: withAccepted(mark.accepted, 'good', good, accepted) })
         }
+        onDismiss={() => onDismiss('works')}
         onKeyDown={doneOnShortcut}
       />
       <SuggestedField
         id={`doesnt-${mark.id}`}
         label="What doesn’t"
-        color={VERDICT_COLOR.bad}
+        verdict="bad"
         value={mark.bad}
-        suggestion={suggestion?.doesNotWork}
+        suggestion={ghost('doesNotWork')}
         suggesting={suggesting}
         example="Six badges compete for attention"
         onChange={(bad, accepted) =>
           onChange({ bad, accepted: withAccepted(mark.accepted, 'bad', bad, accepted) })
         }
+        onDismiss={() => onDismiss('doesNotWork')}
         onKeyDown={doneOnShortcut}
       />
       <SuggestedInput
         id={`label-${mark.id}`}
         label="Short name (optional)"
         value={mark.label}
-        suggestion={suggestion?.label}
+        suggestion={ghost('label')}
         suggesting={suggesting}
         example="revenue headline"
         onChange={(label) => onChange({ label })}
+        onDismiss={() => onDismiss('label')}
         onKeyDown={doneOnShortcut}
       />
-      <div className="flex items-center justify-between pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <button
           type="button"
           onClick={onRemove}
-          className="flex min-h-8 items-center gap-1.5 rounded-md px-2 text-sm text-red-600 hover:bg-muted dark:text-red-400"
+          className={cn(
+            hit,
+            'flex min-h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm whitespace-nowrap text-red-600 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted dark:text-red-400',
+          )}
         >
           <Trash2 className="size-4" aria-hidden />
           Delete note
         </button>
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <span className="ml-auto flex items-center gap-1 text-[13px] whitespace-nowrap text-muted-foreground">
           <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd>
           <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
         </span>
@@ -2681,64 +3138,197 @@ function withAccepted(
 }
 
 /**
- * A note field with an AI suggestion as its grey placeholder: Tab in the empty
- * field takes it as real text, any other key types over it.
+ * Keys on a field that shows a grey suggestion. Tab takes it as real text and keeps focus in the
+ * field, so the next Tab moves on as usual; Shift+Tab moves back without taking it; Escape, or
+ * Delete or Backspace in the empty field, dismisses it (the second Escape then closes the note).
+ * Returns whether the key was spent here.
+ */
+function ghostKey(
+  e: React.KeyboardEvent,
+  ghost: string,
+  accept: () => void,
+  dismiss: () => void,
+): boolean {
+  if (!ghost) return false;
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    accept();
+    return true;
+  }
+  if (e.key === 'Escape' || e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    e.stopPropagation();
+    dismiss();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether something stays for a moment after it is switched off, so it can fade out: true while
+ * `on`, and for `ms` after it goes.
+ */
+function useLingers(on: boolean, ms: number) {
+  const [lingering, setLingering] = useState(on);
+  useEffect(() => {
+    if (on) {
+      setLingering(true);
+      return;
+    }
+    const timer = setTimeout(() => setLingering(false), ms);
+    return () => clearTimeout(timer);
+  }, [on, ms]);
+  return on || lingering;
+}
+
+/**
+ * The grey suggestion drawn over an empty field: the field's own box, padding and type, so it
+ * reads as a placeholder, but it can fade in and out, which a native placeholder cannot. Hidden
+ * from assistive tech (the sr-only hint beside the field carries the words); it follows the
+ * field's size when the user resizes it. The last text stays while it fades out.
+ */
+function Ghost({
+  text,
+  field,
+  oneLine,
+}: {
+  text: string;
+  field: React.RefObject<HTMLElement | null>;
+  oneLine?: boolean;
+}) {
+  const last = useRef(text);
+  if (text) last.current = text;
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setSize({ w: el.offsetWidth, h: el.offsetHeight }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [field]);
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        'pointer-events-none absolute top-0 left-0 size-full overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm text-[#737373] dark:text-[#7a7a7a]',
+        oneLine
+          ? 'flex items-center truncate whitespace-nowrap'
+          : 'whitespace-pre-wrap [overflow-wrap:break-word]',
+        ghostFade,
+      )}
+      style={{ opacity: text ? 1 : 0, width: size?.w, height: size?.h }}
+    >
+      {last.current}
+    </div>
+  );
+}
+
+/** A key chip inside a tooltip, whose colours are the page's inverted. */
+const tipKbd = 'border-background/30 bg-background/15 text-background';
+
+/** The keys for a grey suggestion, shown over the field while it is hovered or focused. */
+function GhostTip({ open, children }: { open: boolean; children: React.ReactElement }) {
+  return (
+    <Tooltip open={open}>
+      <TooltipTrigger render={children} />
+      <TooltipContent side="top" align="start" className="text-[13px]">
+        AI suggestion · <Kbd className={tipKbd}>Tab</Kbd> to use · <Kbd className={tipKbd}>Esc</Kbd>{' '}
+        to dismiss
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Hover and focus on a field, for the suggestion tooltip. */
+function useAttention() {
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  return {
+    on: focused || hovered,
+    props: {
+      onFocus: () => setFocused(true),
+      onBlur: () => setFocused(false),
+      onPointerEnter: () => setHovered(true),
+      onPointerLeave: () => setHovered(false),
+    },
+  };
+}
+
+/**
+ * A note field with an AI suggestion as its grey text: Tab in the empty field takes it as real
+ * text, Escape dismisses it, any other key types over it. The example placeholder shows only
+ * when no suggestion applies.
  */
 function SuggestedField({
   ref,
   id,
   label,
-  color,
+  verdict,
   value,
   suggestion,
   suggesting,
   example,
   onChange,
+  onDismiss,
   onKeyDown,
 }: {
   ref?: React.Ref<HTMLTextAreaElement>;
   id: string;
   label: string;
-  color: string;
+  verdict: 'good' | 'bad';
   value: string;
   suggestion?: string;
   suggesting: boolean;
   example: string;
   onChange: (value: string, accepted: boolean) => void;
+  onDismiss: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const ghost = !value && suggestion ? suggestion : '';
+  const inner = useRef<HTMLTextAreaElement | null>(null);
+  const setRef = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      inner.current = el;
+      if (typeof ref === 'function') ref(el);
+      else if (ref) ref.current = el;
+    },
+    [ref],
+  );
+  const attention = useAttention();
+  const ghostLingers = useLingers(Boolean(ghost), 220);
+  const Icon = verdict === 'good' ? ThumbsUp : ThumbsDown;
   return (
-    <div className="text-xs text-muted-foreground">
-      <SuggestionLabel id={id} ghost={ghost} working={!value && suggesting}>
-        <span className="size-2 rounded-full" style={{ background: color }} />
+    <div className="relative text-[13px] text-muted-foreground">
+      <SuggestionLabel id={id} working={!value && suggesting}>
+        <Icon aria-hidden className="size-4 shrink-0" style={{ color: VERDICT_COLOR[verdict] }} />
         {label}
       </SuggestionLabel>
-      <textarea
-        ref={ref}
-        id={id}
-        rows={3}
-        maxLength={1000}
-        value={value}
-        onChange={(e) => onChange(e.target.value, false)}
-        onKeyDown={(e) => {
-          if (e.key === 'Tab' && !e.shiftKey && ghost) {
-            e.preventDefault();
-            onChange(ghost, true);
-            return;
-          }
-          onKeyDown(e);
-        }}
-        aria-describedby={ghost ? `${id}-hint` : undefined}
-        className={field}
-        placeholder={ghost || (suggesting ? '' : example)}
-      />
+      <div className="relative">
+        <GhostTip open={Boolean(ghost) && attention.on}>
+          <textarea
+            ref={setRef}
+            id={id}
+            rows={3}
+            maxLength={1000}
+            value={value}
+            onChange={(e) => onChange(e.target.value, false)}
+            onKeyDown={(e) => {
+              if (!ghostKey(e, ghost, () => onChange(ghost, true), onDismiss)) onKeyDown(e);
+            }}
+            {...attention.props}
+            aria-describedby={ghost ? `${id}-hint` : undefined}
+            className={field}
+            placeholder={ghostLingers || suggesting ? '' : example}
+          />
+        </GhostTip>
+        <Ghost text={ghost} field={inner} />
+      </div>
       <SuggestionHint id={id} ghost={ghost} />
     </div>
   );
 }
 
-/** The short name, one line, with the suggestion's name for the spot as its ghost text. */
+/** The short name, one line and unlabelled, with the suggestion's name for the spot as its ghost text. */
 function SuggestedInput({
   id,
   label,
@@ -2747,6 +3337,7 @@ function SuggestedInput({
   suggesting,
   example,
   onChange,
+  onDismiss,
   onKeyDown,
 }: {
   id: string;
@@ -2756,59 +3347,63 @@ function SuggestedInput({
   suggesting: boolean;
   example: string;
   onChange: (value: string) => void;
+  onDismiss: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const ghost = !value && suggestion ? suggestion : '';
+  const inner = useRef<HTMLInputElement | null>(null);
+  const attention = useAttention();
+  const ghostLingers = useLingers(Boolean(ghost), 220);
   return (
-    <div className="text-xs text-muted-foreground">
-      <SuggestionLabel id={id} ghost={ghost} working={!value && suggesting}>
-        {label}
-      </SuggestionLabel>
-      <input
-        id={id}
-        maxLength={60}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Tab' && !e.shiftKey && ghost) {
-            e.preventDefault();
-            onChange(ghost);
-            return;
-          }
-          onKeyDown(e);
-        }}
-        aria-describedby={ghost ? `${id}-hint` : undefined}
-        className={field}
-        placeholder={ghost || (suggesting ? '' : example)}
-      />
+    <div className="relative text-[13px] text-muted-foreground">
+      <GhostTip open={Boolean(ghost) && attention.on}>
+        <input
+          ref={inner}
+          id={id}
+          aria-label={label}
+          maxLength={60}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (!ghostKey(e, ghost, () => onChange(ghost), onDismiss)) onKeyDown(e);
+          }}
+          {...attention.props}
+          aria-describedby={ghost ? `${id}-hint` : undefined}
+          className={field}
+          placeholder={ghostLingers || suggesting ? '' : example}
+        />
+      </GhostTip>
+      <Ghost text={ghost} field={inner} oneLine />
       <SuggestionHint id={id} ghost={ghost} />
     </div>
   );
 }
 
-/** A field's label row with, on the right, the suggestion's state. It keeps the pill's height, so a suggestion arriving doesn't move the field. */
+/**
+ * A field's label row with, on the right, the "Suggesting…" pill, which fades and keeps its
+ * height, so a suggestion arriving doesn't move the field.
+ */
 function SuggestionLabel({
   id,
-  ghost,
   working,
   children,
 }: {
   id: string;
-  ghost: string;
   working: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <label htmlFor={id} className="mb-1 flex min-h-7 items-center gap-1.5">
+    // Positioned, so its sr-only live region stays inside the panel's scroll area.
+    <label htmlFor={id} className="relative mb-1 flex min-h-7 items-center gap-1.5">
       {children}
-      <span className="ml-auto flex items-center gap-1" aria-live="polite">
-        {ghost ? (
-          <>
-            AI suggestion · <Kbd>Tab</Kbd> to use
-          </>
-        ) : (
-          working && <WorkingPill>Suggesting…</WorkingPill>
-        )}
+      <WorkingPill
+        aria-hidden={!working}
+        className={cn('ml-auto', ghostFade, working ? 'opacity-100' : 'opacity-0')}
+      >
+        Suggesting…
+      </WorkingPill>
+      <span className="sr-only" aria-live="polite">
+        {working ? 'Suggesting…' : ''}
       </span>
     </label>
   );
@@ -2818,12 +3413,15 @@ function SuggestionHint({ id, ghost }: { id: string; ghost: string }) {
   if (!ghost) return null;
   return (
     <span id={`${id}-hint`} className="sr-only">
-      Suggestion: {ghost} Press Tab to use it.
+      Suggestion: {ghost} Press Tab to use it, Escape to dismiss it.
     </span>
   );
 }
 
-/** Whose design the image is. New images take the open one's. */
+/**
+ * Whose design the image is: four radio rows, optional (Clear takes it off). New images take
+ * the open one's. Arrow keys move and choose, as in any radio group.
+ */
 function SourcePicker({
   source,
   total,
@@ -2835,50 +3433,93 @@ function SourcePicker({
   onChange: (source: Source | undefined) => void;
   onForAll: () => void;
 }) {
-  // Source is optional: picking the chosen one again clears it.
-  const pick = (kind: SourceKind) =>
-    onChange(
-      source?.kind === kind
-        ? undefined
-        : { kind, by: source?.by ?? '', link: source?.link ?? '' },
-    );
+  const group = useRef<HTMLDivElement>(null);
+  const current = SOURCES.findIndex((s) => s.kind === source?.kind);
+  const onKey = (e: ReactKeyboardEvent, i: number) => {
+    // Two columns: left and right move one, up and down move a row.
+    const step = { ArrowDown: 2, ArrowRight: 1, ArrowUp: -2, ArrowLeft: -1 }[e.key];
+    const to =
+      step !== undefined
+        ? (i + step + SOURCES.length) % SOURCES.length
+        : e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? SOURCES.length - 1
+            : undefined;
+    if (to === undefined) return;
+    e.preventDefault();
+    // The page's own arrow keys change the image; inside the group they only move the choice.
+    e.stopPropagation();
+    onChange({ kind: SOURCES[to].kind });
+    group.current?.querySelectorAll<HTMLButtonElement>('[role=radio]')[to]?.focus();
+  };
+  const small = cn(
+    hit,
+    'min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+  );
   return (
     <section aria-labelledby="source-heading">
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex items-center gap-1">
         <h2 id="source-heading" className="m-0 text-[13px] font-medium text-muted-foreground">
           Source
         </h2>
-        {source && total > 1 && (
+        {source && (
           <button
             type="button"
-            onClick={onForAll}
-            className="ml-auto min-h-7 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => onChange(undefined)}
+            className={cn(small, 'ml-auto')}
           >
+            Clear
+          </button>
+        )}
+        {source && total > 1 && (
+          <button type="button" onClick={onForAll} className={small}>
             Set for all {total}
           </button>
         )}
       </div>
-      {/*
-       * The four kinds in the Segmented tray style, on two rows: the labels don't fit
-       * one row at the panel's width, and `Segmented` only lays out a single row.
-       */}
-      <fieldset className="m-0 border-0 p-0">
-        <legend className="sr-only">Whose design this is</legend>
-        <div className="grid grid-cols-2 gap-0.5 rounded-xl border border-border p-1">
-          {SOURCES.map((s) => (
+      {/* A 2×2 grid of bordered radio buttons; 36px buttons 8px apart, so their 44px hit areas tile. */}
+      <div
+        ref={group}
+        role="radiogroup"
+        aria-labelledby="source-heading"
+        className="grid grid-cols-2 gap-2"
+      >
+        {SOURCES.map((s, i) => {
+          const checked = i === current;
+          return (
+            // biome-ignore lint/a11y/useSemanticElements: a styled radio row; the group keeps its own roving tabindex and arrow keys
             <button
               key={s.kind}
               type="button"
-              aria-pressed={source?.kind === s.kind}
+              role="radio"
+              aria-checked={checked}
+              tabIndex={checked || (current < 0 && i === 0) ? 0 : -1}
               title={s.hint}
-              onClick={() => pick(s.kind)}
-              className="relative inline-flex h-8 min-w-0 items-center justify-center rounded-lg px-3 text-[13px] font-medium text-muted-foreground transition-colors outline-none after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-11 after:-translate-x-1/2 after:-translate-y-1/2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-pressed:bg-accent aria-pressed:text-foreground"
+              onClick={() => onChange({ kind: s.kind })}
+              onKeyDown={(e) => onKey(e, i)}
+              className={cn(
+                hit,
+                'flex min-h-9 w-full min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[13px] leading-tight transition-colors duration-150 outline-none motion-reduce:transition-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
+                checked
+                  ? 'border-choice font-medium text-foreground'
+                  : 'border-border text-muted-foreground',
+              )}
             >
-              <span className="truncate">{s.label}</span>
+              <span
+                aria-hidden
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center rounded-full border-2',
+                  checked ? 'border-choice' : 'border-foreground/30',
+                )}
+              >
+                {checked && <span className="size-2 rounded-full bg-choice" />}
+              </span>
+              {s.label}
             </button>
-          ))}
-        </div>
-      </fieldset>
+          );
+        })}
+      </div>
     </section>
   );
 }

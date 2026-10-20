@@ -38,4 +38,33 @@ describe('isSameOriginWrite', () => {
     assert.ok(!isSameOriginWrite(h({ origin: 'https://evil.example' }), 'https://a.example'));
     assert.ok(!isSameOriginWrite(h({}), 'https://a.example'));
   });
+
+  it('refuses a copied Sec-Fetch-Site next to a foreign Origin, and takes the forwarded host', () => {
+    const same = { 'sec-fetch-site': 'same-origin' };
+    // What a browser sends on a same-origin POST.
+    assert.ok(isSameOriginWrite(h({ ...same, origin: 'https://a.example' }), 'https://a.example'));
+    assert.ok(
+      !isSameOriginWrite(h({ ...same, origin: 'https://evil.example' }), 'https://a.example'),
+    );
+    assert.ok(!isSameOriginWrite(h({ ...same, origin: 'null' }), 'https://a.example'));
+    // Behind the platform the request's own origin can differ from the public host.
+    assert.ok(
+      isSameOriginWrite(
+        h({ ...same, origin: 'https://pinch.example', 'x-forwarded-host': 'pinch.example' }),
+        'http://localhost:3000',
+      ),
+    );
+    assert.ok(
+      isSameOriginWrite(
+        h({ origin: 'http://localhost:3213', host: 'localhost:3213' }),
+        'http://127.0.0.1:3213',
+      ),
+    );
+    assert.ok(
+      !isSameOriginWrite(
+        h({ ...same, origin: 'https://evil.example', host: 'pinch.example' }),
+        'http://localhost:3000',
+      ),
+    );
+  });
 });

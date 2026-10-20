@@ -1,5 +1,5 @@
 /*
- * Pinch: tag a batch of screenshots with what works and what
+ * Pinch (/pin): tag a batch of screenshots with what works and what
  * doesn't, on a dot, an area or an arrow, and export it all for an agent. Everything
  * here is pure: the browser keeps the images (IndexedDB) and draws the
  * crops; this file decides the data, the crop rectangles, file names and the
@@ -69,12 +69,17 @@ export const SOURCES: { kind: SourceKind; label: string; hint: string }[] = [
 export const sourceLabel = (kind: SourceKind) =>
   SOURCES.find((s) => s.kind === kind)?.label ?? kind;
 
+/**
+ * Whose design an image is: the kind only. Sessions saved before the maker
+ * and link fields were dropped (D61) may still carry `by` and `link`; they
+ * are read and ignored, and nothing exports them.
+ */
 export type Source = {
   kind: SourceKind;
-  /** The product or maker: "Linear", "Stripe Dashboard". Optional. */
-  by: string;
-  /** Where it came from. Optional. */
-  link: string;
+  /** @deprecated No longer shown or exported; kept so older saved sessions still load. */
+  by?: string;
+  /** @deprecated No longer shown or exported; kept so older saved sessions still load. */
+  link?: string;
 };
 
 export type Asset = {
@@ -226,6 +231,41 @@ const EDGE = 24;
  */
 const QUIET_SHARE = 0.02;
 
+/** Whether the cell at column c, row r has an edge in it: its luminance differs from its neighbour's. */
+export function busyCell(grid: LumaGrid): (c: number, r: number) => boolean {
+  const { cols, rows, luma } = grid;
+  const at = (c: number, r: number) => luma[r * cols + c];
+  return (c, r) => {
+    const l = at(c, r);
+    const right = c + 1 < cols ? at(c + 1, r) : at(c - 1, r);
+    const below = r + 1 < rows ? at(c, r + 1) : at(c, r - 1);
+    return Math.abs(l - right) >= EDGE || Math.abs(l - below) >= EDGE;
+  };
+}
+
+/**
+ * The share of busy cells in a rectangle of the image (pixels, any size), 0
+ * to 1: how much text or control a marker drawn there would cover. 0 for a
+ * rectangle outside the image.
+ */
+export function busyShare(grid: LumaGrid, rect: Rect): number {
+  const { cell, cols, rows } = grid;
+  if (cols < 1 || rows < 1 || cell <= 0) return 0;
+  const busy = busyCell(grid);
+  const c0 = Math.max(0, Math.floor(rect.x / cell));
+  const c1 = Math.min(cols - 1, Math.floor((rect.x + rect.w) / cell));
+  const r0 = Math.max(0, Math.floor(rect.y / cell));
+  const r1 = Math.min(rows - 1, Math.floor((rect.y + rect.h) / cell));
+  let n = 0;
+  let b = 0;
+  for (let r = r0; r <= r1; r++)
+    for (let c = c0; c <= c1; c++) {
+      n++;
+      if (busy(c, r)) b++;
+    }
+  return n ? b / n : 0;
+}
+
 /**
  * Move a crop's edges outward until each sits on a quiet band of the image
  * (a row or column with no edges in it), so the crop never cuts through text
@@ -234,15 +274,9 @@ const QUIET_SHARE = 0.02;
  * was. After Scrawl's autocrop, which moves crop edges into white space.
  */
 export function settleCrop(rect: Rect, grid: LumaGrid, grow = 0.4): Rect {
-  const { cell, cols, rows, luma } = grid;
+  const { cell, cols, rows } = grid;
   if (cols < 2 || rows < 2 || cell <= 0) return rect;
-  const at = (c: number, r: number) => luma[r * cols + c];
-  const busy = (c: number, r: number) => {
-    const l = at(c, r);
-    const right = c + 1 < cols ? at(c + 1, r) : at(c - 1, r);
-    const below = r + 1 < rows ? at(c, r + 1) : at(c, r - 1);
-    return Math.abs(l - right) >= EDGE || Math.abs(l - below) >= EDGE;
-  };
+  const busy = busyCell(grid);
   const countBusy = (line: number, from: number, to: number, column: boolean) => {
     let n = 0;
     for (let i = from; i < to; i++) if (column ? busy(line, i) : busy(i, line)) n++;
@@ -386,8 +420,8 @@ const HOW_TO_USE = [
 
 const FILES = [
   `\`${SHEET_FILE}\`: every image's marked copy on one sheet, each with its number.`,
-  '`images/`: each image as it was added. `marked/`: the same image with every note drawn on it: a numbered ring on a dot, a numbered box around an area, a numbered arrow from its tail to its head. `crops/`: a close-up of each note, its marker drawn in, widened to whole lines and controls so nothing is cut through.',
-  'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head.',
+  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image with every note drawn on it: a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby, on a short line, so it does not cover the content. `crops/`: a close-up of each note, its marker drawn in, widened to whole lines and controls so nothing is cut through.',
+  'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',
   'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
@@ -435,14 +469,7 @@ const originText = (m: Mark) =>
       ? ' · placed by AI from the note, checked by the user'
       : ' · placed by AI from the note, not checked';
 
-function sourceData(s: Source) {
-  return {
-    kind: s.kind,
-    label: sourceLabel(s.kind),
-    ...(s.by.trim() ? { madeBy: s.by.trim() } : {}),
-    ...(s.link.trim() ? { link: s.link.trim() } : {}),
-  };
-}
+const sourceData = (s: Source) => ({ kind: s.kind, label: sourceLabel(s.kind) });
 
 function suggestedData(m: Mark) {
   const works = suggestionUse(m, 'good');
@@ -466,12 +493,7 @@ const suggestedText = (m: Mark, field: 'good' | 'bad') => {
 };
 
 /** One line naming whose design an image is. */
-export function sourceLine(s: Source) {
-  const parts = [`Source: ${sourceLabel(s.kind)}`];
-  if (s.by.trim()) parts.push(`made by ${oneLine(s.by)}`);
-  if (s.link.trim()) parts.push(`<${s.link.trim()}>`);
-  return parts.join(' · ');
-}
+export const sourceLine = (s: Source) => `Source: ${sourceLabel(s.kind)}`;
 
 /** The structured export: everything the README says, as data. */
 export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = plainCrop) {

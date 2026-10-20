@@ -13,17 +13,28 @@ const P_GLYPH =
 
 const WORDMARK = `${P_GLYPH}M188.125 151.758V43.75H251.504V151.758H188.125ZM185.391 19.043C185.391 6.93359 201.016 0 219.863 0C238.613 0 254.238 6.93359 254.238 19.043C254.238 31.0547 238.613 37.9883 219.863 37.9883C201.016 37.9883 185.391 31.0547 185.391 19.043ZM278.301 151.758V43.75H325.273V62.8906C331.426 50.6836 344.414 40.625 362.285 40.625C383.281 40.625 394.902 53.6133 394.902 80.3711V151.758H346.562V86.2305C346.562 78.2227 342.656 75.1953 337.285 75.1953C331.816 75.1953 326.641 78.6133 326.641 88.0859V151.758H278.301ZM510.176 155.664C451.484 155.664 416.523 132.812 416.523 96.9727C416.523 61.1328 455.098 39.8438 512.227 39.8438C567.5 39.8438 602.949 59.1797 607.148 87.207H532.344C531.074 76.9531 525.02 69.1406 513.398 69.1406C499.629 69.1406 491.914 79.1016 491.914 97.168C491.914 115.332 498.555 126.367 513.203 126.367C523.359 126.367 530.684 120.02 532.344 107.91H608.125C603.34 141.113 560.273 155.664 510.176 155.664ZM627.891 151.758V11.7188H671.934V58.9844C677.891 48.6328 689.121 40.918 703.965 40.918C722.91 40.918 733.359 52.7344 733.359 76.7578V151.758H689.316V82.6172C689.316 75.6836 685.898 73.0469 681.211 73.0469C676.426 73.0469 671.934 76.0742 671.934 84.1797V151.758H627.891Z`;
 
-/** The wordmark, in currentColor, named "Pinch" for assistive tech. Size it by height. */
+/**
+ * The wordmark, in currentColor, named "Pinch" for assistive tech, with a small "TM" at its top
+ * right as part of the lockup (decorative, not read out). Size it by the svg's height.
+ */
 export function PinchWordmark({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 734 184"
-      role="img"
-      aria-label="Pinch"
-      fill="currentColor"
-      className={cn('h-4 w-auto', className)}
-    >
-      <path d={WORDMARK} />
-    </svg>
+    <span className="inline-flex items-start">
+      <svg
+        viewBox="0 0 734 184"
+        role="img"
+        aria-label="Pinch"
+        fill="currentColor"
+        className={cn('h-4 w-auto', className)}
+      >
+        <path d={WORDMARK} />
+      </svg>
+      <span
+        aria-hidden
+        className="ml-0.5 -translate-y-[0.25em] font-sans text-[9px] leading-none font-medium tracking-wide opacity-60 select-none"
+      >
+        TM
+      </span>
+    </span>
   );
 }

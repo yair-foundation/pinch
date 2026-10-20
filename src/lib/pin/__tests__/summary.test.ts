@@ -71,7 +71,7 @@ describe('clipboard summary', () => {
   it('summarises one image with its header, source, overall note and notes in batch order', () => {
     const a = asset({
       note: 'Calm overall.',
-      source: { kind: 'ours', by: 'Acme', link: '' },
+      source: { kind: 'ours' },
       marks: [
         mark({ id: 'e', shape: { kind: 'dot', x: 0.9, y: 0.9 } }),
         mark({ good: 'Huge and alone.', label: 'headline' }),
@@ -86,7 +86,7 @@ describe('clipboard summary', () => {
       imageSummary(a, 1, 3),
       [
         '[pinch · Pricing page.png · 2 notes]',
-        'Source: Ours · made by Acme',
+        'Source: Ours',
         'Overall: "Calm overall."',
         '- 02.1 dot at x 30%, y 33% · headline · works: "Huge and alone."',
         '- 02.2 area x 10–60%, y 50–70% · doesn\'t: "Six chips."',

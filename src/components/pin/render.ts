@@ -2,6 +2,7 @@ import {
   agentGuide,
   type Asset,
   assetFiles,
+  busyShare,
   type CropOf,
   cropRect,
   exportable,
@@ -116,10 +117,31 @@ function drawRing(
 }
 
 /**
- * The numbered disc beside a ring, on a short leader. It sits off the point
- * in the first of `prefer` directions (unit vectors) that has room on the
- * canvas, so the number never covers what the ring marks, and is clamped
- * inside the canvas either way.
+ * How much text or control a disc of radius `r` centred at canvas (x, y)
+ * would cover, 0 to 1; from the image's luma grid (`busyShare`).
+ */
+type Busy = (x: number, y: number, r: number) => number;
+
+/** A disc counts as sitting on nothing when at most this share of the cells under it has an edge. */
+const QUIET_DISC = 0.03;
+/** Leader lengths tried, in radii of the disc: the short default, then longer to clear what the point sits on. */
+const LEADERS = [1.7, 2.15, 2.6];
+/** When no preferred direction has room: every 22.5°, with one longer leader as the last stretch. */
+const FAN = Array.from({ length: 16 }, (_, i) => (i * Math.PI) / 8);
+const FAN_LEADERS = [...LEADERS, 3.2];
+
+/**
+ * The numbered disc beside a ring, on a leader. It sits off the point in
+ * one of the `prefer` directions (unit vectors, best first), at the shortest
+ * of `LEADERS` with room on the canvas; the leader lengthens before a less
+ * preferred direction is tried, so the disc clears a wide element behind the
+ * point. When no preferred direction has room (the point is in a corner of
+ * the picture) every direction is tried, nearest the first preference first.
+ * Among the places with room: when the image could be sampled, the first
+ * that covers nothing (text, a control's edge, `busy`), else the one that
+ * covers least; a place `avoid` names (an arrow's own line) comes after the
+ * others. With no room anywhere the disc is clamped inside the canvas in the
+ * direction with most room, so it is never off the picture.
  */
 function drawLeaderDisc(
   ctx: CanvasRenderingContext2D,
@@ -131,18 +153,46 @@ function drawLeaderDisc(
   number: number,
   color: string,
   prefer: [number, number][],
+  busy?: Busy,
+  avoid?: (x: number, y: number) => boolean,
 ) {
   const edge = r + 3 * unit + 1;
   const { width: W, height: H } = ctx.canvas;
-  const off = 1.7 * r;
-  const fits = ([ux, uy]: [number, number]) => {
-    const x = x0 + ux * off;
-    const y = y0 + uy * off;
-    return x >= edge && x <= W - edge && y >= edge && y <= H - edge;
-  };
-  const [dx, dy] = prefer.find(fits) ?? prefer[0];
-  const cx = clamp(x0 + dx * off, edge, Math.max(edge, W - edge));
-  const cy = clamp(y0 + dy * off, edge, Math.max(edge, H - edge));
+  const fits = (x: number, y: number) => x >= edge && x <= W - edge && y >= edge && y <= H - edge;
+  const at = (ux: number, uy: number, k: number) => ({ x: x0 + ux * k * r, y: y0 + uy * k * r });
+  let spots: { x: number; y: number }[] = [];
+  for (const [ux, uy] of prefer)
+    for (const k of LEADERS) {
+      const s = at(ux, uy, k);
+      if (fits(s.x, s.y)) spots.push(s);
+    }
+  if (!spots.length) {
+    const first = Math.atan2(prefer[0][1], prefer[0][0]);
+    const away = (a: number) => Math.abs(Math.atan2(Math.sin(a - first), Math.cos(a - first)));
+    for (const a of [...FAN].sort((p, q) => away(p) - away(q)))
+      for (const k of FAN_LEADERS) {
+        const s = at(Math.cos(a), Math.sin(a), k);
+        if (fits(s.x, s.y)) spots.push(s);
+      }
+  }
+  let cx: number;
+  let cy: number;
+  if (!spots.length) {
+    // No room in any direction: the direction with most, clamped inside the canvas.
+    const room = ([ux, uy]: [number, number]) => {
+      const x = clamp(x0 + ux * LEADERS[0] * r, edge, Math.max(edge, W - edge));
+      const y = clamp(y0 + uy * LEADERS[0] * r, edge, Math.max(edge, H - edge));
+      return { x, y, d: Math.hypot(x - x0, y - y0) };
+    };
+    const best = prefer.map(room).reduce((a, b) => (b.d > a.d ? b : a));
+    cx = best.x;
+    cy = best.y;
+  } else {
+    if (avoid) spots = [...spots.filter((s) => !avoid(s.x, s.y)), ...spots.filter((s) => avoid(s.x, s.y))];
+    const scored = spots.map((s) => ({ ...s, score: busy ? busy(s.x, s.y, r + 3 * unit) : 0 }));
+    const quiet = scored.find((s) => s.score <= QUIET_DISC);
+    ({ x: cx, y: cy } = quiet ?? scored.reduce((a, b) => (b.score < a.score ? b : a)));
+  }
   const len = Math.hypot(cx - x0, cy - y0);
   if (len > ring + r + 2 * unit) {
     const ux = (cx - x0) / len;
@@ -156,14 +206,33 @@ function drawLeaderDisc(
 }
 
 /**
+ * `busy` for a canvas that shows the image at `scale` from image pixel
+ * `origin`: a disc on the canvas is measured on the image's luma grid.
+ */
+function busyOn(grid: LumaGrid | undefined, scale: number, origin: Rect | null): Busy | undefined {
+  if (!grid) return undefined;
+  return (x, y, r) => {
+    const R = r / scale;
+    return busyShare(grid, {
+      x: (origin?.x ?? 0) + x / scale - R,
+      y: (origin?.y ?? 0) + y / scale - R,
+      w: 2 * R,
+      h: 2 * R,
+    });
+  };
+}
+
+/**
  * One numbered marker. `px` maps image fractions to canvas pixels; `unit`
  * sets the marker size. A dot is a small ring at the point, with the number
  * on a disc up and left of it on a short leader, so the number never covers
- * what the dot marks; near an edge the disc flips to the side with room. An
- * area is a box with the number just outside its top-left corner when there
- * is room, else nudged inside it. An arrow is a line from its tail to a
- * filled head, a small ring at the tail and the disc behind the tail, away
- * from the line. (After Scrawl's `draw_mark_numbers`.)
+ * what the dot marks; near an edge, or when it would sit on text or a
+ * control (`busy`, from the image's luma grid), the disc moves to another
+ * corner or further out. An area is a box with the number just outside its
+ * top-left corner when there is room, else nudged inside it. An arrow is a
+ * line from its tail to a filled head, a small ring at the tail and the disc
+ * behind the tail or beside it, off the line and off what the tail marks.
+ * (After Scrawl's `draw_mark_numbers`.)
  */
 function drawMark(
   ctx: CanvasRenderingContext2D,
@@ -172,6 +241,7 @@ function drawMark(
   px: (x: number, y: number) => [number, number],
   unit: number,
   color = VERDICT_COLOR[verdictOf(mark)],
+  busy?: Busy,
 ) {
   const r = 11 * unit;
   const edge = r + 3 * unit + 1;
@@ -216,37 +286,85 @@ function drawMark(
     ctx.fillStyle = color;
     ctx.fill();
     drawRing(ctx, x0, y0, ring, unit, color);
-    // The disc behind the tail, off the line; beside it when the tail is near an edge.
-    drawLeaderDisc(ctx, x0, y0, ring, r, unit, number, color, [
-      [-ux, -uy],
-      [uy, -ux],
-      [-uy, ux],
-      [ux, uy],
-    ]);
+    // Whether a disc centred at (x, y) would lie on the arrow's line.
+    const onLine = (x: number, y: number) => {
+      const t = clamp(((x - x0) * ux + (y - y0) * uy) / len, 0, 1);
+      return Math.hypot(x - (x0 + ux * t * len), y - (y0 + uy * t * len)) < r + 3 * unit;
+    };
+    // The disc behind the tail, off the line; beside it when the tail is near an edge or on
+    // a wide element; on the line only when nothing else has room.
+    drawLeaderDisc(
+      ctx,
+      x0,
+      y0,
+      ring,
+      r,
+      unit,
+      number,
+      color,
+      [
+        [-ux, -uy],
+        [uy, -ux],
+        [-uy, ux],
+      ],
+      busy,
+      onLine,
+    );
     return;
   }
   const ring = 5 * unit;
   drawRing(ctx, x0, y0, ring, unit, color);
-  // The disc, up and left, flipped to the side with room near an edge.
+  // The disc, up and left, flipped to the side with room near an edge; the other corners after.
   const { width: W, height: H } = ctx.canvas;
-  const off = 1.7 * r;
+  const off = LEADERS[0] * r;
   const dx = x0 - off - edge >= 0 || x0 + off + edge > W ? -1 : 1;
   const dy = y0 - off - edge >= 0 || y0 + off + edge > H ? -1 : 1;
-  drawLeaderDisc(ctx, x0, y0, ring, r, unit, number, color, [[dx, dy]]);
+  // The diagonals are not unit vectors on purpose: the disc sits √2 further out on them, as before.
+  drawLeaderDisc(
+    ctx,
+    x0,
+    y0,
+    ring,
+    r,
+    unit,
+    number,
+    color,
+    [
+      [dx, dy],
+      [-dx, dy],
+      [dx, -dy],
+      [-dx, -dy],
+      [dx, 0],
+      [0, dy],
+      [-dx, 0],
+      [0, -dy],
+    ],
+    busy,
+  );
 }
 
 const written = (a: Asset) => a.marks.filter((m) => verdictOf(m) !== 'empty');
 
-/** The whole image with every note drawn on it, at most `maxSide` pixels on the long side. */
-export async function markedImage(bitmap: ImageBitmap, asset: Asset, maxSide = 1800) {
+/**
+ * The whole image with every note drawn on it, at most `maxSide` pixels on
+ * the long side. `grid` (the image's luma, `lumaGrid`) keeps each number off
+ * text and controls; sampled here when not given.
+ */
+export async function markedImage(
+  bitmap: ImageBitmap,
+  asset: Asset,
+  maxSide = 1800,
+  grid: LumaGrid | undefined = lumaGrid(bitmap),
+) {
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
   const { canvas, ctx } = canvasOf(w, h);
   ctx.drawImage(bitmap, 0, 0, w, h);
   const unit = Math.max(1, Math.max(w, h) / 1200);
+  const busy = busyOn(grid, scale, null);
   for (const [i, m] of written(asset).entries())
-    drawMark(ctx, m, i + 1, (x, y) => [x * w, y * h], unit);
+    drawMark(ctx, m, i + 1, (x, y) => [x * w, y * h], unit, undefined, busy);
   return toBlob(canvas, 'image/jpeg', 0.88);
 }
 
@@ -292,6 +410,7 @@ function drawCrop(
   number: number,
   maxSide: number,
   rect: Rect,
+  grid: LumaGrid | undefined,
   color?: string,
 ) {
   const side = Math.max(rect.w, rect.h);
@@ -306,48 +425,65 @@ function drawCrop(
     (x * bitmap.width - rect.x) * scale,
     (y * bitmap.height - rect.y) * scale,
   ];
-  drawMark(ctx, mark, number, px, unit, color);
+  drawMark(ctx, mark, number, px, unit, color, busyOn(grid, scale, rect));
   return canvas;
 }
 
 /** The whole image with one note's marker, 768px at most, as JPEG: context for a suggestion. */
-export async function contextForAi(bitmap: ImageBitmap, mark: Mark, number: number) {
+export async function contextForAi(
+  bitmap: ImageBitmap,
+  mark: Mark,
+  number: number,
+  grid: LumaGrid | undefined = lumaGrid(bitmap),
+) {
   const scale = Math.min(1, 768 / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
   const { canvas, ctx } = canvasOf(w, h);
   ctx.drawImage(bitmap, 0, 0, w, h);
-  drawMark(ctx, mark, number, (x, y) => [x * w, y * h], 1, AI_MARK_COLOR);
+  drawMark(ctx, mark, number, (x, y) => [x * w, y * h], 1, AI_MARK_COLOR, busyOn(grid, scale, null));
   return toBlob(canvas, 'image/jpeg', 0.8);
 }
 
-/** A close-up of one note, its marker drawn in, upscaled when the crop is small. */
-export const cropImage = (bitmap: ImageBitmap, mark: Mark, number: number, rect?: Rect) =>
-  toBlob(
+/**
+ * A close-up of one note, its marker drawn in, upscaled when the crop is
+ * small. `rect` is the crop already settled (`settledCrop`) and `grid` the
+ * image's luma; both are sampled here when not given.
+ */
+export function cropImage(
+  bitmap: ImageBitmap,
+  mark: Mark,
+  number: number,
+  rect?: Rect,
+  grid: LumaGrid | undefined = lumaGrid(bitmap),
+) {
+  return toBlob(
     drawCrop(
       bitmap,
       mark,
       number,
       Number.POSITIVE_INFINITY,
-      rect ?? settledCrop(bitmap, mark, lumaGrid(bitmap)),
+      rect ?? settledCrop(bitmap, mark, grid),
+      grid,
     ),
     'image/png',
   );
+}
 
 /** The same close-up for a suggestion: 1024px at most, as JPEG. */
-export const cropForAi = (bitmap: ImageBitmap, mark: Mark, number: number, rect?: Rect) =>
-  toBlob(
-    drawCrop(
-      bitmap,
-      mark,
-      number,
-      1024,
-      rect ?? settledCrop(bitmap, mark, lumaGrid(bitmap)),
-      AI_MARK_COLOR,
-    ),
+export function cropForAi(
+  bitmap: ImageBitmap,
+  mark: Mark,
+  number: number,
+  rect?: Rect,
+  grid: LumaGrid | undefined = lumaGrid(bitmap),
+) {
+  return toBlob(
+    drawCrop(bitmap, mark, number, 1024, rect ?? settledCrop(bitmap, mark, grid), grid, AI_MARK_COLOR),
     'image/jpeg',
     0.85,
   );
+}
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -453,7 +589,7 @@ export async function buildExport(
     const bitmap = await bitmapOf(blob);
     const grid = lumaGrid(bitmap);
     files.push({ name: root + names.image, data: await bytes(blob) });
-    const markedBlob = await markedImage(bitmap, asset);
+    const markedBlob = await markedImage(bitmap, asset, undefined, grid);
     marked.push({ blob: markedBlob, number: names.number });
     files.push({ name: root + names.marked, data: await bytes(markedBlob) });
     for (const [j, mark] of written(asset).entries()) {
@@ -461,7 +597,7 @@ export async function buildExport(
       crops.set(`${asset.id}/${mark.id}`, rect);
       files.push({
         name: root + names.crop(j),
-        data: await bytes(await cropImage(bitmap, mark, j + 1, rect)),
+        data: await bytes(await cropImage(bitmap, mark, j + 1, rect, grid)),
       });
     }
     bitmap.close();
@@ -502,16 +638,34 @@ export function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/** Large screenshots are kept up to 4096px on the long side; anything bigger is scaled down once. */
+/**
+ * The most pixels an image keeps. Safari's canvas gives up at about 16.7 megapixels, and every
+ * draw (the marked copy, the crops, the AI's copy) goes through a canvas of the image's size.
+ */
+export const PIXEL_BUDGET = 16_000_000;
+/** The longest side a canvas takes in every browser. */
+const MAX_SIDE = 16_000;
+
+/** The factor that brings an image inside the budget: 1 when it already is. */
+export const fitScale = (width: number, height: number) =>
+  Math.min(1, Math.sqrt(PIXEL_BUDGET / (width * height)), MAX_SIDE / Math.max(width, height));
+
+/**
+ * Screenshots inside the pixel budget are kept as they are; one over it (a tall full-page capture,
+ * a 4K-and-more export) is scaled down once, by area rather than by its long side, so a tall
+ * page keeps its width legible. `scaled` says when that happened, so the app can tell the user.
+ */
 export async function prepareImage(file: File) {
   const bitmap = await bitmapOf(file);
   const { width, height } = bitmap;
-  const scale = Math.min(1, 4096 / Math.max(width, height));
-  if (scale === 1 && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+  const scale = fitScale(width, height);
+  const scaled = scale < 1;
+  if (!scaled && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
     bitmap.close();
-    return { blob: file as Blob, type: file.type, width, height };
+    return { blob: file as Blob, type: file.type, width, height, scaled };
   }
-  const { canvas, ctx } = canvasOf(Math.round(width * scale), Math.round(height * scale));
+  // Floored, so the result never lands a few pixels over the budget.
+  const { canvas, ctx } = canvasOf(Math.floor(width * scale), Math.floor(height * scale));
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return {
@@ -519,22 +673,6 @@ export async function prepareImage(file: File) {
     type: 'image/png',
     width: canvas.width,
     height: canvas.height,
-  };
-}
-
-/** The copy the AI sees: 1568px on the long side at most, as JPEG. */
-export async function imageForAi(blob: Blob) {
-  const bitmap = await bitmapOf(blob);
-  const scale = Math.min(1, 1568 / Math.max(bitmap.width, bitmap.height));
-  const { canvas, ctx } = canvasOf(
-    Math.round(bitmap.width * scale),
-    Math.round(bitmap.height * scale),
-  );
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return {
-    blob: await toBlob(canvas, 'image/jpeg', 0.9),
-    width: canvas.width,
-    height: canvas.height,
+    scaled,
   };
 }
