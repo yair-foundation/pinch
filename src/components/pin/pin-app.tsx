@@ -1934,7 +1934,7 @@ function EmptyState({
                   active={dragging}
                   className="mx-auto -mt-3 mb-3 w-64 [@media(max-height:760px)]:w-52"
                 />
-                <h1 className="-mt-7 mb-0 text-center text-[1.4rem] leading-[1.1] font-normal tracking-tight text-balance">
+                <h1 className="-mt-5 mb-0 text-center text-[1.4rem] leading-tight font-normal tracking-tight text-balance">
                   Your taste, in everything your agent creates.
                 </h1>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
