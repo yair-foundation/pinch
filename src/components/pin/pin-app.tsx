@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  AlignVerticalSpaceBetween,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -17,6 +18,7 @@ import {
   MoveUpRight,
   Plus,
   RotateCcw,
+  Ruler,
   SquareDashed,
   Swords,
   ThumbsDown,
@@ -45,8 +47,11 @@ import {
   type Asset,
   areaFrom,
   arrowFrom,
+  currentRhythm,
+  currentSpacing,
   currentSuggestion,
   isTinyArea,
+  type LumaGrid,
   isTinyArrow,
   type Mark,
   moveArrow,
@@ -62,7 +67,17 @@ import {
   verdictOf,
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
+import {
+  type Measured,
+  measureSpacing,
+  type Scale,
+  SIDES,
+  type Side,
+  type Spacing,
+  scaleOf,
+} from '@/lib/pin/measure';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
+import { type Checked, checkRhythm, type Rhythm, rhythmSuggestion } from '@/lib/pin/rhythm';
 import type { SuggestResult } from '@/lib/pin/suggest';
 import { imageSummary } from '@/lib/pin/summary';
 import { unzip } from '@/lib/pin/unzip';
@@ -78,11 +93,14 @@ import { TopicPicker } from './topic-picker';
 import {
   bitmapOf,
   buildExport,
+  measureGrid,
   contextForAi,
   cropForAi,
   download,
   markedImage,
+  ODD_COLOR,
   prepareImage,
+  SPACING_COLOR,
   VERDICT_COLOR,
 } from './render';
 import * as store from './store';
@@ -1018,6 +1036,72 @@ function Workspace() {
     },
     [asset, update],
   );
+  const setScale = useCallback(
+    (scale: Scale) => {
+      if (!asset) return;
+      update(asset.id, (a) => ({ ...a, scale }));
+    },
+    [asset, update],
+  );
+  // The fine luma grid of the last image measured: several notes on one image sample it once.
+  const measuredGrid = useRef<{ id: string; grid: LumaGrid | undefined } | null>(null);
+  /** The image's fine grid, or null when this browser can't decode or read it back. */
+  const gridOf = async (assetId: string): Promise<LumaGrid | null> => {
+    if (measuredGrid.current?.id === assetId) return measuredGrid.current.grid ?? null;
+    try {
+      const blob = await store.getImage(assetId);
+      if (!blob) return null;
+      const bitmap = await bitmapOf(blob);
+      let grid: LumaGrid | undefined;
+      try {
+        grid = measureGrid(bitmap);
+      } finally {
+        bitmap.close();
+      }
+      measuredGrid.current = { id: assetId, grid };
+      return grid ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const markOf = (assetId: string, markId: string) =>
+    assetsRef.current.find((a) => a.id === assetId)?.marks.find((m) => m.id === markId);
+  const setOnMark = (assetId: string, markId: string, change: Partial<Mark>) =>
+    update(assetId, (a) => ({
+      ...a,
+      marks: a.marks.map((m) => (m.id === markId ? { ...m, ...change } : m)),
+    }));
+  const measureMark = async (assetId: string, markId: string): Promise<Measured> => {
+    const mark = markOf(assetId, markId);
+    if (!mark) return { ok: false, reason: 'empty' };
+    const grid = await gridOf(assetId);
+    // An image this browser can't decode or read back: nothing to measure on.
+    if (!grid) return { ok: false, reason: 'busy' };
+    const result = measureSpacing(grid, mark.shape);
+    if (result.ok) {
+      const spacing: Spacing = {
+        element: result.element,
+        gaps: result.gaps,
+        precision: result.precision,
+        shape: shapeKey(mark.shape),
+      };
+      setOnMark(assetId, markId, { spacing });
+    }
+    return result;
+  };
+  const checkMark = async (assetId: string, markId: string): Promise<Checked> => {
+    const mark = markOf(assetId, markId);
+    if (!mark) return { ok: false, reason: 'empty' };
+    const grid = await gridOf(assetId);
+    if (!grid) return { ok: false, reason: 'busy' };
+    const result = checkRhythm(grid, mark.shape);
+    if (result.ok) {
+      const { ok: _, ...found } = result;
+      const rhythm: Rhythm = { ...found, shape: shapeKey(mark.shape) };
+      setOnMark(assetId, markId, { rhythm });
+    }
+    return result;
+  };
   const setSourceForAll = () => {
     const source = asset?.source;
     if (!source) return;
@@ -1743,6 +1827,9 @@ function Workspace() {
               setSelected(id);
             }}
             onChangeMark={changeMark}
+            onMeasure={(markId) => measureMark(asset.id, markId)}
+            onCheck={(markId) => checkMark(asset.id, markId)}
+            onScale={setScale}
             onRemoveMark={removeMark}
             onDone={closeNote}
             onPrev={() => go(index - 1)}
@@ -2680,7 +2767,10 @@ function Stage({
   const draftArrow = gesture?.kind === 'draw' ? gesture.arrow : null;
   // The open area dims the rest of the image. The dim is its own layer, clipped to the image,
   // so it never leaks onto the stage and never clips a pin sitting on the edge.
-  const openArea = asset.marks.find((m) => m.id === selected)?.shape;
+  const openMark = asset.marks.find((m) => m.id === selected);
+  const openArea = openMark?.shape;
+  const openSpacing = openMark ? currentSpacing(openMark) : undefined;
+  const openRhythm = openMark ? currentRhythm(openMark) : undefined;
   const dim = openArea?.kind === 'area' ? openArea : null;
 
   return (
@@ -2782,6 +2872,12 @@ function Stage({
               onKey={(e, end) => nudge(e, m, end)}
             />
           ))}
+          {openSpacing && (
+            <SpacingOverlay spacing={openSpacing} k={size.w / asset.width} size={size} />
+          )}
+          {openRhythm && (
+            <RhythmOverlay rhythm={openRhythm} k={size.w / asset.width} size={size} />
+          )}
           {draftArrow && (
             <svg
               aria-hidden
@@ -2806,6 +2902,157 @@ function Stage({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The open note's measured spacing on the stage, as the export draws it on the crop: a dashed
+ * box on the element and a line across each measured gap with its size in screenshot pixels.
+ * `k` is stage pixels per image pixel.
+ */
+function SpacingOverlay({
+  spacing,
+  k,
+  size,
+}: {
+  spacing: Spacing;
+  k: number;
+  size: { w: number; h: number };
+}) {
+  const e = spacing.element;
+  const [x0, y0, x1, y1] = [e.x * k, e.y * k, (e.x + e.w) * k, (e.y + e.h) * k];
+  const mx = (x0 + x1) / 2;
+  const my = (y0 + y1) / 2;
+  const tick = 4;
+  return (
+    <svg
+      aria-hidden
+      width={size.w}
+      height={size.h}
+      className="pointer-events-none absolute inset-0 overflow-visible"
+      stroke={SPACING_COLOR}
+      strokeWidth={1.5}
+      fill="none"
+    >
+      <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} strokeDasharray="4 3" />
+      {SIDES.map((side) => {
+        const px = spacing.gaps[side];
+        if (px === undefined) return null;
+        const d = px * k;
+        const across = side === 'above' || side === 'below';
+        const [ax, ay, bx, by] =
+          side === 'above'
+            ? [mx, y0, mx, y0 - d]
+            : side === 'below'
+              ? [mx, y1, mx, y1 + d]
+              : side === 'left'
+                ? [x0, my, x0 - d, my]
+                : [x1, my, x1 + d, my];
+        const label = String(px);
+        const w = label.length * 7 + 8;
+        const lx = across ? (ax + bx) / 2 + 6 : (ax + bx) / 2 - w / 2;
+        const ly = across ? (ay + by) / 2 - 8 : (ay + by) / 2 - 22;
+        const ticks = across
+          ? `M${ax - tick} ${ay}H${ax + tick}M${bx - tick} ${by}H${bx + tick}`
+          : `M${ax} ${ay - tick}V${ay + tick}M${bx} ${by - tick}V${by + tick}`;
+        return (
+          <g key={side}>
+            <path d={`M${ax} ${ay}L${bx} ${by}${ticks}`} />
+            <rect x={lx} y={ly} width={w} height={16} rx={3} fill="#ffffff" />
+            <text
+              x={lx + w / 2}
+              y={ly + 12}
+              textAnchor="middle"
+              fill={SPACING_COLOR}
+              stroke="none"
+              className="font-mono text-[11px] font-semibold tabular-nums"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/**
+ * The open note's spacing check on the stage, as the crop shows it: each item dashed, each gap
+ * bracketed with its size in screenshot pixels, an odd one in red. `k` is stage pixels per
+ * image pixel.
+ */
+function RhythmOverlay({
+  rhythm,
+  k,
+  size,
+}: {
+  rhythm: Rhythm;
+  k: number;
+  size: { w: number; h: number };
+}) {
+  const boxes = rhythm.items.map((i) => ({
+    x0: i.x * k,
+    y0: i.y * k,
+    x1: (i.x + i.w) * k,
+    y1: (i.y + i.h) * k,
+  }));
+  const column = rhythm.axis === 'column';
+  const tick = 4;
+  return (
+    <svg
+      aria-hidden
+      width={size.w}
+      height={size.h}
+      className="pointer-events-none absolute inset-0 overflow-visible"
+      strokeWidth={1.5}
+      fill="none"
+    >
+      {boxes.map((b, i) => (
+        <rect
+          // biome-ignore lint/suspicious/noArrayIndexKey: the items are in order and don't move
+          key={i}
+          x={b.x0}
+          y={b.y0}
+          width={b.x1 - b.x0}
+          height={b.y1 - b.y0}
+          stroke={SPACING_COLOR}
+          strokeDasharray="4 3"
+        />
+      ))}
+      {rhythm.gaps.map((px, i) => {
+        const a = boxes[i];
+        const z = boxes[i + 1];
+        const color = rhythm.odd.includes(i) ? ODD_COLOR : SPACING_COLOR;
+        const lo = column ? Math.max(a.x0, z.x0) : Math.max(a.y0, z.y0);
+        const hi = column ? Math.min(a.x1, z.x1) : Math.min(a.y1, z.y1);
+        const mid = hi > lo ? (lo + hi) / 2 : column ? (a.x0 + a.x1) / 2 : (a.y0 + a.y1) / 2;
+        const [ax, ay, bx, by] = column ? [mid, a.y1, mid, z.y0] : [a.x1, mid, z.x0, mid];
+        const ticks = column
+          ? `M${ax - tick} ${ay}H${ax + tick}M${bx - tick} ${by}H${bx + tick}`
+          : `M${ax} ${ay - tick}V${ay + tick}M${bx} ${by - tick}V${by + tick}`;
+        const label = String(px);
+        const w = label.length * 7 + 8;
+        const lx = column ? mid + 6 : (ax + bx) / 2 - w / 2;
+        const ly = column ? (ay + by) / 2 - 8 : mid - 22;
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the gaps are in order and don't move
+          <g key={i} stroke={color}>
+            <path d={`M${ax} ${ay}L${bx} ${by}${ticks}`} />
+            <rect x={lx} y={ly} width={w} height={16} rx={3} fill="#ffffff" />
+            <text
+              x={lx + w / 2}
+              y={ly + 12}
+              textAnchor="middle"
+              fill={color}
+              stroke="none"
+              className="font-mono text-[11px] font-semibold tabular-nums"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -3022,6 +3269,9 @@ function Panel({
   onSourceForAll,
   onSelect,
   onChangeMark,
+  onMeasure,
+  onCheck,
+  onScale,
   onRemoveMark,
   onDone,
   onPrev,
@@ -3040,6 +3290,9 @@ function Panel({
   onSourceForAll: () => void;
   onSelect: (id: string) => void;
   onChangeMark: (id: string, change: Partial<Mark>) => void;
+  onMeasure: (id: string) => Promise<Measured>;
+  onCheck: (id: string) => Promise<Checked>;
+  onScale: (scale: Scale) => void;
   onRemoveMark: (id: string) => void;
   onDone: () => void;
   onPrev: () => void;
@@ -3099,7 +3352,27 @@ function Panel({
             onChange={(c) => onChangeMark(mark.id, c)}
             onRemove={() => onRemoveMark(mark.id)}
             onDone={onDone}
-          />
+          >
+            <SpacingSection
+              mark={mark}
+              scale={scaleOf(asset)}
+              onMeasure={() => onMeasure(mark.id)}
+              onScale={onScale}
+              onClear={() => onChangeMark(mark.id, { spacing: undefined })}
+            />
+            {mark.shape.kind === 'area' && (
+              <RhythmSection
+                mark={mark}
+                scale={scaleOf(asset)}
+                onCheck={() => onCheck(mark.id)}
+                onClear={() => onChangeMark(mark.id, { rhythm: undefined })}
+                onAdd={(field, text) => {
+                  const now = mark[field].trim();
+                  onChangeMark(mark.id, { [field]: now ? `${now} ${text}` : text });
+                }}
+              />
+            )}
+          </MarkEditor>
         ) : (
           <section>
             <h2 className="m-0 mb-2 text-[13px] font-medium text-muted-foreground">
@@ -3204,6 +3477,7 @@ function MarkEditor({
   onChange,
   onRemove,
   onDone,
+  children,
 }: {
   mark: Mark;
   number: number;
@@ -3214,6 +3488,8 @@ function MarkEditor({
   onChange: (c: Partial<Mark>) => void;
   onRemove: () => void;
   onDone: () => void;
+  /** Shown under the two fields: the note's spacing. */
+  children?: React.ReactNode;
 }) {
   const first = useRef<HTMLTextAreaElement>(null);
   const mac = useIsMac();
@@ -3330,6 +3606,316 @@ function MarkEditor({
         suggested={suggestedTopics}
         onChange={(topics) => onChange({ topics })}
       />
+      {children}
+    </section>
+  );
+}
+
+const GAP_LABEL: Record<Side, string> = {
+  above: 'Above',
+  below: 'Below',
+  left: 'Left',
+  right: 'Right',
+};
+const MEASURE_FAILED: Record<'empty' | 'busy', string> = {
+  empty:
+    'Nothing to measure here: the spot is on empty space. Put the dot on the element, or draw an area around it.',
+  busy: 'Can’t measure here: a photo or a gradient has no flat background to measure against.',
+};
+
+/**
+ * A note's spacing (`measure.ts`): measured on request from the element at the
+ * dot or inside the area, shown as four gaps in screenshot pixels with the CSS
+ * pixels at the screenshot's scale, which the author can correct. A note that
+ * moved keeps its old numbers out of the export until it is measured again.
+ * Arrows are not measured.
+ */
+function SpacingSection({
+  mark,
+  scale,
+  onMeasure,
+  onScale,
+  onClear,
+}: {
+  mark: Mark;
+  scale: { scale: Scale; guessed: boolean };
+  onMeasure: () => Promise<Measured>;
+  onScale: (scale: Scale) => void;
+  onClear: () => void;
+}) {
+  const [measuring, setMeasuring] = useState(false);
+  const [failed, setFailed] = useState<{ reason: 'empty' | 'busy'; shape: string } | null>(null);
+  if (mark.shape.kind === 'arrow') return null;
+  const spacing = currentSpacing(mark);
+  const shape = shapeKey(mark.shape);
+  const stale = Boolean(mark.spacing) && !spacing;
+  const measure = async () => {
+    setMeasuring(true);
+    setFailed(null);
+    try {
+      const result = await onMeasure();
+      if (!result.ok && result.reason !== 'arrow') setFailed({ reason: result.reason, shape });
+    } finally {
+      setMeasuring(false);
+    }
+  };
+  const small = cn(
+    hit,
+    'min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+  );
+  const headingId = `spacing-${mark.id}`;
+  return (
+    <section aria-labelledby={headingId} className="space-y-2">
+      <div className="flex items-center gap-1">
+        <h3 id={headingId} className="m-0 text-[13px] font-medium text-muted-foreground">
+          Spacing
+        </h3>
+        {spacing && (
+          <>
+            <button
+              type="button"
+              onClick={measure}
+              disabled={measuring}
+              className={cn(small, 'ml-auto disabled:opacity-60')}
+            >
+              {measuring ? 'Measuring…' : 'Measure again'}
+            </button>
+            <button type="button" onClick={onClear} className={small}>
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+      {spacing ? (
+        <>
+          <dl className="m-0 grid grid-cols-4 gap-1.5 text-center">
+            {SIDES.map((side) => {
+              const gap = spacing.gaps[side];
+              return (
+                <div key={side} className="rounded-md bg-muted px-1 py-1.5">
+                  <dt className="text-[13px] text-muted-foreground">{GAP_LABEL[side]}</dt>
+                  <dd className="m-0 text-sm font-medium tabular-nums">
+                    {gap === undefined ? (
+                      <>
+                        <span aria-hidden>–</span>
+                        <span className="sr-only">nothing within reach</span>
+                      </>
+                    ) : (
+                      gap
+                    )}
+                  </dd>
+                  {gap !== undefined && scale.scale > 1 && (
+                    <dd className="m-0 text-[13px] text-muted-foreground tabular-nums">
+                      {Math.round(gap / scale.scale)} CSS
+                    </dd>
+                  )}
+                </div>
+              );
+            })}
+          </dl>
+          <p className="m-0 text-[13px] text-muted-foreground">
+            Screenshot pixels{spacing.precision > 1 ? `, ±${spacing.precision}` : ''}, from the
+            element in the dashed box to the nearest element on each side. 0: touching or
+            overlapping. A dash: nothing within reach.{' '}
+            {mark.shape.kind === 'dot' &&
+              'A dot measures the line or shape under it; for a block of lines, draw an area around it.'}
+          </p>
+          <fieldset className="m-0 flex items-center gap-2 border-0 p-0">
+            <legend className="float-left mr-1 p-0 text-[13px] text-muted-foreground">
+              Screenshot scale{scale.guessed ? ' (guessed)' : ''}
+            </legend>
+            <div className="flex gap-0.5 rounded-full border border-border p-0.5">
+              {([1, 2, 3] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={scale.scale === s}
+                  onClick={() => onScale(s)}
+                  className={cn(
+                    hit,
+                    'min-h-7 min-w-9 rounded-full px-2 text-[13px] tabular-nums text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground aria-pressed:bg-accent aria-pressed:font-medium aria-pressed:text-foreground',
+                  )}
+                >
+                  {s}×
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={measure}
+            disabled={measuring}
+            className={cn(
+              hit,
+              'flex min-h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-60',
+            )}
+          >
+            <Ruler className="size-4" aria-hidden />
+            {measuring ? 'Measuring…' : stale ? 'Measure again' : 'Measure spacing'}
+          </button>
+          {stale && !measuring && (
+            <p className="m-0 text-[13px] text-muted-foreground">
+              The note moved since it was measured, so the old numbers are left out of the export.
+            </p>
+          )}
+        </>
+      )}
+      {/* After either button: measuring again where nothing can be measured says so too. */}
+      {failed && failed.shape === shape && (
+        <p role="status" className="m-0 text-[13px] text-muted-foreground">
+          {MEASURE_FAILED[failed.reason]}
+        </p>
+      )}
+    </section>
+  );
+}
+
+const CHECK_FAILED: Record<'few' | 'busy' | 'empty', string> = {
+  few: 'Found fewer than three items here. Draw the area around three or more rows, cards or links.',
+  busy: 'Can’t check here: a photo or a gradient has no flat background to measure against.',
+  empty: 'Nothing inside this area to check.',
+};
+
+/**
+ * The spacing check for an area (`rhythm.ts`): the items inside it along one
+ * axis and the gaps between them, an odd one in red. The suggested sentence
+ * goes into the note only when the author adds it.
+ */
+function RhythmSection({
+  mark,
+  scale,
+  onCheck,
+  onClear,
+  onAdd,
+}: {
+  mark: Mark;
+  scale: { scale: Scale; guessed: boolean };
+  onCheck: () => Promise<Checked>;
+  onClear: () => void;
+  onAdd: (field: 'good' | 'bad', text: string) => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [failed, setFailed] = useState<{ reason: 'few' | 'busy' | 'empty'; shape: string } | null>(
+    null,
+  );
+  const rhythm = currentRhythm(mark);
+  const shape = shapeKey(mark.shape);
+  const stale = Boolean(mark.rhythm) && !rhythm;
+  const check = async () => {
+    setChecking(true);
+    setFailed(null);
+    try {
+      const result = await onCheck();
+      if (!result.ok && result.reason !== 'shape') setFailed({ reason: result.reason, shape });
+    } finally {
+      setChecking(false);
+    }
+  };
+  const small = cn(
+    hit,
+    'min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground disabled:opacity-60',
+  );
+  const suggestion = rhythm ? rhythmSuggestion(rhythm, scale.scale) : undefined;
+  const added = suggestion ? mark[suggestion.field].includes(suggestion.text) : false;
+  const headingId = `rhythm-${mark.id}`;
+  return (
+    <section aria-labelledby={headingId} className="space-y-2">
+      <div className="flex items-center gap-1">
+        <h3 id={headingId} className="m-0 text-[13px] font-medium text-muted-foreground">
+          Between items
+        </h3>
+        {rhythm && (
+          <>
+            <button
+              type="button"
+              onClick={check}
+              disabled={checking}
+              className={cn(small, 'ml-auto')}
+            >
+              {checking ? 'Checking…' : 'Check again'}
+            </button>
+            <button type="button" onClick={onClear} className={small}>
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+      {rhythm ? (
+        <>
+          <p className="m-0 text-sm">
+            {rhythm.items.length} items in a {rhythm.axis}. Gaps{' '}
+            {rhythm.gaps.map((g, i) => (
+              <span key={`${rhythm.items[i].x},${rhythm.items[i].y}`}>
+                {i > 0 && <span className="text-muted-foreground"> · </span>}
+                <span
+                  className="font-medium tabular-nums"
+                  style={rhythm.odd.includes(i) ? { color: ODD_COLOR } : undefined}
+                >
+                  {g}
+                </span>
+              </span>
+            ))}
+            {scale.scale > 1 && (
+              <span className="text-muted-foreground">
+                {' '}
+                ({rhythm.gaps.map((g) => Math.round(g / scale.scale)).join(' · ')} CSS)
+              </span>
+            )}
+          </p>
+          <p className="m-0 text-[13px] text-muted-foreground">
+            {rhythm.odd.length === 0
+              ? 'Even: every gap is close to the typical one.'
+              : rhythm.gaps.length === 2
+                ? 'The two gaps differ.'
+                : `Red: off the typical ${rhythm.typical} by more than 12% or 2 px.`}{' '}
+            Screenshot pixels, between the dashed boxes.
+          </p>
+          {suggestion && (
+            <div className="rounded-md border border-border p-2.5">
+              <p className="m-0 text-[13px] text-muted-foreground">
+                Suggested for {suggestion.field === 'bad' ? 'What doesn’t' : 'What works'}
+              </p>
+              <p className="m-0 mt-1 text-sm">{suggestion.text}</p>
+              <button
+                type="button"
+                onClick={() => onAdd(suggestion.field, suggestion.text)}
+                disabled={added}
+                className={cn(small, '-ml-2 mt-1')}
+              >
+                {added ? 'Added to the note' : 'Add to the note'}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={check}
+            disabled={checking}
+            className={cn(
+              hit,
+              'flex min-h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-60',
+            )}
+          >
+            <AlignVerticalSpaceBetween className="size-4" aria-hidden />
+            {checking ? 'Checking…' : stale ? 'Check again' : 'Check spacing between items'}
+          </button>
+          {stale && !checking && (
+            <p className="m-0 text-[13px] text-muted-foreground">
+              The area moved since it was checked, so the old check is left out of the export.
+            </p>
+          )}
+        </>
+      )}
+      {failed && failed.shape === shape && (
+        <p role="status" className="m-0 text-[13px] text-muted-foreground">
+          {CHECK_FAILED[failed.reason]}
+        </p>
+      )}
     </section>
   );
 }

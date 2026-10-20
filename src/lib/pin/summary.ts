@@ -1,5 +1,9 @@
+import { scaleOf, spacingText } from './measure';
+import { rhythmText } from './rhythm';
 import {
   type Asset,
+  currentRhythm,
+  currentSpacing,
   type Mark,
   type Shape,
   sortTopics,
@@ -44,15 +48,24 @@ const aiTag = (m: Mark, field: 'good' | 'bad') => {
 
 /**
  * One note as a line:
- * `- 02.3 area x 31–68%, y 44–61% · headline · about: Copy, Layout · works: "…" · doesn't: "…"`.
+ * `- 02.3 area x 31–68%, y 44–61% · headline · about: Copy, Layout · works: "…" · doesn't: "…"`,
+ * then its measured spacing when it has some, read at `scale` (the image's, `scaleOf`).
  */
-export function noteLine(m: Mark, number: string): string {
+export function noteLine(
+  m: Mark,
+  number: string,
+  scale: ReturnType<typeof scaleOf> = { scale: 1, guessed: true },
+): string {
   const parts = [`${number} ${whereText(m.shape)}`];
   if (m.label.trim()) parts.push(oneLine(m.label));
   const topics = sortTopics(m.topics ?? []);
   if (topics.length) parts.push(`about: ${topics.map(topicLabel).join(', ')}`);
   if (m.good.trim()) parts.push(`works${aiTag(m, 'good')}: "${oneLine(m.good)}"`);
   if (m.bad.trim()) parts.push(`doesn't${aiTag(m, 'bad')}: "${oneLine(m.bad)}"`);
+  const spacing = currentSpacing(m);
+  if (spacing) parts.push(`spacing: ${spacingText(spacing, scale.scale, scale.guessed)}`);
+  const rhythm = currentRhythm(m);
+  if (rhythm) parts.push(`rhythm: ${rhythmText(rhythm, scale.scale, scale.guessed)}`);
   const line = `- ${parts.join(' · ')}`;
   return m.origin === 'ai' && !m.confirmed ? `${line} (AI, not checked)` : line;
 }
@@ -62,7 +75,8 @@ function imageLines(a: Asset, number: string): string[] {
   const lines: string[] = [];
   if (a.source) lines.push(sourceLine(a.source));
   if (a.note.trim()) lines.push(`Overall: "${oneLine(a.note)}"`);
-  for (const [j, m] of written(a).entries()) lines.push(noteLine(m, `${number}.${j + 1}`));
+  for (const [j, m] of written(a).entries())
+    lines.push(noteLine(m, `${number}.${j + 1}`, scaleOf(a)));
   return lines;
 }
 

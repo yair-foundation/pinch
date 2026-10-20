@@ -6,6 +6,9 @@
  * text an agent reads.
  */
 
+import { type Scale, type Spacing, scaleOf, spacingText } from './measure';
+import { type Rhythm, rhythmText } from './rhythm';
+
 export type Dot = { kind: 'dot'; x: number; y: number };
 /** x, y is the top-left corner; all four are fractions of the image (0–1). */
 export type Area = { kind: 'area'; x: number; y: number; w: number; h: number };
@@ -101,6 +104,10 @@ export type Mark = {
   suggestion?: Suggestion;
   /** The suggestion text accepted into each field, so the export can say which words were the AI's. */
   accepted?: { good?: string; bad?: string };
+  /** The spacing around the spot, measured on the image (`measure.ts`). */
+  spacing?: Spacing;
+  /** For an area: the items inside it and the gaps between them (`rhythm.ts`). */
+  rhythm?: Rhythm;
 };
 
 /** Whose design an image is. */
@@ -152,6 +159,8 @@ export type Asset = {
   /** Whose design it is. Unset until the user picks one. */
   source?: Source;
   marks: Mark[];
+  /** Screenshot pixels per CSS pixel, when the author set it; otherwise guessed (`scaleOf`). */
+  scale?: Scale;
 };
 
 export type Verdict = 'good' | 'bad' | 'both' | 'empty';
@@ -199,6 +208,14 @@ export const shapeKey = (s: Shape) =>
     : (s.kind === 'dot' ? [s.x, s.y] : [s.x, s.y, s.w, s.h]).map((n) => n.toFixed(3)).join(',');
 
 /** The note's suggestion, if it was written for where the note is now. */
+/** The note's spacing check, if it was made where the note is now. */
+export const currentRhythm = (m: Mark) =>
+  m.rhythm && m.rhythm.shape === shapeKey(m.shape) ? m.rhythm : undefined;
+
+/** The note's spacing, if it was measured where the note is now. */
+export const currentSpacing = (m: Mark) =>
+  m.spacing && m.spacing.shape === shapeKey(m.shape) ? m.spacing : undefined;
+
 export const currentSuggestion = (m: Mark) =>
   m.suggestion && m.suggestion.shape === shapeKey(m.shape) ? m.suggestion : undefined;
 
@@ -539,6 +556,18 @@ const FILES = [
   '`notes.json` has all of this as data.',
 ];
 
+/** How to read Spacing: in the README only when a note carries some. */
+const SPACING_RULE =
+  "Spacing, on a note that has it: measured on the image's pixels, not judged. The element is what sits at a dot (its shape, or its line of text) or the content inside an area, fitted tight (not the box as drawn); its box is given in pixels and drawn dashed on the crop. Each gap runs from it to the first thing on that side that differs from the background: another element, a container's edge, a divider, or anything in the screenshot such as a cursor. 0 means it touches or overlaps that thing; \"nothing within reach\" means nothing within half the image's width or height on that side.";
+
+/** How to read Rhythm: in the README only when a note carries one. */
+const RHYTHM_RULE =
+  'Rhythm, on an area note that has it: the repeated items found inside the area (rows of a list, cards, links) along one axis (`column`: top to bottom; `row`: side by side) and the gaps between them, measured on the pixels. In `notes.json`, `items` are their boxes, `gaps[i]` is the gap after item i + 1 (counting from 1), `typical` is the median gap and `oddAfterItem` lists the items after which a gap is called out, counting from 1. A gap is called out when it differs from the median by more than 12% of it or 2 px, whichever is larger; with only two gaps there is no majority, so when they differ both are called out.';
+
+/** What both measurements have in common, said once. */
+const MEASURED_RULE =
+  "Spacing and Rhythm gaps are between visible pixels (ink or fill), not CSS boxes: for text the CSS margin is smaller by the line's leading and the letters' side bearings, so set it to give the visible gap. They are in screenshot pixels ± the stated precision, with CSS pixels at the screenshot's scale; when the scale says guessed, confirm it (the screenshot's width over the viewport's) before trusting the CSS values. The note's words say whether a gap is wrong; the numbers are what to fix it with.";
+
 /** AGENTS.md at the root of the export: a pointer, so the rules live in one place (README.md). */
 export function agentGuide(): string {
   return `${[
@@ -597,6 +626,43 @@ const suggestedText = (m: Mark, field: 'good' | 'bad') => {
       : '';
 };
 
+function spacingData(a: Asset, m: Mark) {
+  const spacing = currentSpacing(m);
+  if (!spacing) return {};
+  const { scale, guessed } = scaleOf(a);
+  const css: Record<string, number> = {};
+  for (const [side, px] of Object.entries(spacing.gaps)) css[side] = Math.round(px / scale);
+  return {
+    spacing: {
+      element: spacing.element,
+      gaps: spacing.gaps,
+      cssGaps: css,
+      scale,
+      scaleGuessed: guessed,
+      precision: spacing.precision,
+    },
+  };
+}
+
+function rhythmData(a: Asset, m: Mark) {
+  const rhythm = currentRhythm(m);
+  if (!rhythm) return {};
+  const { scale, guessed } = scaleOf(a);
+  return {
+    rhythm: {
+      axis: rhythm.axis,
+      items: rhythm.items,
+      gaps: rhythm.gaps,
+      cssGaps: rhythm.gaps.map((g) => Math.round(g / scale)),
+      typical: rhythm.typical,
+      oddAfterItem: rhythm.odd.map((i) => i + 1),
+      scale,
+      scaleGuessed: guessed,
+      precision: rhythm.precision,
+    },
+  };
+}
+
 /** One line naming whose design an image is. */
 export const sourceLine = (s: Source) => `Source: ${sourceLabel(s.kind)}`;
 
@@ -649,6 +715,8 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : {}),
             ...suggestedData(m),
+            ...spacingData(a, m),
+            ...rhythmData(a, m),
           })),
       };
     }),
@@ -684,6 +752,9 @@ export function readme(assets: Asset[], exportedAt: string): string {
     '## Files',
     '',
     ...FILES.map((l) => `- ${l}`),
+    ...(all.some((m) => currentSpacing(m)) ? [`- ${SPACING_RULE}`] : []),
+    ...(all.some((m) => currentRhythm(m)) ? [`- ${RHYTHM_RULE}`] : []),
+    ...(all.some((m) => currentSpacing(m) || currentRhythm(m)) ? [`- ${MEASURED_RULE}`] : []),
   ];
   list.forEach((a, i) => {
     const files = assetFiles(a, i, list.length);
@@ -708,6 +779,19 @@ export function readme(assets: Asset[], exportedAt: string): string {
       if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${oneLine(m.good)}`);
       if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${oneLine(m.bad)}`);
       if (m.origin === 'ai' && m.quote) lines.push(`From the note: "${oneLine(m.quote)}"`);
+      const spacing = currentSpacing(m);
+      if (spacing) {
+        const { scale, guessed } = scaleOf(a);
+        const e = spacing.element;
+        lines.push(
+          `Spacing: ${spacingText(spacing, scale, guessed)}. Measured from the element at pixels ${e.x},${e.y}, ${e.w}×${e.h}.`,
+        );
+      }
+      const rhythm = currentRhythm(m);
+      if (rhythm) {
+        const { scale, guessed } = scaleOf(a);
+        lines.push(`Rhythm: ${rhythmText(rhythm, scale, guessed)}`);
+      }
     });
   });
   return `${lines.join('\n')}\n`;
