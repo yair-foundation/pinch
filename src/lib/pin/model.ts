@@ -6,6 +6,8 @@
  * text an agent reads.
  */
 
+import { type Scale, type Spacing, scaleOf, spacingText } from './measure';
+
 export type Dot = { kind: 'dot'; x: number; y: number };
 /** x, y is the top-left corner; all four are fractions of the image (0–1). */
 export type Area = { kind: 'area'; x: number; y: number; w: number; h: number };
@@ -46,6 +48,8 @@ export type Mark = {
   suggestion?: Suggestion;
   /** The suggestion text accepted into each field, so the export can say which words were the AI's. */
   accepted?: { good?: string; bad?: string };
+  /** The spacing around the spot, measured on the image (`measure.ts`). */
+  spacing?: Spacing;
 };
 
 /** Whose design an image is. */
@@ -97,6 +101,8 @@ export type Asset = {
   /** Whose design it is. Unset until the user picks one. */
   source?: Source;
   marks: Mark[];
+  /** Screenshot pixels per CSS pixel, when the author set it; otherwise guessed (`scaleOf`). */
+  scale?: Scale;
 };
 
 export type Verdict = 'good' | 'bad' | 'both' | 'empty';
@@ -144,6 +150,10 @@ export const shapeKey = (s: Shape) =>
     : (s.kind === 'dot' ? [s.x, s.y] : [s.x, s.y, s.w, s.h]).map((n) => n.toFixed(3)).join(',');
 
 /** The note's suggestion, if it was written for where the note is now. */
+/** The note's spacing, if it was measured where the note is now. */
+export const currentSpacing = (m: Mark) =>
+  m.spacing && m.spacing.shape === shapeKey(m.shape) ? m.spacing : undefined;
+
 export const currentSuggestion = (m: Mark) =>
   m.suggestion && m.suggestion.shape === shapeKey(m.shape) ? m.suggestion : undefined;
 
@@ -475,6 +485,7 @@ const FILES = [
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',
+  'A note may carry Spacing: the gap from the element at its spot to the nearest element on each side, measured on the image\'s pixels (not judged), with the CSS pixels at the screenshot\'s scale. The note\'s words say whether a gap is wrong; Spacing gives the numbers to fix it with.',
   'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
   "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Source: not set means the author did not say; don't assume it is Ours, and ask before changing it. Never copy an outside design; take its principle.",
   '`notes.json` has all of this as data.',
@@ -535,6 +546,24 @@ const suggestedText = (m: Mark, field: 'good' | 'bad') => {
       : '';
 };
 
+function spacingData(a: Asset, m: Mark) {
+  const spacing = currentSpacing(m);
+  if (!spacing) return {};
+  const { scale, guessed } = scaleOf(a);
+  const css: Record<string, number> = {};
+  for (const [side, px] of Object.entries(spacing.gaps)) css[side] = Math.round(px / scale);
+  return {
+    spacing: {
+      element: spacing.element,
+      gaps: spacing.gaps,
+      cssGaps: css,
+      scale,
+      scaleGuessed: guessed,
+      precision: spacing.precision,
+    },
+  };
+}
+
 /** One line naming whose design an image is. */
 export const sourceLine = (s: Source) => `Source: ${sourceLabel(s.kind)}`;
 
@@ -585,6 +614,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : {}),
             ...suggestedData(m),
+            ...spacingData(a, m),
           })),
       };
     }),
@@ -635,6 +665,14 @@ export function readme(assets: Asset[], exportedAt: string): string {
       if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${oneLine(m.good)}`);
       if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${oneLine(m.bad)}`);
       if (m.origin === 'ai' && m.quote) lines.push(`From the note: "${oneLine(m.quote)}"`);
+      const spacing = currentSpacing(m);
+      if (spacing) {
+        const { scale, guessed } = scaleOf(a);
+        const e = spacing.element;
+        lines.push(
+          `Spacing: ${spacingText(spacing, scale, guessed)}. Measured from the element at pixels ${e.x},${e.y}, ${e.w}×${e.h}.`,
+        );
+      }
     });
   });
   return `${lines.join('\n')}\n`;
