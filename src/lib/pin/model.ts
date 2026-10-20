@@ -157,6 +157,21 @@ export type Asset = {
 
 export type Verdict = 'good' | 'bad' | 'both' | 'empty';
 
+/** A note field's items (D95): one per line, trimmed, the empty ones left out. */
+export const itemsOf = (s: string) =>
+  s
+    .split('\n')
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+/** A note field on one line: its one item as it is, or its items joined, "a; b". */
+export const itemsLine = (s: string) => {
+  const items = itemsOf(s);
+  return items.length < 2
+    ? (items[0] ?? '')
+    : items.map((x, i) => (i < items.length - 1 ? x.replace(/[.;\s]+$/, '') : x)).join('; ');
+};
+
 export const verdictOf = (m: Pick<Mark, 'good' | 'bad'>): Verdict => {
   const good = m.good.trim();
   const bad = m.bad.trim();
@@ -639,8 +654,8 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
             number: j + 1,
             verdict: verdictOf(m),
             ...(m.label.trim() ? { label: m.label.trim() } : {}),
-            works: m.good.trim(),
-            doesNotWork: m.bad.trim(),
+            works: itemsOf(m.good).join('\n'),
+            doesNotWork: itemsOf(m.bad).join('\n'),
             ...(topicsOf(m).length ? { topics: topicsOf(m) } : {}),
             shape: roundShape(m.shape),
             pixels: shapePixels(m.shape, a.width, a.height),
@@ -706,8 +721,8 @@ export function readme(assets: Asset[], exportedAt: string): string {
         `Crop: \`${files.crop(j)}\``,
       );
       if (topicsOf(m).length) lines.push(`About: ${topicsOf(m).map(topicLabel).join(', ')}`);
-      if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${oneLine(m.good)}`);
-      if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${oneLine(m.bad)}`);
+      if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${itemsLine(m.good)}`);
+      if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${itemsLine(m.bad)}`);
       if (m.origin === 'ai' && m.quote) lines.push(`From the note: "${oneLine(m.quote)}"`);
     });
   });

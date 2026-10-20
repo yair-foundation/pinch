@@ -91,6 +91,11 @@ export const learnSchema = z.object({
     .array(
       z.object({
         rule: z.string().describe('The new rule, one sentence.'),
+        title: z
+          .string()
+          .describe(
+            'A short name for the rule, two to five words in sentence case, no full stop, naming what it is about: "Stacked cards hint at more".',
+          ),
         context: z
           .string()
           .describe('Where it holds, a few words ("in data tables"), or empty when everywhere.'),
@@ -200,6 +205,8 @@ export type CleanReading = {
   strengthen: { rule: string; notes: string[] }[];
   propose: {
     rule: string;
+    /** A short name for it, two to five words (D95). */
+    title?: string;
     context: string;
     topics: Topic[];
     notes: string[];
@@ -211,6 +218,60 @@ export type CleanReading = {
     principles?: string[];
   }[];
 };
+
+/** A rule's title as kept: one line, 60 characters at most, without a closing full stop. */
+export const titleOf = (s: string) => tidy(s, 60).replace(/[.\s]+$/, '');
+
+/** Titles at most in one request: the rules a page shows without one, a few dozen at a time. */
+export const MAX_TITLES = 40;
+
+/**
+ * Titles for rules that have none (D95): rules written before titles, and rules the author
+ * rewrote. Only each rule's words go; a small model names them.
+ */
+export const titlesRequestSchema = z.object({
+  rules: z
+    .array(z.object({ id: z.string().max(40), text: z.string().max(400) }))
+    .min(1)
+    .max(MAX_TITLES),
+});
+
+export const titlesSchema = z.object({
+  titles: z
+    .array(
+      z.object({
+        id: z.string().describe('The rule’s id, exactly as given.'),
+        title: z
+          .string()
+          .describe(
+            'Two to five words in sentence case, no full stop, naming what the rule is about.',
+          ),
+      }),
+    )
+    .describe('One title per rule.'),
+});
+
+export const titlesSystem =
+  'You name design rules. Each rule is one sentence a designer keeps about their taste. Give each a short title, two to five words in sentence case with no full stop, that names what it is about so the designer can scan a list of them: "Stacked cards hint at more", "One number takes the stage", "Quiet table borders". Use the rule’s own subject; add nothing it doesn’t say, and don’t name products or companies.';
+
+export const titlesPrompt = (rules: { id: string; text: string }[]) =>
+  rules.map((r) => `${r.id}: ${r.text.trim()}`).join('\n');
+
+/** The model's titles kept to the rules asked about, each once and tidied. */
+export function cleanTitles(
+  r: z.infer<typeof titlesSchema>,
+  ids: readonly string[],
+): { id: string; title: string }[] {
+  const seen = new Set<string>();
+  const out: { id: string; title: string }[] = [];
+  for (const t of r.titles) {
+    const title = titleOf(t.title);
+    if (!ids.includes(t.id) || seen.has(t.id) || !title) continue;
+    seen.add(t.id);
+    out.push({ id: t.id, title });
+  }
+  return out;
+}
 
 /** A question kept only with two to four distinct answers, each with its rule. */
 function questionOf(ask: string, options: LearnResult['propose'][number]['options']) {
@@ -260,8 +321,10 @@ export function cleanReading(
     const principles = [...new Set(p.principles ?? [])]
       .filter((id) => PRINCIPLES.some((x) => x.id === id))
       .slice(0, 3);
+    const title = titleOf(p.title ?? '');
     propose.push({
       rule,
+      ...(title ? { title } : {}),
       context: tidy(p.context, 80),
       topics: sortTopics(p.topics).slice(0, 3),
       notes,

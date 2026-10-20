@@ -16,7 +16,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
-import { MAX_LEARN_NOTES, MAX_LEARN_RULES } from '@/lib/pin/learn';
+import { MAX_LEARN_NOTES, MAX_LEARN_RULES, MAX_TITLES } from '@/lib/pin/learn';
 import {
   answerRule,
   applyReading,
@@ -48,6 +48,7 @@ import {
   waiting,
   withBatch,
   withRule,
+  withTitles,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
 import { unzip } from '@/lib/pin/unzip';
@@ -100,7 +101,7 @@ const primary = cn(
   'flex min-h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-50',
 );
 const field =
-  'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm placeholder:text-[#737373] dark:placeholder:text-[#7a7a7a] focus-visible:outline-2 focus-visible:outline-ring';
+  'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none transition-colors duration-150 placeholder:text-[#737373] focus:border-foreground/25 motion-reduce:transition-none dark:placeholder:text-[#7a7a7a]';
 const chip =
   'flex h-7 items-center gap-1 rounded-md border px-2 text-[13px] leading-none whitespace-nowrap transition-colors duration-150 motion-reduce:transition-none';
 
@@ -511,6 +512,39 @@ export function CollectionsView({
     }
   }, [change, onStatus]);
 
+  // Rules without a title (older ones, rewritten ones) are named by the AI once the reading is
+  // done (D95). Each rule is asked about once per visit, so a failure doesn't loop.
+  const titled = useRef(new Set<string>());
+  const untitled =
+    c && paid && learnAvailable && !reading
+      ? c.rules
+          .filter(
+            (r) =>
+              !r.title &&
+              !r.locked &&
+              r.status !== 'dismissed' &&
+              r.text.trim() &&
+              !titled.current.has(`${r.id}:${r.text}`),
+          )
+          .slice(0, MAX_TITLES)
+      : [];
+  const untitledKey = untitled.map((r) => r.id).join(',');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asked once per set of untitled rules
+  useEffect(() => {
+    if (!untitled.length) return;
+    for (const r of untitled) titled.current.add(`${r.id}:${r.text}`);
+    fetch('/api/pin/learn/titles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules: untitled.map((r) => ({ id: r.id, text: r.text })) }),
+    })
+      .then((res) => (res.ok ? res.json() : { titles: [] }))
+      .then((res: { titles?: { id: string; title: string }[] }) => {
+        if (res.titles?.length) change((x) => withTitles(x, res.titles ?? [], nowIso()), true);
+      })
+      .catch(() => undefined);
+  }, [untitledKey]);
+
   // The AI reads new notes on its own; after a failure it waits for Try again.
   const unread = c ? unreadNotes(c).length : 0;
   useEffect(() => {
@@ -559,9 +593,9 @@ export function CollectionsView({
   if (!c)
     return (
       <main className="min-h-0 flex-1 overflow-hidden" aria-busy="true">
-        <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+        <div className="mx-auto max-w-3xl space-y-7 px-6 py-8">
           <div className="space-y-2">
-            <h2 className="text-[1.4rem] leading-snug font-normal tracking-tight">Your rules</h2>
+            <h2 className="text-2xl leading-tight font-medium tracking-tight">Your rules</h2>
             <p className="text-[13px]">
               <ShimmerText>Loading your rules…</ShimmerText>
             </p>
@@ -614,19 +648,14 @@ export function CollectionsView({
   return (
     <>
       <main inert={inert || connecting || removing !== null} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+        <div className="mx-auto max-w-3xl space-y-7 px-6 py-8">
           <header className="space-y-3">
             <div className="flex flex-wrap items-start gap-3">
               <div className="min-w-0 flex-1 space-y-1">
-                <h2 className="text-[1.4rem] leading-snug font-normal tracking-tight">
-                  Your rules
-                </h2>
+                <h2 className="text-2xl leading-tight font-medium tracking-tight">Your rules</h2>
                 <p className="text-sm text-muted-foreground">
                   What Pinch understands about your taste.
-                </p>
-                <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
-                  <span>{count(live.length, 'rule')}</span>
-                  {waits > 0 && <span>· {waits} waiting for you</span>}
+                  {waits > 0 && ` ${waits} waiting for you.`}
                 </p>
               </div>
               <button
@@ -735,8 +764,8 @@ export function CollectionsView({
           {!c.batches.length && !c.rules.length && busy !== 'add' ? (
             <div className="space-y-3 rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
               <p>
-                Mark what works and what doesn’t on your images. Pinch reads your notes here, finds
-                the patterns and turns them into rules.
+                Mark what to learn and what to avoid on your images. Pinch reads your notes here,
+                finds the patterns and turns them into rules.
               </p>
               <button type="button" onClick={onBack} className={cn(button, 'mx-auto')}>
                 Back to your images
@@ -745,11 +774,14 @@ export function CollectionsView({
           ) : null}
 
           {byTopic(shown).map((g) => (
-            <section key={g.label} aria-labelledby={`group-${g.label}`} className="space-y-3">
-              <h3 id={`group-${g.label}`} className="flex items-center gap-2 text-sm font-medium">
+            <section key={g.label} aria-labelledby={`group-${g.label}`} className="space-y-2.5">
+              <h3
+                id={`group-${g.label}`}
+                className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
+              >
                 {/* A plain heading, not a tag: the filters above are the tags. */}
                 {g.label}
-                <span className="font-mono text-[13px] font-normal text-muted-foreground">
+                <span className="font-mono font-normal text-muted-foreground/70">
                   {g.rules.length}
                 </span>
               </h3>
@@ -960,56 +992,78 @@ function RuleCard({
     const back = !r.text.trim() && r.drafted ? { text: r.drafted } : {};
     const rewritten = (back.text ?? r.text).trim() !== started.current.trim();
     const ours = rewritten && (r.question || r.basis === 'interpreted');
-    onChange(ours ? ownWords(back) : back, true);
+    // A rewritten rule loses its title, which named the old words; Pinch names it again (D95).
+    const named = rewritten ? { ...back, title: undefined } : back;
+    onChange(ours ? ownWords(named) : named, true);
     setEditing(false);
   };
 
   return (
     <article
       aria-labelledby={`${id}-text`}
-      className="relative space-y-3 rounded-xl border border-border p-4"
+      className="space-y-3 rounded-xl border border-border p-4"
     >
-      <button
-        type="button"
-        aria-label={editing ? 'Done editing' : 'Edit rule'}
-        title={editing ? 'Done' : 'Edit'}
-        aria-pressed={editing}
-        onClick={() => (editing ? done() : edit())}
-        className={cn(
-          hit,
-          'absolute top-3 right-3 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-          editing && 'bg-muted text-foreground',
-        )}
-      >
-        {editing ? (
-          <Check className="size-4" aria-hidden />
-        ) : (
-          <Pencil className="size-4" aria-hidden />
-        )}
-      </button>
-      {(isNew || r.conflict || r.fresh || origin === 'ai-edited') && (
-        <div className="flex flex-wrap items-center gap-2 pr-10 text-[13px] text-muted-foreground">
-          {isNew && <span className={cn(chip, 'border-border text-foreground')}>New</span>}
-          {r.conflict && (
-            <span className={cn(chip, 'border-amber-600/40 text-amber-800 dark:text-amber-300')}>
-              <TriangleAlert className="size-3.5" aria-hidden />
-              Conflict
-            </span>
+      {/* The rule's name and words beside the pencil; everything under them spans the card. */}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          {(isNew || r.conflict || r.fresh || origin === 'ai-edited') && (
+            <div className="flex flex-wrap items-center gap-2 pb-1 text-[13px] text-muted-foreground">
+              {isNew && <span className={cn(chip, 'border-border text-foreground')}>New</span>}
+              {r.conflict && (
+                <span
+                  className={cn(chip, 'border-amber-600/40 text-amber-800 dark:text-amber-300')}
+                >
+                  <TriangleAlert className="size-3.5" aria-hidden />
+                  Conflict
+                </span>
+              )}
+              {r.fresh ? (
+                <span className={cn(chip, 'border-border text-foreground')}>
+                  +{count(r.fresh, 'new note')}
+                </span>
+              ) : null}
+              {origin === 'ai-edited' && <span>Edited by you</span>}
+            </div>
           )}
-          {r.fresh ? (
-            <span className={cn(chip, 'border-border text-foreground')}>
-              +{count(r.fresh, 'new note')}
-            </span>
-          ) : null}
-          {origin === 'ai-edited' && <span>Edited by you</span>}
-        </div>
-      )}
-
-      {editing ? (
-        <div className="space-y-3 pr-10">
-          <p id={`${id}-text`} className="sr-only">
+          {r.title && (
+            <h4 className="text-[15px] leading-snug font-medium text-foreground">{r.title}</h4>
+          )}
+          <p
+            id={`${id}-text`}
+            className={cn(
+              editing
+                ? 'sr-only'
+                : r.title
+                  ? 'text-sm leading-relaxed text-muted-foreground'
+                  : 'text-[15px] leading-snug',
+              !editing && !r.title && (waiting(r) ? 'text-muted-foreground' : 'text-foreground'),
+            )}
+          >
             {r.text}
           </p>
+        </div>
+        <button
+          type="button"
+          aria-label={editing ? 'Done editing' : 'Edit rule'}
+          title={editing ? 'Done' : 'Edit'}
+          aria-pressed={editing}
+          onClick={() => (editing ? done() : edit())}
+          className={cn(
+            hit,
+            '-mt-1 -mr-1 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+            editing && 'bg-muted text-foreground',
+          )}
+        >
+          {editing ? (
+            <Check className="size-4" aria-hidden />
+          ) : (
+            <Pencil className="size-4" aria-hidden />
+          )}
+        </button>
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
           <div className="space-y-1">
             <label htmlFor={`${id}-edit`} className="text-[13px] font-medium text-muted-foreground">
               Rule
@@ -1038,21 +1092,16 @@ function RuleCard({
           />
         </div>
       ) : (
-        <div className="space-y-1.5 pr-10">
-          <p
-            id={`${id}-text`}
-            className={cn(
-              'text-[15px] leading-snug',
-              waiting(r) ? 'text-muted-foreground' : 'text-foreground',
-            )}
-          >
-            {r.text}
-          </p>
+        (r.basis === 'interpreted' && r.reading && !r.question) ||
+        r.topics.length > 0 ||
+        r.tags.length > 0
+      ) ? (
+        <div className="space-y-2">
           {r.basis === 'interpreted' && r.reading && !r.question && (
             <p className="text-[13px] text-muted-foreground">Pinch’s reading: {r.reading}</p>
           )}
           {(r.topics.length > 0 || r.tags.length > 0) && (
-            <ul className="flex list-none flex-wrap gap-1.5 p-0 pt-1">
+            <ul className="flex list-none flex-wrap gap-1.5 p-0">
               {r.topics.map((t) => (
                 <li
                   key={t}
@@ -1074,7 +1123,7 @@ function RuleCard({
             </ul>
           )}
         </div>
-      )}
+      ) : null}
 
       {r.question && !editing && (
         <fieldset className="min-w-0 space-y-2.5 rounded-lg border border-border bg-muted/50 px-3 py-3 text-[13px]">
@@ -1224,16 +1273,16 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
           {note.source ? ` · ${sourceLabel(note.source)}` : ''}
         </p>
         {note.works && (
-          <p className="flex gap-1.5 text-foreground">
+          <p className="flex gap-1.5 whitespace-pre-line text-foreground">
             <ThumbsUp aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <span className="sr-only">What works: </span>
+            <span className="sr-only">To learn: </span>
             {note.works}
           </p>
         )}
         {note.doesNotWork && (
-          <p className="flex gap-1.5 text-foreground">
+          <p className="flex gap-1.5 whitespace-pre-line text-foreground">
             <ThumbsDown aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <span className="sr-only">What doesn't: </span>
+            <span className="sr-only">To avoid: </span>
             {note.doesNotWork}
           </p>
         )}

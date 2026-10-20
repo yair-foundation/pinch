@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D94.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D95.
 
 ## Open (need the user)
 
@@ -11,6 +11,12 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 | – | None open. | |
 
 ## Settled
+
+- **2026-10-20 — D95 Notes as short items, rules with titles, a clearer rules page (the user's 13 changes).**
+  - **A note's two fields are lists.** "What works" and "What doesn't" became "What to learn" and "What to avoid", each a list of short items, to make a note easy to write and scan. Enter starts a new item (split at the caret, with "Another thing to learn" as its placeholder), Backspace at an item's start joins it to the one above, the arrows move between items, and pasted lines become items. Each written item has a checkbox whose only use is to select it for Delete: it isn't a to-do, so a selected item is tinted, never struck through or faded. The model is unchanged: a field is still a string, one item per line, so sessions, suggestions (Tab still takes one into the first item), saving and the reading need nothing new. Exports keep the items one per line in `notes.json` and join them "a; b" in the README, the rules text and the agent's answers (`itemsOf`, `itemsLine`).
+  - **The note panel:** the "Note 1 · dot" heading is gone; Delete note sits under the note, and Done is the panel's full-width primary button right above Back and Next image (moved from the top right, D93). Source, the two lists and Tags (was "This note is about") each lead with their icon in a small rounded box, with more room under the label. Fields lost their focus ring for a quieter border change.
+  - **Every rule has a short title,** two to five words, written by the AI. The reading writes it with each new rule (`title`); rules without one, written before or rewritten by the author, are named by a small model (`POST /api/pin/learn/titles`, `PIN_TITLE_MODEL`, Haiku), only their words sent, for buyers, on the reading's ledger, each rule asked about once a visit. A rewritten rule loses its title and is named again. A visitor's hidden rules get no title, so their words never show (D87).
+  - **The rules page's type has a scale:** the page title 24px medium, a topic group 13px muted, a rule's title 15px medium, its words 14px muted; "1 rule" is gone (what waits is said in the line under the title). The rule card is laid out in flow, the pencil beside the title, so its field, its Source row with Remove and its notes all share the card's edges.
 
 - **2026-10-20 — D94 A rule's close-ups reach the agent, with where the spot is as numbers (the user: "crops with boxes over MCP").** Since D93 the agent got only a note's words and its image's name, no picture and no position; the batch zip that carried both was gone. Numbers alone mean nothing to an agent that can't see the screenshot, so they come with the picture.
   - **A third tool, `get_rule_evidence`,** takes a rule's number (R3) and returns its notes, up to eight. Each comes with its crop as a JPEG image, with Pinch's marker drawn in, and a line of JSON saying where the spot is.

@@ -5,6 +5,7 @@ import { deflateRawSync, crc32 as nodeCrc } from 'node:zlib';
 import { assetsOf, batchNotes, readExport } from '../import';
 import {
   cleanReading,
+  cleanTitles,
   learnPrompt,
   learnRequestSchema,
   learnSchema,
@@ -13,6 +14,7 @@ import {
   learnSystem,
   PREVIEW_RULES,
   previewReading,
+  titlesPrompt,
 } from '../learn';
 import { FOUNDATION_SOURCES, foundationText, PRINCIPLES, SHORTHAND } from '../foundation';
 import {
@@ -46,6 +48,7 @@ import {
   waiting,
   withBatch,
   withRule,
+  withTitles,
 } from '../learnings';
 import { type Asset, type Mark, manifest } from '../model';
 import { unzip } from '../unzip';
@@ -663,6 +666,7 @@ describe('the taste library', () => {
 });
 
 const stated = {
+  title: '',
   basis: 'stated' as const,
   reading: '',
   question: '',
@@ -760,6 +764,70 @@ describe('reading notes into rules', () => {
       },
       { rule: 'Unknown conflict.', context: '', topics: [], notes: ['n1'], basis: 'stated' },
     ]);
+  });
+
+  it('keeps a rule’s short title, tidied, and names rules that have none (D95)', () => {
+    const clean = cleanReading(
+      {
+        strengthen: [],
+        propose: [
+          {
+            rule: 'Show stacked cards behind the front one.',
+            context: '',
+            topics: ['visual'],
+            notes: ['n1'],
+            conflictsWith: '',
+            conflict: '',
+            ...stated,
+            title: '  Stacked cards hint at more. ',
+          },
+        ],
+      },
+      ['n1'],
+      [],
+    );
+    assert.equal(clean.propose[0].title, 'Stacked cards hint at more');
+    const c = applyReading(
+      newCollection('x', 'c', 't'),
+      clean,
+      new Map([['n1', { batchId: 'b', note: '01.1' }]]),
+      't',
+      () => 'r1',
+    );
+    assert.equal(c.rules[0].title, 'Stacked cards hint at more');
+    assert.deepEqual(
+      cleanTitles(
+        {
+          titles: [
+            { id: 'a', title: 'Quiet borders.' },
+            { id: 'a', title: 'Twice' },
+            { id: 'zz', title: 'Not asked' },
+            { id: 'b', title: '  ' },
+          ],
+        },
+        ['a', 'b'],
+      ),
+      [{ id: 'a', title: 'Quiet borders' }],
+    );
+    const named = withTitles(
+      {
+        ...c,
+        rules: [
+          { ...c.rules[0], title: undefined },
+          { ...c.rules[0], id: 'r2', title: 'Own' },
+        ],
+      },
+      [
+        { id: 'r1', title: 'Named' },
+        { id: 'r2', title: 'Not over its own' },
+      ],
+      'later',
+    );
+    assert.deepEqual(
+      named.rules.map((r) => r.title),
+      ['Named', 'Own'],
+    );
+    assert.match(titlesPrompt([{ id: 'a', text: ' Keep it quiet. ' }]), /^a: Keep it quiet\.$/);
   });
 
   it('keeps Pinch’s reading of vague words, and a question only with answers to pick', () => {

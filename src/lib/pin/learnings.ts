@@ -1,5 +1,13 @@
 import { principleName } from './foundation';
-import { type SourceKind, sortTopics, sourceLabel, TOPICS, type Topic, topicLabel } from './model';
+import {
+  itemsLine,
+  type SourceKind,
+  sortTopics,
+  sourceLabel,
+  TOPICS,
+  type Topic,
+  topicLabel,
+} from './model';
 
 /*
  * The person's taste library (D79, D86, D87): one collection of design rules
@@ -58,6 +66,11 @@ export type Rule = {
   id: string;
   /** The rule, one sentence. Empty while it is locked. */
   text: string;
+  /**
+   * A short name for it, two to five words, written by the AI (D95): with the reading, or
+   * afterwards for a rule without one. Gone when the author rewrites the rule, to be named again.
+   */
+  title?: string;
   /** Where it holds, a few words ("in data tables"), or empty when it holds everywhere. */
   context: string;
   topics: Topic[];
@@ -276,6 +289,7 @@ export type Reading = {
   strengthen: { rule: string; notes: string[] }[];
   propose: {
     rule: string;
+    title?: string;
     context: string;
     topics: Topic[];
     notes: string[];
@@ -331,6 +345,7 @@ export function applyReading(
     rules.push({
       id: newId(),
       text: p.locked ? '' : p.rule.trim(),
+      ...(p.title?.trim() && !p.locked ? { title: p.title.trim() } : {}),
       context: p.locked ? '' : p.context.trim(),
       topics: sortTopics(p.topics),
       tags: [],
@@ -352,6 +367,23 @@ export function applyReading(
   return { ...c, updatedAt: now, rules, read: [...read] };
 }
 
+/** Titles named for rules that had none (D95); a rule given one meanwhile keeps its own. */
+export function withTitles(
+  c: Collection,
+  titles: { id: string; title: string }[],
+  now: string,
+): Collection {
+  const by = new Map(titles.map((t) => [t.id, t.title]));
+  let changed = false;
+  const rules = c.rules.map((r) => {
+    const title = by.get(r.id);
+    if (!title || r.title || r.locked) return r;
+    changed = true;
+    return { ...r, title };
+  });
+  return changed ? { ...c, rules, updatedAt: now } : c;
+}
+
 /**
  * A rule waits for its author (D91): on its question, or, read from vaguer words, until they
  * confirm Pinch's reading. Until then no export or agent gets it.
@@ -370,7 +402,7 @@ export const confirmRule = (c: Collection, id: string, now: string): Collection 
 export function answerRule(c: Collection, id: string, option: number, now: string): Collection {
   const o = c.rules.find((r) => r.id === id)?.question?.options[option];
   if (!o) return c;
-  return withRule(c, id, ownWords({ text: o.rule, drafted: o.rule }), now);
+  return withRule(c, id, ownWords({ text: o.rule, drafted: o.rule, title: undefined }), now);
 }
 
 /**
@@ -496,8 +528,8 @@ const fromLine = (n: ExportedNote) =>
 
 const said = (n: BatchNote) =>
   [
-    n.works.trim() ? `works: "${oneLine(n.works)}"` : '',
-    n.doesNotWork.trim() ? `doesn't: "${oneLine(n.doesNotWork)}"` : '',
+    n.works.trim() ? `works: "${itemsLine(n.works)}"` : '',
+    n.doesNotWork.trim() ? `doesn't: "${itemsLine(n.doesNotWork)}"` : '',
   ]
     .filter(Boolean)
     .join('; ');

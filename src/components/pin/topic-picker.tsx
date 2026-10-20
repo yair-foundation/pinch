@@ -15,14 +15,14 @@ export function TopicPicker({
   suggested,
   onChange,
 }: {
-  legend?: string;
+  legend?: React.ReactNode;
   topics?: Topic[];
   suggested?: Topic[];
   onChange: (topics: Topic[]) => void;
 }) {
   return (
     <fieldset className="m-0 min-w-0 border-0 p-0 text-[13px] text-muted-foreground">
-      <legend className="mb-1 p-0 text-[13px] leading-7 font-medium">{legend}</legend>
+      <legend className="mb-2.5 p-0 text-[13px] leading-7 font-medium">{legend}</legend>
       {/* Each tag as wide as its label, 8px apart both ways. */}
       <div className="flex flex-wrap gap-2">
         {TOPICS.map((t) => {

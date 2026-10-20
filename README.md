@@ -43,6 +43,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 | `PIN_SUGGEST_CALLS_PER_DAY` | `4000` | Suggestions per day, all visitors. |
 | `PIN_LEARN` | unset | `0` turns reading notes into rules off. |
 | `PIN_LEARN_MODEL` | `claude-opus-5-5` | Model that reads notes into rules (`/api/pin/learn`). |
+| `PIN_TITLE_MODEL` | `claude-haiku-5-5` | Model that names rules written without a title (`/api/pin/learn/titles`, D95). |
 | `PIN_LEARN_DAILY_USD` | `10` | Reading notes into rules for buyers: USD cap per day. |
 | `PIN_LEARN_PER_VISITOR` | `60` | Readings (up to 30 notes each) per visitor per day; a visitor also gets at most a third of the day's dollars. |
 | `PIN_LEARN_CALLS_PER_DAY` | `600` | Readings per day, all buyers. |

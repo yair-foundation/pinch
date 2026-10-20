@@ -8,7 +8,15 @@ import {
   tagsOf,
   waiting,
 } from './learnings';
-import { type Shape, shapePixels, sourceLabel, TOPIC_KINDS, TOPICS, type Topic } from './model';
+import {
+  itemsLine,
+  type Shape,
+  shapePixels,
+  sourceLabel,
+  TOPIC_KINDS,
+  TOPICS,
+  type Topic,
+} from './model';
 
 /*
  * Your agent, connected (D89): Pinch as an MCP server an agent such as Claude
@@ -216,8 +224,8 @@ function noteContent(
   const size = crop ? jpegSize(crop) : null;
   const said = [
     note.label ? `named "${note.label}"` : '',
-    note.works ? `works: "${note.works}"` : '',
-    note.doesNotWork ? `doesn't: "${note.doesNotWork}"` : '',
+    note.works ? `works: "${itemsLine(note.works)}"` : '',
+    note.doesNotWork ? `doesn't: "${itemsLine(note.doesNotWork)}"` : '',
   ].filter(Boolean);
   const lines = [
     `Note ${note.ref} on ${note.image}${note.source ? ` (${sourceLabel(note.source)})` : ''}: ${said.join('; ')}`,
