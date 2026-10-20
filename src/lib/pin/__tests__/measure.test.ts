@@ -138,7 +138,7 @@ describe('spacingText', () => {
     const s = { gaps: { above: 32, below: 12, left: 24 }, precision: 1 };
     assert.equal(
       spacingText(s, 2, true),
-      '32 px above, 12 px below and 24 px to the left; nothing within reach to the right (screenshot pixels; 16, 6 and 12 CSS px at 2×, guessed from the image size)',
+      '32 px above, 12 px below and 24 px to the left; nothing within reach to the right (screenshot pixels, ±1 px; 16, 6 and 12 CSS px at 2×, guessed from the image size)',
     );
     assert.match(spacingText({ gaps: { above: 8 }, precision: 2 }, 1, false), /±2 px, the same in CSS px at 1×, set by the author\)/);
     assert.equal(spacingText({ gaps: {}, precision: 1 }, 1, true), 'nothing within reach on any side');
@@ -177,7 +177,7 @@ describe('spacing in the export', () => {
     const text = readme([a], '2026-10-20T10:00:00Z');
     assert.match(
       text,
-      /What doesn't: Too tight under the title\.\nSpacing: 32 px above and 12 px below; nothing within reach to the left and to the right \(screenshot pixels; 16 and 6 CSS px at 2×, guessed from the image size\)\. Measured from the element at pixels 700,480, 200×40\./,
+      /What doesn't: Too tight under the title\.\nSpacing: 32 px above and 12 px below; nothing within reach to the left and to the right \(screenshot pixels, ±1 px; 16 and 6 CSS px at 2×, guessed from the image size\)\. Measured from the element at pixels 700,480, 200×40\./,
     );
     assert.match(text, /^- Spacing, on a note that has it:/m);
     // Without a measurement, no word about Spacing.

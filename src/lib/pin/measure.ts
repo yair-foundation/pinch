@@ -439,7 +439,7 @@ export function spacingText(
   const none = missing.length
     ? `; nothing within reach ${list(missing.map((side) => SIDE_WORD[side]))}`
     : '';
-  const off = s.precision > 1 ? `, ±${s.precision} px` : '';
+  const off = `, ±${s.precision} px`;
   const how = guessed ? 'guessed from the image size' : 'set by the author';
   const cssPx = list(sides.map((side) => String(Math.round((s.gaps[side] as number) / scale))));
   const css =

@@ -499,11 +499,15 @@ const FILES = [
 
 /** How to read Spacing: in the README only when a note carries some. */
 const SPACING_RULE =
-  "Spacing, on a note that has it: measured on the image's pixels, not judged. The element is what sits at a dot (its shape, or its line of text) or the content inside an area, fitted tight (not the box as drawn); its box is given in pixels and drawn dashed on the crop. Each gap runs from it to the first thing on that side that differs from the background: another element, a container's edge, a divider, or anything in the screenshot such as a cursor. 0 means it touches or overlaps that thing; \"nothing within reach\" means nothing within half the image's width or height on that side. Gaps are in screenshot pixels, with CSS pixels at the screenshot's scale (said to be guessed or set). The note's words say whether a gap is wrong; Spacing gives the numbers to fix it with.";
+  "Spacing, on a note that has it: measured on the image's pixels, not judged. The element is what sits at a dot (its shape, or its line of text) or the content inside an area, fitted tight (not the box as drawn); its box is given in pixels and drawn dashed on the crop. Each gap runs from it to the first thing on that side that differs from the background: another element, a container's edge, a divider, or anything in the screenshot such as a cursor. 0 means it touches or overlaps that thing; \"nothing within reach\" means nothing within half the image's width or height on that side.";
 
 /** How to read Rhythm: in the README only when a note carries one. */
 const RHYTHM_RULE =
-  'Rhythm, on an area note that has it: the repeated items found inside the area (rows of a list, cards, links) along one axis and the gaps between them, measured on the pixels; their boxes are in `notes.json` and drawn dashed on the crop. A gap is called out when it differs from the median gap by more than 12% or 2 px; with only two gaps, both are given. The note\'s words say whether that matters.';
+  'Rhythm, on an area note that has it: the repeated items found inside the area (rows of a list, cards, links) along one axis (`column`: top to bottom; `row`: side by side) and the gaps between them, measured on the pixels. In `notes.json`, `items` are their boxes, `gaps[i]` is the gap after item i + 1 (counting from 1), `typical` is the median gap and `oddAfterItem` lists the items after which a gap is called out, counting from 1. A gap is called out when it differs from the median by more than 12% of it or 2 px, whichever is larger; with only two gaps there is no majority, so when they differ both are called out.';
+
+/** What both measurements have in common, said once. */
+const MEASURED_RULE =
+  "Spacing and Rhythm gaps are between visible pixels (ink or fill), not CSS boxes: for text the CSS margin is smaller by the line's leading and the letters' side bearings, so set it to give the visible gap. They are in screenshot pixels ± the stated precision, with CSS pixels at the screenshot's scale; when the scale says guessed, confirm it (the screenshot's width over the viewport's) before trusting the CSS values. The note's words say whether a gap is wrong; the numbers are what to fix it with.";
 
 /** AGENTS.md at the root of the export: a pointer, so the rules live in one place (README.md). */
 export function agentGuide(): string {
@@ -589,7 +593,7 @@ function rhythmData(a: Asset, m: Mark) {
       gaps: rhythm.gaps,
       cssGaps: rhythm.gaps.map((g) => Math.round(g / scale)),
       typical: rhythm.typical,
-      odd: rhythm.odd,
+      oddAfterItem: rhythm.odd.map((i) => i + 1),
       scale,
       scaleGuessed: guessed,
       precision: rhythm.precision,
@@ -678,6 +682,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
     ...FILES.map((l) => `- ${l}`),
     ...(all.some((m) => currentSpacing(m)) ? [`- ${SPACING_RULE}`] : []),
     ...(all.some((m) => currentRhythm(m)) ? [`- ${RHYTHM_RULE}`] : []),
+    ...(all.some((m) => currentSpacing(m) || currentRhythm(m)) ? [`- ${MEASURED_RULE}`] : []),
   ];
   list.forEach((a, i) => {
     const files = assetFiles(a, i, list.length);

@@ -195,6 +195,7 @@ describe('rhythm in the export', () => {
       /What doesn't: The list feels uneven\.\nRhythm: 4 items in a column; gaps 32, 48 and 32 px \(screenshot pixels, ±2 px; 16, 24 and 16 CSS px at 2×, guessed from the image size\)\. The gap after item 2 differs: 48 px where the others are about 32\./,
     );
     assert.match(text, /^- Rhythm, on an area note that has it:/m);
+    assert.match(text, /^- Spacing and Rhythm gaps are between visible pixels/m);
     const note = manifest([asset(withRhythm())], 'x').assets[0].notes[0] as { rhythm?: unknown };
     assert.deepEqual(note.rhythm, {
       axis: 'column',
@@ -202,7 +203,7 @@ describe('rhythm in the export', () => {
       gaps: [32, 48, 32],
       cssGaps: [16, 24, 16],
       typical: 32,
-      odd: [1],
+      oddAfterItem: [2],
       scale: 2,
       scaleGuessed: true,
       precision: 2,

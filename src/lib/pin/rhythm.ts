@@ -248,7 +248,7 @@ type Found = Pick<Rhythm, 'axis' | 'items' | 'gaps' | 'typical' | 'odd' | 'preci
  */
 export function rhythmText(r: Found, scale: Scale, guessed: boolean) {
   const how = guessed ? 'guessed from the image size' : 'set by the author';
-  const off = r.precision > 1 ? `, ±${r.precision} px` : '';
+  const off = `, ±${r.precision} px`;
   const px = list(r.gaps.map(String));
   const cssPx =
     scale === 1

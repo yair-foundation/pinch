@@ -279,7 +279,9 @@ function drawSpacing(
   ctx.lineWidth = 1.5 * unit;
   ctx.strokeStyle = SPACING_COLOR;
   ctx.setLineDash([4 * unit, 3 * unit]);
-  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  // A little outside the element, so the dashes don't run through small text.
+  const out = 2 * unit;
+  ctx.strokeRect(x0 - out, y0 - out, x1 - x0 + 2 * out, y1 - y0 + 2 * out);
   ctx.setLineDash([]);
   const mx = (x0 + x1) / 2;
   const my = (y0 + y1) / 2;
@@ -356,7 +358,10 @@ function drawRhythm(
   });
   ctx.strokeStyle = SPACING_COLOR;
   ctx.setLineDash([4 * unit, 3 * unit]);
-  for (const b of boxes) ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+  // A little outside each item, so the dashes don't run through small text.
+  const out = 2 * unit;
+  for (const b of boxes)
+    ctx.strokeRect(b.x0 - out, b.y0 - out, b.x1 - b.x0 + 2 * out, b.y1 - b.y0 + 2 * out);
   ctx.setLineDash([]);
   const tick = 4 * unit;
   rhythm.gaps.forEach((px, i) => {
