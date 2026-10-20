@@ -1193,7 +1193,8 @@ function RuleCard({
         </div>
       )}
 
-      <div>
+      {/* Set apart from the rule and its tags by a divider. */}
+      <div className="border-t border-border pt-3">
         {/* The notes a rule draws on, and, while editing, removing it: one row. */}
         <div className="-mx-2 -mb-1 flex items-center gap-2">
           <button
