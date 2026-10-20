@@ -86,3 +86,22 @@ const suggestLedger = dailyLedger(
 );
 export const reserveSuggestion = suggestLedger.reserve;
 export const settleSuggestion = suggestLedger.settle;
+
+/**
+ * Learnings: a few notes' words to a larger model, a few calls per batch. The reservation is
+ * the worst case, a full answer of 8,000 tokens with its thinking, so the cap holds; a call
+ * settles to far less.
+ */
+export const LEARN_CAPS: PinCaps = {
+  usd: Number(process.env.PIN_LEARN_DAILY_USD ?? 2),
+  perVisitor: Number(process.env.PIN_LEARN_PER_VISITOR ?? 60),
+  requests: Number(process.env.PIN_LEARN_CALLS_PER_DAY ?? 600),
+};
+export const LEARN_RESERVE_USD = 0.17;
+const learnLedger = dailyLedger(
+  (day) => `pin-notes/learn/${day}.json`,
+  LEARN_RESERVE_USD,
+  LEARN_CAPS,
+);
+export const reserveLearning = learnLedger.reserve;
+export const settleLearning = learnLedger.settle;

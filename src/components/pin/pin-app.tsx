@@ -9,6 +9,7 @@ import {
   Globe,
   House,
   Keyboard,
+  Library,
   Lightbulb,
   Loader2,
   Lock,
@@ -62,13 +63,17 @@ import {
   topicLabel,
   verdictOf,
 } from '@/lib/pin/model';
+import { assetsOf, readExport } from '@/lib/pin/import';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import type { SuggestResult } from '@/lib/pin/suggest';
 import { imageSummary } from '@/lib/pin/summary';
+import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
+import { CollectionsView } from './collections';
 import { Dialog, hit } from './dialog';
 import { DropFolder } from './drop-folder';
+import { TOPIC_TONES, tagHit } from './topic-style';
 import {
   bitmapOf,
   buildExport,
@@ -274,6 +279,8 @@ const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|bmp|heic|heif|tiff?)$/i;
 const isSvg = (f: File) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name);
 const isImageFile = (f: File) =>
   f.type.startsWith('image/') || (!f.type && IMAGE_EXT.test(f.name)) || isSvg(f);
+/** A zip: a Pinch export to open, by its type or, when the type is blank or generic, its name. */
+const isZip = (f: File) => /zip/.test(f.type) || /\.zip$/i.test(f.name);
 
 /** Whether this browser says it is a small or touch device: a phone or a tablet, not a narrow window. */
 const isSmallDevice = () =>
@@ -412,6 +419,10 @@ function Workspace() {
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   // What a drag draws: a dot or area (Pin), or an arrow. Per visit; A toggles it, Esc leaves it.
   const [tool, setTool] = useState<Tool>('pin');
+  // The batch, or the collections in its place (D75). Per visit.
+  const [view, setView] = useState<'batch' | 'collections'>('batch');
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const history = useRef<History>(null as unknown as History);
   history.current ??= new History();
   // The latest session, kept in step with history so handlers never read a stale render.
@@ -707,8 +718,59 @@ function Workspace() {
     [commit],
   );
 
+  /**
+   * A Pinch export opens into the session: its images and notes join what is there, as added
+   * images do, so a batch can move between browsers. The zip is read here and kept nowhere.
+   */
+  const openExport = useCallback(
+    async (file: File) => {
+      setStatus({ tone: 'info', text: `Opening ${file.name}…`, sticky: true });
+      let found: ReturnType<typeof assetsOf>;
+      try {
+        const files = await unzip(await file.arrayBuffer());
+        found = assetsOf(readExport(files), files, newId);
+      } catch (e) {
+        setStatus({ tone: 'error', text: `Couldn't open ${file.name}. ${(e as Error).message}` });
+        return;
+      }
+      const room = Math.max(0, MAX_IMAGES - assetsRef.current.length);
+      const added: Asset[] = [];
+      const addedUrls: Record<string, string> = {};
+      let full = false;
+      for (const { asset, image } of found.assets.slice(0, room)) {
+        try {
+          await store.putImage(asset.id, image);
+        } catch (e) {
+          if (store.isQuotaError(e)) full = true;
+          break;
+        }
+        addedUrls[asset.id] = URL.createObjectURL(image);
+        added.push(asset);
+      }
+      setUrls((u) => ({ ...u, ...addedUrls }));
+      urlsRef.current = { ...urlsRef.current, ...addedUrls };
+      const before = assetsRef.current;
+      if (added.length) {
+        if (!before.some(hasMarks)) setIndex(before.length);
+        commit((list) => [...list, ...added]);
+      }
+      const notes = added.reduce((n, a) => n + a.marks.length, 0);
+      const leftOut = found.assets.length - added.length;
+      const lines = [`Opened ${file.name}: ${count(added.length, 'image')}, ${count(notes, 'note')}.`];
+      if (found.missing) lines.push(`${count(found.missing, 'image')} missing from the zip.`);
+      if (full) lines.push('Browser storage is full. Remove images or export, then continue.');
+      else if (leftOut) lines.push(`${count(leftOut, 'image')} left out. ${FULL_MESSAGE}`);
+      const trouble = found.missing > 0 || leftOut > 0;
+      setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
+    },
+    [commit],
+  );
+
   const addFiles = useCallback(
-    async (files: File[]) => {
+    async (dropped: File[]) => {
+      for (const file of dropped.filter(isZip)) await openExport(file);
+      const files = dropped.filter((f) => !isZip(f));
+      if (!files.length) return;
       const all = files.filter(isImageFile);
       const skipped = files.length - all.length;
       const skippedLine = skipped ? `Skipped ${count(skipped, 'file')} that aren't images.` : '';
@@ -793,7 +855,7 @@ function Workspace() {
       if (!trouble && !before.length && added.length) lines.push(HOW_TO_MARK);
       setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
-    [commit],
+    [commit, openExport],
   );
 
   // The site's shell opens a docs search on ⌘K; Pinch is its own site, so that key does nothing here.
@@ -823,7 +885,7 @@ function Workspace() {
       addFiles([...(e.dataTransfer?.files ?? [])]);
     };
     const onPaste = (e: ClipboardEvent) => {
-      if (isTyping(e.target)) return;
+      if (isTyping(e.target) || viewRef.current === 'collections') return;
       const files = [...(e.clipboardData?.files ?? [])];
       if (files.length) addFiles(files);
     };
@@ -932,8 +994,8 @@ function Workspace() {
   // the open note (then leaves the Arrow tool), ⌘Z and ⇧⌘Z undo and redo, ? lists them all.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A dialog holds the keyboard; it closes itself on Escape.
-      if (dialog) return;
+      // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys.
+      if (dialog || view === 'collections') return;
       if (e.key === 'Escape') {
         if (isTyping(e.target)) (e.target as HTMLElement).blur();
         else if (!selected && tool !== 'pin') setTool('pin');
@@ -1057,6 +1119,7 @@ function Workspace() {
     tool,
     undo,
     redo,
+    view,
   ]);
 
   const toggleSuggestions = () => {
@@ -1234,6 +1297,36 @@ function Workspace() {
     });
   };
 
+  /** The batch as its export, for a collection to keep; null when it has no notes yet. */
+  const batchZip = useCallback(async () => {
+    const list = assetsRef.current;
+    if (!list.some(hasMarks)) return null;
+    deselect();
+    try {
+      const made = await buildExport(list, store.getImage, (done, total) =>
+        setStatus({
+          tone: 'info',
+          text: `Preparing ${Math.min(done + 1, total)} of ${total}…`,
+          sticky: true,
+        }),
+      );
+      // Kept in a collection is kept: going home won't ask about this batch.
+      markExported();
+      return made;
+    } finally {
+      setStatus((s) => (s?.sticky ? null : s));
+    }
+  }, [deselect, markExported]);
+
+  /** A batch kept in a collection, opened into the session like any export. */
+  const openStoredBatch = useCallback(
+    (file: File) => {
+      setView('batch');
+      openExport(file);
+    },
+    [openExport],
+  );
+
   /**
    * The logo goes home, which in Pinch means a new batch: straight there when everything was
    * exported since the last change, after a question when something wasn't.
@@ -1245,7 +1338,9 @@ function Workspace() {
   };
 
   // The landing: no image yet, so the header floats over the painting in two glass pills.
-  const landing = loaded && !asset;
+  const landing = loaded && !asset && view === 'batch';
+  // The batch's own controls in the header: its count, suggestions, copy, export and keys.
+  const batchTools = view === 'batch' && assets.length > 0;
 
   return (
     <div className="relative flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -1271,11 +1366,12 @@ function Workspace() {
             <a
               href={pathname}
               data-home-trigger
-              aria-label="Pinch, start a new batch"
+              aria-label={view === 'collections' ? 'Pinch, back to the batch' : 'Pinch, start a new batch'}
               onClick={(e) => {
                 if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
-                goHome();
+                if (view === 'collections') setView('batch');
+                else goHome();
               }}
               className={cn(
                 hoverFill,
@@ -1294,7 +1390,7 @@ function Workspace() {
               'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md',
           )}
         >
-          {assets.length > 0 && (
+          {batchTools && (
             <p
               className="m-0 mr-2 text-[13px] text-muted-foreground max-[900px]:hidden"
               aria-live="polite"
@@ -1302,7 +1398,7 @@ function Workspace() {
               {tagged.length} of {assets.length} tagged · {count(allMarks.length, 'note')}
             </p>
           )}
-          {suggestAvailable && assets.length > 0 && (
+          {suggestAvailable && batchTools && (
             <label
               htmlFor="suggestions"
               className="flex min-h-9 items-center gap-2 px-1 text-sm"
@@ -1318,13 +1414,13 @@ function Workspace() {
               Suggestions
             </label>
           )}
-          {suggestAvailable && assets.length > 0 && (
+          {suggestAvailable && batchTools && (
             // The switch's description, outside its label so it doesn't join the name.
             <span id="suggestions-note" className="sr-only">
               Sends the marked area to Anthropic.
             </span>
           )}
-          {assets.length > 0 && (
+          {batchTools && (
             <TooltipProvider>
               <ToolbarButton
                 onClick={copyForAgent}
@@ -1386,8 +1482,29 @@ function Workspace() {
               </Tooltip>
             </TooltipProvider>
           )}
+          {loaded && (
+            // Between the batch and the collections, which take its place (D75).
+            <button
+              type="button"
+              onClick={() => setView(view === 'batch' ? 'collections' : 'batch')}
+              className={cn(
+                hit,
+                'flex items-center text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                landing
+                  ? 'h-7 gap-1.5 rounded-full px-2.5'
+                  : 'min-h-9 gap-2 rounded-md border border-border px-3',
+              )}
+            >
+              {view === 'batch' ? (
+                <Library className="size-4" aria-hidden />
+              ) : (
+                <ArrowLeft className="size-4" aria-hidden />
+              )}
+              {view === 'batch' ? 'Collections' : assets.length ? 'Back to batch' : 'Back'}
+            </button>
+          )}
           <ThemeToggle />
-          {assets.length > 0 && (
+          {(assets.length > 0 || view === 'collections') && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
@@ -1416,7 +1533,7 @@ function Workspace() {
         <input
           ref={fileInput}
           type="file"
-          accept="image/*"
+          accept="image/*,.zip,application/zip"
           multiple
           className="sr-only"
           tabIndex={-1}
@@ -1477,7 +1594,15 @@ function Workspace() {
         </div>
       )}
 
-      {!loaded ? null : !asset ? (
+      {!loaded ? null : view === 'collections' ? (
+        <CollectionsView
+          inert={dialog !== null}
+          openNotes={allMarks.length}
+          batchZip={batchZip}
+          onOpenBatch={openStoredBatch}
+          onStatus={setStatus}
+        />
+      ) : !asset ? (
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
@@ -1628,6 +1753,10 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         {item(
           'Topic tags:',
           'each saved note’s words are sent to TypeSafe’s Jev to tag its topic (type, colour, layout, and so on). Nothing else goes with them.',
+        )}
+        {item(
+          'Collections',
+          'and their batches and rules stay in this browser. When you ask for drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
         )}
         {item(
           'No accounts, no ads, no analytics.',
@@ -1932,7 +2061,7 @@ function EmptyState({
                     {dragging ? (
                       <span className="text-current">Drop to add them.</span>
                     ) : (
-                      'Or drag images here or paste.'
+                      'Or drag images or a Pinch export here, or paste.'
                     )}
                   </p>
                 </div>
@@ -3044,38 +3173,6 @@ function MarkEditor({
     </section>
   );
 }
-
-/**
- * A topic tag's hit area: as wide as the tag and 36px tall, under the usual 44px so that rows
- * 8px apart, the same as the columns, tile without overlapping (D74).
- */
-const tagHit =
-  'relative after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-9 after:min-w-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[""]';
-
-/**
- * One tint per topic: `ink` is the label and `fill` the tag when it is on. No red, which means "doesn't work" and delete. Text is at least 5.4:1 on its fill in
- * light (teal, orange and green take the 800 shade for it) and 9.6:1 in dark.
- */
-const TOPIC_TONES: Record<Topic, { ink: string; fill: string }> = {
-  visual: {
-    ink: 'text-fuchsia-700 dark:text-fuchsia-300',
-    fill: 'bg-fuchsia-100 dark:bg-fuchsia-400/15',
-  },
-  layout: { ink: 'text-blue-700 dark:text-blue-300', fill: 'bg-blue-100 dark:bg-blue-400/15' },
-  copy: { ink: 'text-teal-800 dark:text-teal-300', fill: 'bg-teal-100 dark:bg-teal-400/15' },
-  interaction: {
-    ink: 'text-violet-700 dark:text-violet-300',
-    fill: 'bg-violet-100 dark:bg-violet-400/15',
-  },
-  flow: {
-    ink: 'text-orange-800 dark:text-orange-300',
-    fill: 'bg-orange-100 dark:bg-orange-400/15',
-  },
-  accessibility: {
-    ink: 'text-green-800 dark:text-green-300',
-    fill: 'bg-green-100 dark:bg-green-400/15',
-  },
-};
 
 /**
  * What a note is about: six toggle tags, any number on, none needed. Off, a tag is outlined; on,

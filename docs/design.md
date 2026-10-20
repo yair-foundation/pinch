@@ -15,7 +15,7 @@ Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`).
 
 | Role | Current value | Where |
 | --- | --- | --- |
-| Landing headline | 1.4rem regular, snug leading, tight tracking | landing card |
+| Landing headline | 1.4rem regular, snug leading, tight tracking | landing card; a collection's name and the empty collections page |
 | Section heading (panel titles) | 14px medium | notes panel |
 | Body, labels, fields | 13–14px | everywhere |
 | Meta (counts, hints) | 13px muted | header, panel |
