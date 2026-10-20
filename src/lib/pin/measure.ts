@@ -38,12 +38,12 @@ export type Measured =
  * on a near-white page differs by about 10, a pale icon tile on a card by about 8, and their
  * edges are what a gap is measured to.
  */
-const INK = 6;
+export const INK = 6;
 /**
  * A gap this wide or narrower, as a share of the image's long side, is inside one element:
  * between the letters and words of a line.
  */
-const JOIN = 0.006;
+export const JOIN = 0.006;
 /**
  * How far a gap is looked for, as a share of the image's width or height: half, so a label in a
  * wide button still finds the button's far edge.
@@ -54,7 +54,7 @@ export const REACH = 0.5;
  * together (a card and the page around it are two): something to measure on. A photo or a
  * gradient spreads over many, and is not measured.
  */
-const FLAT_SHARE = 0.5;
+export const FLAT_SHARE = 0.5;
 /**
  * Ink this far from the background is strong: letters and controls, not a card's faint edge or a
  * pale divider. Its own level, not a multiple of INK: lowering INK to see pale surfaces must not
@@ -78,7 +78,7 @@ const AROUND = 0.12;
  * row of a list sits among rows that may cover half the window, and the median would then be a
  * row's colour.
  */
-function backgroundOf(values: number[]) {
+export function backgroundOf(values: number[]) {
   const counts = new Uint32Array(64);
   for (const v of values) counts[v >> 2]++;
   let best = 0;
@@ -95,7 +95,7 @@ function backgroundOf(values: number[]) {
 }
 
 /** The share of values on the few most common colours (each a step of 4 and its neighbours). */
-function flatShare(values: number[]) {
+export function flatShare(values: number[]) {
   const counts = new Uint32Array(64);
   for (const v of values) counts[v >> 2]++;
   const taken = new Uint8Array(64);

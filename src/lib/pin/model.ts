@@ -7,6 +7,7 @@
  */
 
 import { type Scale, type Spacing, scaleOf, spacingText } from './measure';
+import { type Rhythm, rhythmText } from './rhythm';
 
 export type Dot = { kind: 'dot'; x: number; y: number };
 /** x, y is the top-left corner; all four are fractions of the image (0–1). */
@@ -50,6 +51,8 @@ export type Mark = {
   accepted?: { good?: string; bad?: string };
   /** The spacing around the spot, measured on the image (`measure.ts`). */
   spacing?: Spacing;
+  /** For an area: the items inside it and the gaps between them (`rhythm.ts`). */
+  rhythm?: Rhythm;
 };
 
 /** Whose design an image is. */
@@ -150,6 +153,10 @@ export const shapeKey = (s: Shape) =>
     : (s.kind === 'dot' ? [s.x, s.y] : [s.x, s.y, s.w, s.h]).map((n) => n.toFixed(3)).join(',');
 
 /** The note's suggestion, if it was written for where the note is now. */
+/** The note's spacing check, if it was made where the note is now. */
+export const currentRhythm = (m: Mark) =>
+  m.rhythm && m.rhythm.shape === shapeKey(m.shape) ? m.rhythm : undefined;
+
 /** The note's spacing, if it was measured where the note is now. */
 export const currentSpacing = (m: Mark) =>
   m.spacing && m.spacing.shape === shapeKey(m.shape) ? m.spacing : undefined;
@@ -494,6 +501,10 @@ const FILES = [
 const SPACING_RULE =
   "Spacing, on a note that has it: measured on the image's pixels, not judged. The element is what sits at a dot (its shape, or its line of text) or the content inside an area, fitted tight (not the box as drawn); its box is given in pixels and drawn dashed on the crop. Each gap runs from it to the first thing on that side that differs from the background: another element, a container's edge, a divider, or anything in the screenshot such as a cursor. 0 means it touches or overlaps that thing; \"nothing within reach\" means nothing within half the image's width or height on that side. Gaps are in screenshot pixels, with CSS pixels at the screenshot's scale (said to be guessed or set). The note's words say whether a gap is wrong; Spacing gives the numbers to fix it with.";
 
+/** How to read Rhythm: in the README only when a note carries one. */
+const RHYTHM_RULE =
+  'Rhythm, on an area note that has it: the repeated items found inside the area (rows of a list, cards, links) along one axis and the gaps between them, measured on the pixels; their boxes are in `notes.json` and drawn dashed on the crop. A gap is called out when it differs from the median gap by more than 12% or 2 px; with only two gaps, both are given. The note\'s words say whether that matters.';
+
 /** AGENTS.md at the root of the export: a pointer, so the rules live in one place (README.md). */
 export function agentGuide(): string {
   return `${[
@@ -567,6 +578,25 @@ function spacingData(a: Asset, m: Mark) {
   };
 }
 
+function rhythmData(a: Asset, m: Mark) {
+  const rhythm = currentRhythm(m);
+  if (!rhythm) return {};
+  const { scale, guessed } = scaleOf(a);
+  return {
+    rhythm: {
+      axis: rhythm.axis,
+      items: rhythm.items,
+      gaps: rhythm.gaps,
+      cssGaps: rhythm.gaps.map((g) => Math.round(g / scale)),
+      typical: rhythm.typical,
+      odd: rhythm.odd,
+      scale,
+      scaleGuessed: guessed,
+      precision: rhythm.precision,
+    },
+  };
+}
+
 /** One line naming whose design an image is. */
 export const sourceLine = (s: Source) => `Source: ${sourceLabel(s.kind)}`;
 
@@ -618,6 +648,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
               : {}),
             ...suggestedData(m),
             ...spacingData(a, m),
+            ...rhythmData(a, m),
           })),
       };
     }),
@@ -646,6 +677,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
     '',
     ...FILES.map((l) => `- ${l}`),
     ...(all.some((m) => currentSpacing(m)) ? [`- ${SPACING_RULE}`] : []),
+    ...(all.some((m) => currentRhythm(m)) ? [`- ${RHYTHM_RULE}`] : []),
   ];
   list.forEach((a, i) => {
     const files = assetFiles(a, i, list.length);
@@ -676,6 +708,11 @@ export function readme(assets: Asset[], exportedAt: string): string {
         lines.push(
           `Spacing: ${spacingText(spacing, scale, guessed)}. Measured from the element at pixels ${e.x},${e.y}, ${e.w}×${e.h}.`,
         );
+      }
+      const rhythm = currentRhythm(m);
+      if (rhythm) {
+        const { scale, guessed } = scaleOf(a);
+        lines.push(`Rhythm: ${rhythmText(rhythm, scale, guessed)}`);
       }
     });
   });

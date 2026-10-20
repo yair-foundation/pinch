@@ -1,6 +1,8 @@
 import { scaleOf, spacingText } from './measure';
+import { rhythmText } from './rhythm';
 import {
   type Asset,
+  currentRhythm,
   currentSpacing,
   type Mark,
   type Shape,
@@ -57,6 +59,8 @@ export function noteLine(
   if (m.bad.trim()) parts.push(`doesn't${aiTag(m, 'bad')}: "${oneLine(m.bad)}"`);
   const spacing = currentSpacing(m);
   if (spacing) parts.push(`spacing: ${spacingText(spacing, scale.scale, scale.guessed)}`);
+  const rhythm = currentRhythm(m);
+  if (rhythm) parts.push(`rhythm: ${rhythmText(rhythm, scale.scale, scale.guessed)}`);
   const line = `- ${parts.join(' · ')}`;
   return m.origin === 'ai' && !m.confirmed ? `${line} (AI, not checked)` : line;
 }

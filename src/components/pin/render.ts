@@ -3,6 +3,7 @@ import {
   type Asset,
   assetFiles,
   busyShare,
+  currentRhythm,
   currentSpacing,
   inkShare,
   type CropOf,
@@ -20,6 +21,7 @@ import {
   verdictOf,
 } from '@/lib/pin/model';
 import { SIDES, type Spacing } from '@/lib/pin/measure';
+import type { Rhythm } from '@/lib/pin/rhythm';
 import { layoutSheet } from '@/lib/pin/sheet';
 import { zip, type ZipEntry } from '@/lib/pin/zip';
 
@@ -328,6 +330,75 @@ function drawSpacing(
   ctx.restore();
 }
 
+/** The colour of a gap the spacing check calls out. */
+export const ODD_COLOR = '#dc2626';
+
+/**
+ * A spacing check (`rhythm.ts`): each item as a dashed box and each gap as a
+ * bracket with its size in screenshot pixels, an odd one in red. `at` maps
+ * image pixels to the canvas.
+ */
+function drawRhythm(
+  ctx: CanvasRenderingContext2D,
+  rhythm: Rhythm,
+  at: (x: number, y: number) => [number, number],
+  unit: number,
+) {
+  ctx.save();
+  ctx.lineWidth = 1.5 * unit;
+  ctx.font = `600 ${Math.round(11 * unit)}px ${MONO}`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  const boxes = rhythm.items.map((item) => {
+    const [x0, y0] = at(item.x, item.y);
+    const [x1, y1] = at(item.x + item.w, item.y + item.h);
+    return { x0, y0, x1, y1 };
+  });
+  ctx.strokeStyle = SPACING_COLOR;
+  ctx.setLineDash([4 * unit, 3 * unit]);
+  for (const b of boxes) ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+  ctx.setLineDash([]);
+  const tick = 4 * unit;
+  rhythm.gaps.forEach((px, i) => {
+    const a = boxes[i];
+    const z = boxes[i + 1];
+    const color = rhythm.odd.includes(i) ? ODD_COLOR : SPACING_COLOR;
+    ctx.strokeStyle = color;
+    const column = rhythm.axis === 'column';
+    // Across the middle of where the two items overlap, or of the first when they don't.
+    const lo = column ? Math.max(a.x0, z.x0) : Math.max(a.y0, z.y0);
+    const hi = column ? Math.min(a.x1, z.x1) : Math.min(a.y1, z.y1);
+    const mid = hi > lo ? (lo + hi) / 2 : column ? (a.x0 + a.x1) / 2 : (a.y0 + a.y1) / 2;
+    const [ax, ay, bx, by] = column ? [mid, a.y1, mid, z.y0] : [a.x1, mid, z.x0, mid];
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    if (column) {
+      ctx.moveTo(ax - tick, ay);
+      ctx.lineTo(ax + tick, ay);
+      ctx.moveTo(bx - tick, by);
+      ctx.lineTo(bx + tick, by);
+    } else {
+      ctx.moveTo(ax, ay - tick);
+      ctx.lineTo(ax, ay + tick);
+      ctx.moveTo(bx, by - tick);
+      ctx.lineTo(bx, by + tick);
+    }
+    ctx.stroke();
+    const label = String(px);
+    const w = ctx.measureText(label).width + 6 * unit;
+    const h = 14 * unit;
+    const lx = column ? mid + w / 2 + 4 * unit : (ax + bx) / 2;
+    const ly = column ? (ay + by) / 2 : mid - h / 2 - 4 * unit;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(lx - w / 2, ly - h / 2, w, h);
+    ctx.strokeRect(lx - w / 2, ly - h / 2, w, h);
+    ctx.fillStyle = color;
+    ctx.fillText(label, lx, ly + 0.5 * unit);
+  });
+  ctx.restore();
+}
+
 /**
  * `busy` for a canvas that shows the image at `scale` from image pixel
  * `origin`: a disc on the canvas is measured on the image's luma grid.
@@ -612,8 +683,19 @@ export function lumaGrid(
  */
 export const measureGrid = (bitmap: ImageBitmap) => lumaGrid(bitmap, 2400, 1);
 
-/** A crop grown to hold the note's measured element and its gaps, so the numbers drawn on it show. */
+/** `a` grown to hold `b` with `pad` around it, inside the image. */
+function union(a: Rect, b: Rect, pad: number, bitmap: ImageBitmap): Rect {
+  const x0 = Math.max(0, Math.min(a.x, b.x - pad));
+  const y0 = Math.max(0, Math.min(a.y, b.y - pad));
+  const x1 = Math.min(bitmap.width, Math.max(a.x + a.w, b.x + b.w + pad));
+  const y1 = Math.min(bitmap.height, Math.max(a.y + a.h, b.y + b.h + pad));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** A crop grown to hold the note's measured element and its gaps, and its checked items, so the numbers drawn on it show. */
 function withSpacing(rect: Rect, mark: Mark, bitmap: ImageBitmap): Rect {
+  const rhythm = currentRhythm(mark);
+  if (rhythm) rect = rhythm.items.reduce((r, item) => union(r, item, 16, bitmap), rect);
   const spacing = currentSpacing(mark);
   if (!spacing) return rect;
   const e = spacing.element;
@@ -660,6 +742,8 @@ function drawCrop(
   const spacing = currentSpacing(mark);
   const at = (x: number, y: number): [number, number] => [(x - rect.x) * scale, (y - rect.y) * scale];
   if (spacing) drawSpacing(ctx, spacing, at, scale, unit);
+  const rhythm = currentRhythm(mark);
+  if (rhythm) drawRhythm(ctx, rhythm, at, unit);
   return canvas;
 }
 
