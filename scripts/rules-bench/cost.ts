@@ -3,12 +3,11 @@
 //
 //   ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/cost.ts [out-dir] [runs]
 //
-// Each cell is read three ways, `runs` times (default 2), each run with its own notes:
-// - `route`: exactly the call the route makes today, with no caching;
-// - `cold`: the same with cache breakpoints after the instructions and after the library,
-//   behind a fresh marker so nothing is cached yet (what an author meets after a break);
-// - `warm`: straight after `cold`, the same instructions and library with other notes (a
-//   second reading inside the cache's five minutes).
+// Each cell is read two ways, `runs` times (default 2), each run with its own notes:
+// - `cold`: the call the route makes, its instructions marked for the cache (D97), behind a
+//   fresh marker so nothing is cached yet: no one has read in the last five minutes;
+// - `warm`: straight after `cold`, the same call with other notes: the instructions come from
+//   the cache, the library doesn't, as the route caches only the instructions.
 // Every attempt is kept, failed and unusable ones too: the SDK's own retries are off so each
 // is counted, and an answer that is cut off or doesn't parse is paid for and read again, as
 // the page would. The library is the cases' own rules topped up to 200 by a model once and
@@ -39,8 +38,8 @@ const client = new Anthropic({ maxRetries: 0, timeout: 10 * 60 * 1000 })
 
 const LIBRARIES = [0, 50, 200]
 const NOTE_COUNTS = [1, 5, 30]
-type Way = "route" | "cold" | "warm"
-const WAYS: Way[] = ["route", "cold", "warm"]
+type Way = "cold" | "warm"
+const WAYS: Way[] = ["cold", "warm"]
 
 /** A fixed shuffle, so a run reads the same notes every time. */
 function shuffled<T>(items: T[], seed: number): T[] {
@@ -182,7 +181,7 @@ type Attempt = {
 let spent = 0
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** One reading as the route makes it, or with cache breakpoints; every attempt kept. */
+/** One reading as the route makes it, behind a marker; every attempt kept. */
 async function read(
   way: Way,
   rules: LibraryRule[],
@@ -191,7 +190,6 @@ async function read(
   run: number,
 ): Promise<Attempt[]> {
   const prompt = learnPrompt({ notes, rules })
-  const split = prompt.indexOf("\n\nThe new notes:")
   const common = {
     model: MODEL,
     max_tokens: 16000,
@@ -202,37 +200,18 @@ async function read(
       format: betaZodOutputFormat(learnSchema),
     },
   }
-  const ephemeral = { type: "ephemeral" as const }
   const call = () =>
-    way === "route"
-      ? client.beta.messages.parse({
-          ...common,
-          system: learnSystem,
-          messages: [{ role: "user", content: prompt }],
-        })
-      : client.beta.messages.parse({
-          ...common,
-          system: [
-            {
-              type: "text",
-              text: `${marker}\n\n${learnSystem}`,
-              cache_control: ephemeral,
-            },
-          ],
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: prompt.slice(0, split),
-                  cache_control: ephemeral,
-                },
-                { type: "text", text: prompt.slice(split) },
-              ],
-            },
-          ],
-        })
+    client.beta.messages.parse({
+      ...common,
+      system: [
+        {
+          type: "text",
+          text: `${marker}\n\n${learnSystem}`,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [{ role: "user", content: prompt }],
+    })
   const base = { way, library: rules.length, notes: notes.length, run }
   const attempts: Attempt[] = []
   for (let attempt = 1; attempt <= 4; attempt++) {
@@ -311,13 +290,12 @@ async function main() {
         const rules = full.slice(0, size)
         const marker = `Reading ${randomUUID()}`
         const attempts = [
-          ...(await read("route", rules, first, marker, run)),
           ...(await read("cold", rules, first, marker, run)),
           ...(await read("warm", rules, second, marker, run)),
         ]
         const done = attempts.filter((a) => a.usable).length
         console.log(
-          `${size} rules, ${count} notes, run ${run + 1}: ${done}/3 read, ${attempts.length} attempts, $${spent.toFixed(2)} so far`,
+          `${size} rules, ${count} notes, run ${run + 1}: ${done}/2 read, ${attempts.length} attempts, $${spent.toFixed(2)} so far`,
         )
         return attempts
       }),

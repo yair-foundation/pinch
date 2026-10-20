@@ -3,6 +3,9 @@
 //
 //   ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/run.ts [out-dir] [runs] [builds] [held-out]
 //
+// BENCH_VARIANTS=pretty,foundation (with builds 0) reads only those, to check a change to the
+// reading's prompt against the one before it (D97); `pretty` is the prompt before D97.
+//
 // Stage 1 reads each case's notes with a plain Claude prompt, with Pinch as it was before the
 // foundation (`baseline.ts`), and with Pinch as it is (`learn.ts`), `runs` times each (default
 // 2). A judge, playing the designer with the case's key and never told which reading is which,
@@ -33,7 +36,7 @@ import {
   rulesOf,
   rulesText,
 } from "../../src/lib/pin/learnings"
-import { baselineSchema, baselineSystem } from "./baseline"
+import { baselineSchema, baselineSystem, prettyPrompt } from "./baseline"
 import { CASES, type Case } from "./cases"
 
 const MODEL = "claude-opus-5-5"
@@ -45,8 +48,12 @@ mkdirSync(out, { recursive: true })
 const client = new Anthropic()
 let spent = 0
 
-type Variant = "plain" | "current" | "foundation"
-const VARIANTS: Variant[] = ["plain", "current", "foundation"]
+type Variant = "plain" | "current" | "foundation" | "pretty"
+const VARIANTS = (process.env.BENCH_VARIANTS?.split(",") ?? [
+  "plain",
+  "current",
+  "foundation",
+]) as Variant[]
 
 /** At most `n` calls at once. */
 async function pool<T>(jobs: (() => Promise<T>)[], n = 4): Promise<T[]> {
@@ -85,10 +92,10 @@ async function plain(c: Case) {
   return r.content.map((b) => (b.type === "text" ? b.text : "")).join("")
 }
 
-/** Pinch's reading, before the foundation (`current`) or with it (`foundation`). */
+/** Pinch's reading, before the foundation (`current`), with it (`foundation`), or with it and the prompt before D97 (`pretty`). */
 async function pinch(
   c: Case,
-  variant: "current" | "foundation",
+  variant: "current" | "foundation" | "pretty",
 ): Promise<Reading> {
   const request = { notes: c.notes, rules: c.library }
   const r = await client.beta.messages.parse({
@@ -101,14 +108,20 @@ async function pinch(
       ),
     },
     system: variant === "current" ? baselineSystem : learnSystem,
-    messages: [{ role: "user", content: learnPrompt(request) }],
+    messages: [
+      {
+        role: "user",
+        content:
+          variant === "pretty" ? prettyPrompt(request) : learnPrompt(request),
+      },
+    ],
   })
   spent += costUsd(r.model, r.usage)
   const parsed = r.parsed_output
   if (!parsed) throw new Error(`no reading (${r.stop_reason})`)
   const notes = c.notes.map((n) => n.id)
   const rules = c.library.map((l) => l.id)
-  if (variant === "foundation")
+  if (variant !== "current")
     return cleanReading(parsed as z.infer<typeof learnSchema>, notes, rules)
   // Before the foundation Pinch only kept ids it was given; nothing else changed.
   const known = (ids: string[]) => ids.filter((id) => notes.includes(id))
@@ -472,9 +485,9 @@ async function main() {
     written?: number
   }
   const works: Work[] = []
-  for (const c of CASES.filter(
-    (x) => !buildHeldOutOnly || x.set === "held out",
-  )) {
+  for (const c of builds > 0
+    ? CASES.filter((x) => !buildHeldOutOnly || x.set === "held out")
+    : []) {
     const first = (v: Variant) =>
       reads.find(
         (r) => r.caseId === c.id && r.variant === v && r.run === 0,

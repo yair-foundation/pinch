@@ -91,7 +91,8 @@ export async function POST(request: Request) {
         ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }
         : {}),
       output_config: { effort: 'medium', format: betaZodOutputFormat(learnSchema) },
-      system: learnSystem,
+      // The instructions are the same for every author, so they stay cached while anyone reads (D97).
+      system: [{ type: 'text', text: learnSystem, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: learnPrompt({ notes, rules }) }],
     });
     spent = costUsd(response.model, response.usage);
