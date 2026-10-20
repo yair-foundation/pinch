@@ -41,7 +41,7 @@ function Lockup({ className }: { className?: string }) {
  * "TM" above the lockup.
  */
 const SWAP =
-  'col-start-1 row-start-1 transition-[translate,opacity]! duration-700! ease-in-out! motion-reduce:transition-none!';
+  'col-start-1 row-start-1 flex transition-[translate,opacity]! duration-700! ease-in-out! motion-reduce:transition-none!';
 
 /**
  * The wordmark, named "Pinch" for assistive tech (the two copies are decorative), with a small "TM" at
