@@ -25,6 +25,7 @@ import {
   settleCrop,
   shapeKey,
   shapePixels,
+  exportName,
   slug,
   suggestionUse,
   verdictOf,
@@ -86,16 +87,16 @@ describe('marks', () => {
 describe('cropRect', () => {
   it('crops a square around a dot and keeps it inside the image', () => {
     assert.deepEqual(cropRect({ kind: 'dot', x: 0.5, y: 0.5 }, 1600, 1000), {
-      x: 680,
-      y: 380,
-      w: 240,
-      h: 240,
+      x: 640,
+      y: 340,
+      w: 320,
+      h: 320,
     });
     assert.deepEqual(cropRect({ kind: 'dot', x: 0.99, y: 0.01 }, 1600, 1000), {
-      x: 1360,
+      x: 1280,
       y: 0,
-      w: 240,
-      h: 240,
+      w: 320,
+      h: 320,
     });
   });
 
@@ -106,16 +107,18 @@ describe('cropRect', () => {
     assert.deepEqual(full, { x: 0, y: 0, w: 1600, h: 1000 });
   });
 
-  it('crops an arrow around both ends with a wide margin, and at least 200px', () => {
+  it('crops an arrow around both ends with a wide margin, and at least 320px', () => {
     // 1600 × 1000: the arrow spans x 192–1280 (1088px), y 400–410.
     const r = cropRect({ kind: 'arrow', x: 0.12, y: 0.4, x2: 0.8, y2: 0.41 }, 1600, 1000);
-    const pad = Math.round(1088 * 0.2);
-    // 20% of the long side on every edge; the left edge would start before the image, so it rests at 0.
-    assert.deepEqual(r, { x: 0, y: 405 - pad - 5, w: 1088 + pad * 2, h: 10 + pad * 2 });
+    // 30% of the long side on every edge, so what each end points at shows; the width reaches the image's edges.
+    assert.deepEqual(r, { x: 0, y: 0, w: 1600, h: 1000 });
+    // A near-vertical arrow gets a crop at least 60% as wide as it is tall, not a strip.
+    const tall = cropRect({ kind: 'arrow', x: 0.5, y: 0.2, x2: 0.52, y2: 0.8 }, 1600, 1000);
+    assert.ok(tall.w >= tall.h * 0.6 - 1, `${tall.w}x${tall.h}`);
     assert.ok(r.x <= 192 && r.x + r.w >= 1280, 'both ends inside');
     // A short arrow in a corner: the floor size, kept inside the image.
     const short = cropRect({ kind: 'arrow', x: 0.98, y: 0.02, x2: 0.95, y2: 0.05 }, 1600, 1000);
-    assert.deepEqual(short, { x: 1400, y: 0, w: 200, h: 200 });
+    assert.deepEqual(short, { x: 1280, y: 0, w: 320, h: 320 });
   });
 });
 
@@ -302,6 +305,13 @@ describe('contact sheet', () => {
 });
 
 describe('export names and text', () => {
+  it('names an image by the file that ships, which a scaled copy can change', () => {
+    assert.equal(exportName({ name: 'big.jpg', type: 'image/png' }), 'big.png');
+    assert.equal(exportName({ name: 'big.jpeg', type: 'image/jpeg' }), 'big.jpeg');
+    assert.equal(exportName({ name: 'shot.WEBP', type: 'image/webp' }), 'shot.WEBP');
+    assert.equal(exportName({ name: 'no-extension', type: 'image/png' }), 'no-extension.png');
+  });
+
   it('names files by place in the batch and a safe slug', () => {
     assert.equal(slug('Pricing page (v2).png'), 'pricing-page-v2');
     assert.equal(slug('דף.png'), 'image');
@@ -311,7 +321,7 @@ describe('export names and text', () => {
       [
         'images/03-pricing-page-v2.png',
         'marked/03-pricing-page-v2.jpg',
-        'crops/03-pricing-page-v2-note-1.png',
+        'crops/03-pricing-page-v2-note-1.jpg',
       ],
     );
   });
@@ -360,29 +370,29 @@ describe('export names and text', () => {
     );
     assert.match(
       text,
-      /Crop: `crops\/01-pricing-page-v2-note-1\.png`\nWhat works: Huge and alone\./,
+      /Crop: `crops\/01-pricing-page-v2-note-1\.jpg`\nWhat works: Huge and alone\./,
     );
     assert.match(
       text,
-      /### Note 01\.2 · doesn't work\n\nWhere: dot at x 50\.0%, y 50\.0% \(pixel 800, 500\) · placed by AI from the note, not checked/,
+      /### Note 01\.2 · doesn't work\n\nWhere: dot at x 50\.0%, y 50\.0% \(pixel 800, 500\) · placed by AI from the author's note, position not checked/,
     );
     assert.match(text, /From the note: "the filters are noisy"/);
-    // The reading contract comes first, and the same words ship as AGENTS.md.
-    assert.match(text, /## How to use this\n\n- Start with `contact-sheet\.jpg`: one look at the whole batch/);
+    // The reading contract comes first; AGENTS.md only points at it.
+    assert.match(text, /## How to use this\n\n- Start with `contact-sheet\.jpg`: thumbnails of the whole batch/);
     assert.match(text, /read its crop in `crops\/` first/);
     assert.match(text, /"02\.3" for the third note on image 02/);
-    assert.match(text, /not checked" sits where an AI put it/);
     assert.ok(text.indexOf('## How to use this') < text.indexOf('## Files'));
     assert.ok(text.indexOf('## Files') < text.indexOf('## 01 ·'));
-    assert.match(text, /`notes\.json` has all of this as data\. `AGENTS\.md` repeats/);
+    assert.match(text, /`notes\.json` has all of this as data\./);
     assert.match(
       text,
       /`images\/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit\./,
     );
+    // AGENTS.md only points at the README, so the rules live in one place.
     const guide = agentGuide();
-    assert.match(guide, /screenshots over 16 megapixels were scaled down to fit/);
     assert.match(guide, /^# Pinch export\n/);
-    for (const line of text.split('\n').filter((l) => l.startsWith('- '))) assert.ok(guide.includes(line), line);
+    assert.match(guide, /Read `README\.md` first/);
+    assert.ok(guide.length < 500);
   });
 
   it('reports the crop each note was drawn with, and the sheet', () => {
@@ -390,7 +400,7 @@ describe('export names and text', () => {
     const data = manifest([a], '2026-10-19T10:00:00.000Z');
     assert.equal(data.contactSheet, 'contact-sheet.jpg');
     assert.equal(data.guide, 'AGENTS.md');
-    assert.deepEqual(data.assets[0].notes[0].cropPixels, { x: 680, y: 380, w: 240, h: 240 });
+    assert.deepEqual(data.assets[0].notes[0].cropPixels, { x: 640, y: 340, w: 320, h: 320 });
     const settled = { x: 640, y: 360, w: 300, h: 280 };
     const withCrops = manifest([a], 'x', () => settled);
     assert.deepEqual(withCrops.assets[0].notes[0].cropPixels, settled);
@@ -447,8 +457,10 @@ describe('Pinch sources and suggestions', () => {
     assert.match(readme([old], 'x'), /^Source: Competitor$/m);
     assert.doesNotMatch(readme([old], 'x'), /Linear|linear\.app/);
     assert.doesNotMatch(JSON.stringify(manifest([old], 'x')), /Linear|linear\.app|madeBy|link/);
-    // No source picked: no line, no field.
-    assert.doesNotMatch(readme([asset({ marks: [mark({ good: 'x' })] })], 'x'), /^Source:/m);
+    // No source picked: the README and the data say so, so an agent doesn't assume one.
+    const unset = asset({ marks: [mark({ good: 'x' })] });
+    assert.match(readme([unset], 'x'), /^Source: not set$/m);
+    assert.equal(manifest([unset], 'x').assets[0].source, null);
   });
 
   it('says which words came from an accepted suggestion', () => {

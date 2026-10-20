@@ -414,7 +414,7 @@ function drawCrop(
   color?: string,
 ) {
   const side = Math.max(rect.w, rect.h);
-  const scale = Math.min(maxSide / side, Math.max(1, Math.min(3, 480 / side)));
+  const scale = Math.min(maxSide / side, Math.max(1, Math.min(2, 480 / side)));
   const w = Math.round(rect.w * scale);
   const h = Math.round(rect.h * scale);
   const { canvas, ctx } = canvasOf(w, h);
@@ -466,7 +466,8 @@ export function cropImage(
       rect ?? settledCrop(bitmap, mark, grid),
       grid,
     ),
-    'image/png',
+    'image/jpeg',
+    0.92,
   );
 }
 
@@ -668,9 +669,11 @@ export async function prepareImage(file: File) {
   const { canvas, ctx } = canvasOf(Math.floor(width * scale), Math.floor(height * scale));
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
+  // A photo stays a JPEG (a PNG of it is ten times the size); anything else is kept lossless.
+  const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
   return {
-    blob: await toBlob(canvas, 'image/png'),
-    type: 'image/png',
+    blob: await toBlob(canvas, type, type === 'image/jpeg' ? 0.92 : undefined),
+    type,
     width: canvas.width,
     height: canvas.height,
     scaled,

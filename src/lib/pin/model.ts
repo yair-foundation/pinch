@@ -184,18 +184,21 @@ export function cropRect(shape: Shape, width: number, height: number): Rect {
     return { x, y, w: cw, h: ch };
   };
   if (shape.kind === 'dot') {
-    const side = Math.min(640, Math.max(200, Math.round(Math.min(width, height) * 0.24)));
+    const side = Math.min(720, Math.max(320, Math.round(Math.min(width, height) * 0.3)));
     return fit(shape.x * width, shape.y * height, side, side);
   }
   if (shape.kind === 'arrow') {
     const w = Math.abs(shape.x2 - shape.x) * width;
     const h = Math.abs(shape.y2 - shape.y) * height;
-    const pad = Math.max(48, Math.round(Math.max(w, h) * 0.2));
+    const pad = Math.max(96, Math.round(Math.max(w, h) * 0.3));
+    const cw = Math.max(320, w + pad * 2);
+    const ch = Math.max(320, h + pad * 2);
+    // Never a thin strip: a near-vertical or near-horizontal arrow still shows what is beside its ends.
     return fit(
       ((shape.x + shape.x2) / 2) * width,
       ((shape.y + shape.y2) / 2) * height,
-      Math.max(200, w + pad * 2),
-      Math.max(200, h + pad * 2),
+      Math.max(cw, ch * 0.6),
+      Math.max(ch, cw * 0.6),
     );
   }
   const w = shape.w * width;
@@ -322,7 +325,8 @@ export function settleCrop(rect: Rect, grid: LumaGrid, grow = 0.4): Rect {
   let r1 = Math.ceil((rect.y + rect.h) / cell);
   const limitX = Math.round((grow * rect.w) / cell);
   const limitY = Math.round((grow * rect.h) / cell);
-  const gapX = Math.max(1, Math.round(8 / cell));
+  // A word space, not the gap between two letters: scaled to the image so big type isn't cut either.
+  const gapX = Math.max(1, Math.round(Math.max(8, 0.008 * Math.max(grid.width, grid.height)) / cell));
   const gapY = Math.max(1, Math.round(4 / cell));
 
   const colQuiet = (c: number) => quiet(c, Math.max(0, r0), Math.min(rows, r1), true, cols);
@@ -385,6 +389,15 @@ export const extensionOf = (type: string) =>
     'image/gif': 'gif',
   })[type] ?? 'png';
 
+/** The image's name with the extension of the file that ships: a scaled copy can change type. */
+export function exportName(asset: Pick<Asset, 'name' | 'type'>): string {
+  const want = extensionOf(asset.type);
+  const match = asset.name.match(/\.([a-z0-9]{2,5})$/i);
+  if (!match) return `${asset.name}.${want}`;
+  const have = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase();
+  return have === want ? asset.name : `${asset.name.slice(0, -match[0].length)}.${want}`;
+}
+
 /** The files one asset contributes to the export, named by its place in the batch. */
 export function assetFiles(asset: Asset, index: number, total: number) {
   const n = String(index + 1).padStart(total > 99 ? 3 : 2, '0');
@@ -393,7 +406,7 @@ export function assetFiles(asset: Asset, index: number, total: number) {
     number: n,
     image: `images/${stem}.${extensionOf(asset.type)}`,
     marked: `marked/${stem}.jpg`,
-    crop: (markIndex: number) => `crops/${stem}-note-${markIndex + 1}.png`,
+    crop: (markIndex: number) => `crops/${stem}-note-${markIndex + 1}.jpg`,
   };
 }
 
@@ -410,39 +423,30 @@ const plainCrop: CropOf = (a, m) => cropRect(m.shape, a.width, a.height);
 
 /** How an agent should read the export: the same words in the README and in AGENTS.md. */
 const HOW_TO_USE = [
-  `Start with \`${SHEET_FILE}\`: one look at the whole batch. Every image is on it with its notes drawn in, numbered 01, 02, … in the order below.`,
-  'For each note, read its crop in `crops/` first. Open the marked copy in `marked/` when you need to see where the spot sits on the screen, and the original in `images/` only when the crop lacks detail. Each image costs context; the crop is usually enough.',
+  `Start with \`${SHEET_FILE}\`: thumbnails of the whole batch, numbered 01, 02, … in the order below, to see what is in it. Its markers are small: take positions from the notes below, not from the sheet.`,
+  'For each note, read its crop in `crops/` first. Open the marked copy in `marked/` when the crop seems cut off or you need to see where the spot sits on the screen, and the original in `images/` only when you need more detail. Each image costs context; the crop is usually enough.',
   "The notes say what the author saw and why. Don't ask the author to explain again what a note already says; when one is unclear, look closer at its crop and the marked copy first.",
   'Refer to notes by number, "02.3" for the third note on image 02, so the author can find them.',
-  'A note marked "placed by AI from the note, not checked" sits where an AI put it from the author\'s free text: the words are the author\'s, the position is unconfirmed.',
   'An arrow points from its tail (where its number sits) to its head. The note is about the two spots and how they relate: "move this there", "align this with that", "this should point to that". Read the tail as "this" and the head as "that".',
 ];
 
 const FILES = [
   `\`${SHEET_FILE}\`: every image's marked copy on one sheet, each with its number.`,
-  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image with every note drawn on it: a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby, on a short line, so it does not cover the content. `crops/`: a close-up of each note, its marker drawn in, widened to whole lines and controls so nothing is cut through.',
+  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image with every note drawn on it: a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: a close-up of each note with its marker drawn in. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',
   'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
-  "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Never copy an outside design; take its principle.",
-  `\`notes.json\` has all of this as data. \`${GUIDE_FILE}\` repeats how to use this, for an agent that opens the folder.`,
+  "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Source: not set means the author did not say; don't assume it is Ours, and ask before changing it. Never copy an outside design; take its principle.",
+  '`notes.json` has all of this as data.',
 ];
 
-/** AGENTS.md at the root of the export: the reading rules, for an agent that lands in the folder. */
+/** AGENTS.md at the root of the export: a pointer, so the rules live in one place (README.md). */
 export function agentGuide(): string {
   return `${[
     '# Pinch export',
     '',
-    "This folder is a batch of screenshots a designer tagged in Pinch: on each, dots, areas and arrows with a note on what works and what doesn't. `README.md` lists every image and note; read it before the images.",
-    '',
-    '## How to use this',
-    '',
-    ...HOW_TO_USE.map((l) => `- ${l}`),
-    '',
-    '## Files',
-    '',
-    ...FILES.map((l) => `- ${l}`),
+    "A batch of screenshots a designer tagged in Pinch: on each, dots, areas and arrows with a note on what works and what doesn't. Read `README.md` first: it says how to read this folder and lists every image and note.",
   ].join('\n')}\n`;
 }
 
@@ -466,8 +470,8 @@ const originText = (m: Mark) =>
   m.origin === 'user'
     ? ''
     : m.confirmed
-      ? ' · placed by AI from the note, checked by the user'
-      : ' · placed by AI from the note, not checked';
+      ? " · placed by AI from the author's note, position checked by the author"
+      : " · placed by AI from the author's note, position not checked";
 
 const sourceData = (s: Source) => ({ kind: s.kind, label: sourceLabel(s.kind) });
 
@@ -495,6 +499,15 @@ const suggestedText = (m: Mark, field: 'good' | 'bad') => {
 /** One line naming whose design an image is. */
 export const sourceLine = (s: Source) => `Source: ${sourceLabel(s.kind)}`;
 
+/** Fractions to four places: a pixel on any image under 10,000 wide, without float noise. */
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+const roundShape = (s: Shape): Shape =>
+  s.kind === 'dot'
+    ? { kind: 'dot', x: round4(s.x), y: round4(s.y) }
+    : s.kind === 'arrow'
+      ? { kind: 'arrow', x: round4(s.x), y: round4(s.y), x2: round4(s.x2), y2: round4(s.y2) }
+      : { kind: 'area', x: round4(s.x), y: round4(s.y), w: round4(s.w), h: round4(s.h) };
+
 /** The structured export: everything the README says, as data. */
 export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = plainCrop) {
   const list = exportable(assets);
@@ -503,35 +516,34 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
     version: 2,
     exportedAt,
     coordinates:
-      'Fractions of the image: x from the left edge, y from the top, 0 to 1. Pixels are of the original image in images/.',
+      'Fractions of the image: x from the left edge, y from the top, 0 to 1. Pixels are of the image in images/.',
     contactSheet: SHEET_FILE,
     guide: GUIDE_FILE,
     assets: list.map((a, i) => {
       const files = assetFiles(a, i, list.length);
       return {
         number: files.number,
-        name: a.name,
+        name: exportName(a),
         image: files.image,
         marked: files.marked,
         width: a.width,
         height: a.height,
-        note: a.note.trim(),
-        ...(a.source ? { source: sourceData(a.source) } : {}),
+        ...(a.note.trim() ? { note: a.note.trim() } : {}),
+        source: a.source ? sourceData(a.source) : null,
         notes: a.marks
           .filter((m) => verdictOf(m) !== 'empty')
           .map((m, j) => ({
             number: j + 1,
             verdict: verdictOf(m),
-            label: m.label.trim(),
+            ...(m.label.trim() ? { label: m.label.trim() } : {}),
             works: m.good.trim(),
             doesNotWork: m.bad.trim(),
-            shape: m.shape,
+            shape: roundShape(m.shape),
             pixels: shapePixels(m.shape, a.width, a.height),
             crop: files.crop(j),
             cropPixels: cropOf(a, m),
-            origin: m.origin,
             ...(m.origin === 'ai'
-              ? { fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
+              ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : {}),
             ...suggestedData(m),
           })),
@@ -552,7 +564,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
   const lines = [
     `# Design notes: ${list.length} ${list.length === 1 ? 'image' : 'images'}, ${all.length} ${all.length === 1 ? 'note' : 'notes'}`,
     '',
-    `Exported from Pinch on ${exportedAt.slice(0, 10)}. ${count('good')} say what works, ${count('bad')} what doesn't, ${count('both')} both.`,
+    `Exported from Pinch on ${exportedAt.slice(0, 10)}. Notes by kind: ${count('good')} only what works, ${count('bad')} only what doesn't, ${count('both')} both.`,
     '',
     '## How to use this',
     '',
@@ -566,11 +578,11 @@ export function readme(assets: Asset[], exportedAt: string): string {
     const files = assetFiles(a, i, list.length);
     lines.push(
       '',
-      `## ${files.number} · ${a.name}`,
+      `## ${files.number} · ${exportName(a)}`,
       '',
       `Image: \`${files.image}\` (${a.width}×${a.height}) · With markers: \`${files.marked}\``,
     );
-    if (a.source) lines.push(sourceLine(a.source));
+    lines.push(a.source ? sourceLine(a.source) : 'Source: not set');
     if (a.note.trim()) lines.push('', `Overall: ${oneLine(a.note)}`);
     written(a).forEach((m, j) => {
       const v = verdictOf(m);
