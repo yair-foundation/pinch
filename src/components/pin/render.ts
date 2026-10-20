@@ -654,10 +654,12 @@ function drawCrop(
     (x * bitmap.width - rect.x) * scale,
     (y * bitmap.height - rect.y) * scale,
   ];
-  const spacing = currentSpacing(mark);
-  if (spacing) drawSpacing(ctx, spacing, (x, y) => [(x - rect.x) * scale, (y - rect.y) * scale], scale, unit);
   const room = withOthers(busyOn(grid, scale, rect), others, px, unit, []);
   drawMark(ctx, mark, number, px, unit, color, room);
+  // The measured spacing last, so its numbers are never under the note's own frame or ring.
+  const spacing = currentSpacing(mark);
+  const at = (x: number, y: number): [number, number] => [(x - rect.x) * scale, (y - rect.y) * scale];
+  if (spacing) drawSpacing(ctx, spacing, at, scale, unit);
   return canvas;
 }
 

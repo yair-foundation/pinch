@@ -46,7 +46,7 @@ describe('measureSpacing', () => {
     const m = measureSpacing(page([...letters, ...around]), { kind: 'dot', x: 0.375, y: 106 / 300 });
     assert.ok(m.ok);
     assert.deepEqual(m.element, { x: 100, y: 100, w: 98, h: 12 });
-    // Nothing on the right within a quarter of the width.
+    // Nothing on the right within half the width.
     assert.deepEqual(m.gaps, { above: 30, below: 20, left: 30 });
     assert.equal(m.precision, 1);
   });
@@ -140,7 +140,7 @@ describe('spacingText', () => {
       spacingText(s, 2, true),
       '32 px above, 12 px below and 24 px to the left; nothing within reach to the right (screenshot pixels; 16, 6 and 12 CSS px at 2×, guessed from the image size)',
     );
-    assert.match(spacingText({ gaps: { above: 8 }, precision: 2 }, 1, false), /±2, the same in CSS px at 1×, set by the author\)/);
+    assert.match(spacingText({ gaps: { above: 8 }, precision: 2 }, 1, false), /±2 px, the same in CSS px at 1×, set by the author\)/);
     assert.equal(spacingText({ gaps: {}, precision: 1 }, 1, true), 'nothing within reach on any side');
   });
 });
@@ -179,7 +179,9 @@ describe('spacing in the export', () => {
       text,
       /What doesn't: Too tight under the title\.\nSpacing: 32 px above and 12 px below; nothing within reach to the left and to the right \(screenshot pixels; 16 and 6 CSS px at 2×, guessed from the image size\)\. Measured from the element at pixels 700,480, 200×40\./,
     );
-    assert.match(text, /A note may carry Spacing/);
+    assert.match(text, /^- Spacing, on a note that has it:/m);
+    // Without a measurement, no word about Spacing.
+    assert.doesNotMatch(readme([asset({ ...withSpacing(), spacing: undefined })], 'x'), /Spacing/);
     const note = manifest([a], 'x').assets[0].notes[0] as { spacing?: unknown };
     assert.deepEqual(note.spacing, {
       element: { x: 700, y: 480, w: 200, h: 40 },

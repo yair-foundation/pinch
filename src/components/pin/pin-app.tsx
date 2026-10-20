@@ -936,21 +936,26 @@ function Workspace() {
   // The fine luma grid of the last image measured: several notes on one image sample it once.
   const measuredGrid = useRef<{ id: string; grid: LumaGrid | undefined } | null>(null);
   const measureMark = async (assetId: string, markId: string): Promise<Measured> => {
-    const mark = assetsRef.current.find((a) => a.id === assetId)?.marks.find((m) => m.id === markId);
+    const target = assetsRef.current.find((a) => a.id === assetId);
+    const mark = target?.marks.find((m) => m.id === markId);
     if (!mark) return { ok: false, reason: 'empty' };
     let grid = measuredGrid.current?.id === assetId ? measuredGrid.current.grid : undefined;
     if (!grid) {
-      const blob = await store.getImage(assetId);
-      if (!blob) return { ok: false, reason: 'empty' };
-      const bitmap = await bitmapOf(blob);
       try {
-        grid = measureGrid(bitmap);
-      } finally {
-        bitmap.close();
+        const blob = await store.getImage(assetId);
+        if (!blob) return { ok: false, reason: 'empty' };
+        const bitmap = await bitmapOf(blob);
+        try {
+          grid = measureGrid(bitmap);
+        } finally {
+          bitmap.close();
+        }
+      } catch {
+        // An image this browser can't decode or read back: nothing to measure on.
+        return { ok: false, reason: 'busy' };
       }
       measuredGrid.current = { id: assetId, grid };
     }
-    // A canvas the browser won't let us read: nothing to measure on.
     if (!grid) return { ok: false, reason: 'busy' };
     const result = measureSpacing(grid, mark.shape);
     if (result.ok) {
@@ -3214,8 +3219,13 @@ function SpacingSection({
         </h3>
         {spacing && (
           <>
-            <button type="button" onClick={measure} className={cn(small, 'ml-auto')}>
-              Measure again
+            <button
+              type="button"
+              onClick={measure}
+              disabled={measuring}
+              className={cn(small, 'ml-auto disabled:opacity-60')}
+            >
+              {measuring ? 'Measuring…' : 'Measure again'}
             </button>
             <button type="button" onClick={onClear} className={small}>
               Remove
@@ -3252,8 +3262,8 @@ function SpacingSection({
           </dl>
           <p className="m-0 text-[13px] text-muted-foreground">
             Screenshot pixels{spacing.precision > 1 ? `, ±${spacing.precision}` : ''}, from the
-            element in the dashed box to the nearest element on each side. A dash: nothing within
-            reach.{' '}
+            element in the dashed box to the nearest element on each side. 0: touching or
+            overlapping. A dash: nothing within reach.{' '}
             {mark.shape.kind === 'dot' &&
               'A dot measures the line or shape under it; for a block of lines, draw an area around it.'}
           </p>
@@ -3298,12 +3308,13 @@ function SpacingSection({
               The note moved since it was measured, so the old numbers are left out of the export.
             </p>
           )}
-          {failed && failed.shape === shape && (
-            <p role="status" className="m-0 text-[13px] text-muted-foreground">
-              {MEASURE_FAILED[failed.reason]}
-            </p>
-          )}
         </>
+      )}
+      {/* After either button: measuring again where nothing can be measured says so too. */}
+      {failed && failed.shape === shape && (
+        <p role="status" className="m-0 text-[13px] text-muted-foreground">
+          {MEASURE_FAILED[failed.reason]}
+        </p>
       )}
     </section>
   );

@@ -6,7 +6,7 @@ Pinch is its own repository, moved whole out of the GenUI repository where it be
 
 AI placement ("Find in image") and the free-text box were removed on 2026-10-20 (D68), and all 21 findings of an end-to-end review fixed.
 
-Built and live: the landing with the painting (dusk and a dark card in dark mode, night and a light card in light, crossfading on a theme change), parallax and liquid-glass bezel; a Pin / Area / Arrow toolbar; sources as four radio buttons; suggestions with Tab to accept and Esc to dismiss; Copy for agent (image plus text, or all notes as text); the zip export in the Scrawl-like reading contract; undo and redo; keyboard shortcuts; anonymous saving of note text with Jev area tags and the owner's JSON read; desktop only; 100 images a session.
+Built and live: the landing with the painting (dusk and a dark card in dark mode, night and a light card in light, crossfading on a theme change), parallax and liquid-glass bezel; a Pin / Area / Arrow toolbar; sources as four radio buttons; suggestions with Tab to accept and Esc to dismiss; Copy for agent (image plus text, or all notes as text); the zip export in the Scrawl-like reading contract; undo and redo; keyboard shortcuts; Measure spacing on a dot or an area (D73); anonymous saving of note text with Jev area tags and the owner's JSON read; desktop only; 100 images a session.
 
 ## Not built
 

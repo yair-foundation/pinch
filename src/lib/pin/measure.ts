@@ -35,21 +35,32 @@ export type Measured =
 
 /**
  * Luminance difference that counts as ink against the background. Low on purpose: a white card
- * on a near-white page differs by about 10, and its edge is what a gap is measured to.
+ * on a near-white page differs by about 10, a pale icon tile on a card by about 8, and their
+ * edges are what a gap is measured to.
  */
-const INK = 8;
-/** A gap this wide or narrower (share of the image's long side) is inside one element: between letters, words, lines. */
+const INK = 6;
+/**
+ * A gap this wide or narrower, as a share of the image's long side, is inside one element:
+ * between the letters and words of a line.
+ */
 const JOIN = 0.006;
-/** How far a gap is looked for, as a share of the image's width or height. */
-const REACH = 0.25;
+/**
+ * How far a gap is looked for, as a share of the image's width or height: half, so a label in a
+ * wide button still finds the button's far edge.
+ */
+export const REACH = 0.5;
 /**
  * Around the spot, at least this share must be flat colour, its few most common colours
  * together (a card and the page around it are two): something to measure on. A photo or a
  * gradient spreads over many, and is not measured.
  */
 const FLAT_SHARE = 0.5;
-/** Ink this far from the background is strong: letters and controls, not a card's faint edge. */
-const STRONG = 3 * INK;
+/**
+ * Ink this far from the background is strong: letters and controls, not a card's faint edge or a
+ * pale divider. Its own level, not a multiple of INK: lowering INK to see pale surfaces must not
+ * let a faint line join a headline's words.
+ */
+const STRONG = 24;
 /** An element whose ink covers less of its box than this is text (letters are mostly gaps). */
 const TEXT_DENSITY = 0.5;
 /** How many of the most common colours count as flat. */
@@ -63,9 +74,9 @@ const ELEMENT_AREA = 0.02;
 const AROUND = 0.12;
 
 /**
- * The background: the most common colour (in steps of 4) and the share of values on it. The
- * mode, not the median: a dot on one row of a list sits among rows that may cover half the
- * window, and the median would then be a row's colour.
+ * The background: the most common colour, in steps of 4. The mode, not the median: a dot on one
+ * row of a list sits among rows that may cover half the window, and the median would then be a
+ * row's colour.
  */
 function backgroundOf(values: number[]) {
   const counts = new Uint32Array(64);
@@ -80,7 +91,7 @@ function backgroundOf(values: number[]) {
       sum += v;
       n++;
     }
-  return { luma: n ? sum / n : best * 4 + 2, share: values.length ? n / values.length : 0 };
+  return n ? sum / n : best * 4 + 2;
 }
 
 /** The share of values on the few most common colours (each a step of 4 and its neighbours). */
@@ -119,7 +130,13 @@ export function measureSpacing(grid: LumaGrid, shape: Shape): Measured {
 
   // The colour the spot sits on: around a dot, from filling its own colour (`colourAround`);
   // around an area, from a band outside the box, so a filled button inside it is the element.
-  const sample = (c0: number, c1: number, r0: number, r1: number, skip?: (c: number, r: number) => boolean) => {
+  const sample = (
+    c0: number,
+    c1: number,
+    r0: number,
+    r1: number,
+    skip?: (c: number, r: number) => boolean,
+  ) => {
     const out: number[] = [];
     const step = Math.max(1, Math.round(Math.max(c1 - c0, r1 - r0) / 300));
     for (let r = Math.max(0, r0); r <= Math.min(rows - 1, r1); r += step)
@@ -173,7 +190,7 @@ export function measureSpacing(grid: LumaGrid, shape: Shape): Measured {
     const band = sample(left - to, right + to, top - to, bottom + to, (c, r) =>
       c > left - from && c < right + from && r > top - from && r < bottom + from,
     );
-    return band.length ? backgroundOf(band).luma : own;
+    return band.length ? backgroundOf(band) : own;
   };
   let box: { c0: number; c1: number; r0: number; r1: number } | undefined;
   let cx: number;
@@ -204,7 +221,7 @@ export function measureSpacing(grid: LumaGrid, shape: Shape): Measured {
     if (!near.length) near = sample(b.c0, b.c1, b.r0, b.r1);
   }
   if (!near.length) return { ok: false, reason: 'empty' };
-  const background = dotBackground ?? backgroundOf(near).luma;
+  const background = dotBackground ?? backgroundOf(near);
   if (flatShare(near) < FLAT_SHARE) return { ok: false, reason: 'busy' };
   const ink = (c: number, r: number) => Math.abs(at(c, r) - background) >= INK;
 
@@ -242,16 +259,26 @@ export function measureSpacing(grid: LumaGrid, shape: Shape): Measured {
     // Grow over ink, across gaps up to `jx` along a row and `jy` down a column, so the letters
     // of a word read as one element. Null when it spreads too far: no element of its own.
     const limit = Math.round((0.35 * Math.max(width, height)) / cell);
-    const grow = (jx: number, jy: number, strong = false) => {
-      const take = strong ? (c: number, r: number) => Math.abs(at(c, r) - background) >= STRONG : ink;
+    const isStrong = (c: number, r: number) => Math.abs(at(c, r) - background) >= STRONG;
+    const grow = (from: [number, number], jx: number, jy: number, strong = false) => {
+      const take = strong ? isStrong : ink;
       const visited = new Uint8Array(cols * rows);
-      const stack = [seed as [number, number]];
-      visited[stack[0][1] * cols + stack[0][0]] = 1;
-      const g = { c0: stack[0][0], c1: stack[0][0], r0: stack[0][1], r1: stack[0][1], ink: 0 };
+      const stack = [from];
+      visited[from[1] * cols + from[0]] = 1;
+      const g = {
+        c0: from[0],
+        c1: from[0],
+        r0: from[1],
+        r1: from[1],
+        ink: 0,
+        // A cell of strong ink in it, to start the text pass from (the seed may be a faint rim).
+        strongAt: undefined as [number, number] | undefined,
+      };
       while (stack.length) {
         const [c, r] = stack.pop() as [number, number];
         if (Math.abs(c - cx) > limit || Math.abs(r - cy) > limit) return null;
         g.ink++;
+        if (!g.strongAt && isStrong(c, r)) g.strongAt = [c, r];
         g.c0 = Math.min(g.c0, c);
         g.c1 = Math.max(g.c1, c);
         g.r0 = Math.min(g.r0, r);
@@ -275,7 +302,7 @@ export function measureSpacing(grid: LumaGrid, shape: Shape): Measured {
       }
       return g;
     };
-    let g = grow(join, joinY);
+    let g = grow(seed, join, joinY);
     if (!g) return { ok: false, reason: 'busy' };
     // Text: sparse ink, or letters with empty columns between them. Then the gaps between its
     // words scale with its size, not the image's: grow again along the line with a join set by
@@ -294,24 +321,33 @@ export function measureSpacing(grid: LumaGrid, shape: Shape): Measured {
     // Only strong ink joins at that reach: letters are strong, a card's faint edge is not, so
     // the text doesn't run along the edge into the whole card. The first pass's box is kept as
     // well, for the faint anti-aliased rims of the letters.
-    const [sx, sy] = seed;
-    if (
-      (gapped || g.ink / ((g.c1 - g.c0 + 1) * h) < TEXT_DENSITY) &&
-      Math.abs(at(sx, sy) - background) >= STRONG
-    ) {
-      const text = grow(Math.max(join, Math.ceil(0.6 * h)), joinY, true);
+    if ((gapped || g.ink / ((g.c1 - g.c0 + 1) * h) < TEXT_DENSITY) && g.strongAt) {
+      const text = grow(g.strongAt, Math.max(join, Math.ceil(0.6 * h)), joinY, true);
       if (text)
         g = {
+          ...text,
           c0: Math.min(g.c0, text.c0),
           c1: Math.max(g.c1, text.c1),
           r0: Math.min(g.r0, text.r0),
           r1: Math.max(g.r1, text.r1),
-          ink: text.ink,
         };
     }
     found = { c0: g.c0, c1: g.c1, r0: g.r0, r1: g.r1 };
   }
   if (!found) return { ok: false, reason: 'empty' };
+
+  // Take in the element's faint rim: anti-aliased edges, up to 3px beyond its box, so a gap is
+  // measured from the edge as drawn and never reads 0 against the element's own outline.
+  const rim = Math.max(1, Math.ceil(3 / cell));
+  const lineHas = (vertical: boolean, line: number, from: number, to: number) => {
+    for (let k = from; k <= to; k++) if (vertical ? ink(k, line) : ink(line, k)) return true;
+    return false;
+  };
+  const f = found;
+  for (let k = 0; k < rim && f.r0 > 0 && lineHas(true, f.r0 - 1, f.c0, f.c1); k++) f.r0--;
+  for (let k = 0; k < rim && f.r1 < rows - 1 && lineHas(true, f.r1 + 1, f.c0, f.c1); k++) f.r1++;
+  for (let k = 0; k < rim && f.c0 > 0 && lineHas(false, f.c0 - 1, f.r0, f.r1); k++) f.c0--;
+  for (let k = 0; k < rim && f.c1 < cols - 1 && lineHas(false, f.c1 + 1, f.r0, f.r1); k++) f.c1++;
 
   // From each edge outward, within the element's span, to the first line with ink on it.
   const e = found;
@@ -366,12 +402,14 @@ export function guessScale(width: number, height: number): Scale {
   return width >= 2200 ? 2 : 1;
 }
 
-/** A side in a sentence: "32 px above", "24 px to the left". */
 /** The scale an image's spacing is read at: the author's, else a guess from its size. */
 export function scaleOf(a: { width: number; height: number; scale?: Scale }) {
-  return a.scale ? { scale: a.scale, guessed: false } : { scale: guessScale(a.width, a.height), guessed: true };
+  return a.scale
+    ? { scale: a.scale, guessed: false }
+    : { scale: guessScale(a.width, a.height), guessed: true };
 }
 
+/** A side in a sentence: "32 px above", "24 px to the left". */
 const SIDE_WORD: Record<Side, string> = {
   above: 'above',
   below: 'below',
@@ -401,11 +439,12 @@ export function spacingText(
   const none = missing.length
     ? `; nothing within reach ${list(missing.map((side) => SIDE_WORD[side]))}`
     : '';
-  const off = s.precision > 1 ? `, ±${s.precision}` : '';
+  const off = s.precision > 1 ? `, ±${s.precision} px` : '';
   const how = guessed ? 'guessed from the image size' : 'set by the author';
+  const cssPx = list(sides.map((side) => String(Math.round((s.gaps[side] as number) / scale))));
   const css =
     scale === 1
       ? `screenshot pixels${off}, the same in CSS px at 1×, ${how}`
-      : `screenshot pixels${off}; ${list(sides.map((side) => String(Math.round((s.gaps[side] as number) / scale))))} CSS px at ${scale}×, ${how}`;
+      : `screenshot pixels${off}; ${cssPx} CSS px at ${scale}×, ${how}`;
   return `${gaps}${none} (${css})`;
 }

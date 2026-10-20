@@ -485,11 +485,14 @@ const FILES = [
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',
-  'A note may carry Spacing: the gap from the element at its spot to the nearest element on each side, measured on the image\'s pixels (not judged), with the CSS pixels at the screenshot\'s scale. The note\'s words say whether a gap is wrong; Spacing gives the numbers to fix it with.',
   'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
   "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Source: not set means the author did not say; don't assume it is Ours, and ask before changing it. Never copy an outside design; take its principle.",
   '`notes.json` has all of this as data.',
 ];
+
+/** How to read Spacing: in the README only when a note carries some. */
+const SPACING_RULE =
+  "Spacing, on a note that has it: measured on the image's pixels, not judged. The element is what sits at a dot (its shape, or its line of text) or the content inside an area, fitted tight (not the box as drawn); its box is given in pixels and drawn dashed on the crop. Each gap runs from it to the first thing on that side that differs from the background: another element, a container's edge, a divider, or anything in the screenshot such as a cursor. 0 means it touches or overlaps that thing; \"nothing within reach\" means nothing within half the image's width or height on that side. Gaps are in screenshot pixels, with CSS pixels at the screenshot's scale (said to be guessed or set). The note's words say whether a gap is wrong; Spacing gives the numbers to fix it with.";
 
 /** AGENTS.md at the root of the export: a pointer, so the rules live in one place (README.md). */
 export function agentGuide(): string {
@@ -642,6 +645,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
     '## Files',
     '',
     ...FILES.map((l) => `- ${l}`),
+    ...(all.some((m) => currentSpacing(m)) ? [`- ${SPACING_RULE}`] : []),
   ];
   list.forEach((a, i) => {
     const files = assetFiles(a, i, list.length);
