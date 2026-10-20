@@ -3053,17 +3053,20 @@ function MarkEditor({
         suggested={suggestedTopics}
         onChange={(topics) => onChange({ topics })}
       />
-      <button
-        type="button"
-        onClick={onRemove}
-        className={cn(
-          hit,
-          '-mx-2 flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-red-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
-        )}
-      >
-        <Trash2 className="size-4" aria-hidden />
-        Delete note
-      </button>
+      {/* Its own row under a divider: the Tags fieldset's m-0 would cancel the list's spacing. */}
+      <div className="!mt-6 border-t border-border pt-4">
+        <button
+          type="button"
+          onClick={onRemove}
+          className={cn(
+            hit,
+            'flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-red-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
+          )}
+        >
+          <Trash2 className="size-4" aria-hidden />
+          Delete note
+        </button>
+      </div>
     </section>
   );
 }
