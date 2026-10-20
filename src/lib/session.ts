@@ -1,14 +1,21 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 /*
- * Who is signed in (D81): a cookie holding the account's key, email and name
- * and when it runs out, signed with AUTH_SECRET (HMAC-SHA256), so the server
+ * Who is signed in (D81): a cookie holding the account's key, email, name,
+ * Google picture (D93) and when it runs out, signed with AUTH_SECRET (HMAC-SHA256), so the server
  * keeps no session store. HttpOnly, Secure and SameSite=Lax: no page script
  * reads it, and another site's form can't send it with a write, while the
  * redirect back from Google still carries it.
  */
 
-export type Session = { user: string; email: string; name: string; exp: number };
+export type Session = {
+  user: string;
+  email: string;
+  name: string;
+  /** The Google profile picture's address, or '' (older sessions have none). */
+  picture?: string;
+  exp: number;
+};
 
 export const SESSION_COOKIE = 'pinch-session';
 export const SESSION_DAYS = 30;
@@ -44,6 +51,7 @@ export function readSession(
       user: s.user,
       email: s.email,
       name: typeof s.name === 'string' ? s.name : '',
+      picture: typeof s.picture === 'string' ? s.picture : '',
       exp: s.exp,
     };
   } catch {

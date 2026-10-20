@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D92.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D93.
 
 ## Open (need the user)
 
@@ -11,6 +11,16 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 | – | None open. | |
 
 ## Settled
+
+- **2026-10-20 — D93 One way out, a lighter screen, the account as a menu (the user's 32 iterations).** Pinch had grown two exports, a dialog for the account and controls the user didn't use. In short:
+  - **Rules reach the agent one way: Connect agent.** It sits on Your rules, where the export was, and offers the MCP server (D89; the key made there, New key and Disconnect beside it) or the rules copied as a prompt. The batch's "Export for agent" zip and the rules zip are gone: the user expected the agent to connect, not a download. An old export can still be dropped back in, and the batch's notes still go to Your rules as before. Start over offers Open your rules where it offered Export.
+  - **The account is a menu under the avatar,** at the header's far right, after affectUI's Profile Menu: who is signed in, Suggestions, Dark mode, Keyboard shortcuts, How Pinch uses your data, Sign out and Delete account (which asks first). Without an account the same menu holds the settings. The theme button, the lock, the keyboard button and the Suggestions switch left the header.
+  - **The avatar is the Google picture** when Google gives one on its own image host (`*.googleusercontent.com`, https only, `pictureOf`), kept only in the signed session cookie; the first letter otherwise, and for sessions from before.
+  - **Spacing and Between items are gone** (D73, D74): `measure.ts`, `rhythm.ts`, their drawing and their export text. The user didn't want them in the note.
+  - **A rule card shows less.** No "Where it holds" field or "Where:" line (the reading still writes where a rule holds, and the agent still gets it), no tag editing (rules tagged before keep their tags and slices). "From 1 note on 1 image" is "Source", on one line with Remove; removing asks "Remove this rule?" first, and Undo stays.
+  - **The note panel:** Done is the panel's primary button, top right; "Notes", with one short hint in a banner; no "3 / 3"; Source has no Clear (S still cycles to none).
+  - **No note-saving switch (D82 reversed in the page).** The user asked for it to go. Saving the words of notes stays on by default; a browser that switched it off keeps it off (`pinch-save-notes` is still read), since that visitor said no. The privacy dialog is four short lines.
+  - **Motion from affectUI:** a shimmer on the reading's label with placeholder rule cards while rules load, and the landing folder as Side Folder, mirrored, with the cursor still carrying a screenshot in. Both still under reduced motion.
 
 - **2026-10-20 — D92 Setup for more agents (the user: "add Setup for more agents", after typeui was reviewed).** Connect your agent, in Account, now offers Claude Code, Cursor, VS Code, Codex, Gemini CLI, Windsurf and "Other". Each gets the same address and bearer key in that agent's own format (`src/lib/pin/agent-setup.ts`), checked against its documentation on 2026-10-20.
   - **Commands:** Claude Code and Gemini CLI get a command with `--header`.

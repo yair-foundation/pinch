@@ -1,23 +1,19 @@
 'use client';
 
 import {
-  AlignVerticalSpaceBetween,
   ArrowLeft,
   ArrowRight,
   Check,
-  Download,
   Globe,
   House,
-  Keyboard,
   Library,
   Lightbulb,
   Loader2,
-  Lock,
   MapPin,
+  MousePointerClick,
   MoveUpRight,
   Plus,
   RotateCcw,
-  Ruler,
   SquareDashed,
   Swords,
   ThumbsDown,
@@ -37,8 +33,6 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { ThemeToggle } from '@/components/site/theme-toggle';
-import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   type Area,
@@ -46,12 +40,9 @@ import {
   type Asset,
   areaFrom,
   arrowFrom,
-  currentRhythm,
-  currentSpacing,
   currentSuggestion,
   exportName,
   isTinyArea,
-  type LumaGrid,
   isTinyArrow,
   type Mark,
   moveArrow,
@@ -68,22 +59,12 @@ import {
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { noteFingerprint } from '@/lib/pin/learnings';
-import {
-  type Measured,
-  measureSpacing,
-  type Scale,
-  SIDES,
-  type Side,
-  type Spacing,
-  scaleOf,
-} from '@/lib/pin/measure';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
-import { type Checked, checkRhythm, type Rhythm, rhythmSuggestion } from '@/lib/pin/rhythm';
 import type { SuggestResult } from '@/lib/pin/suggest';
 import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
-import { AccessGate, AccountDialog, signOut, useMe } from './account';
+import { AccessGate, AccountMenu, DeleteAccountDialog, signOut, useMe } from './account';
 import { cloudBackend } from './cloud-store';
 import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
@@ -93,13 +74,9 @@ import { TopicPicker } from './topic-picker';
 import {
   bitmapOf,
   buildExport,
-  measureGrid,
   contextForAi,
   cropForAi,
-  download,
-  ODD_COLOR,
   prepareImage,
-  SPACING_COLOR,
   VERDICT_COLOR,
 } from './render';
 import * as store from './store';
@@ -123,7 +100,7 @@ const isTyping = (t: EventTarget | null) =>
 
 /** Images a session holds. The browser keeps them all, and the export draws a copy of each. */
 const MAX_IMAGES = 100;
-const FULL_MESSAGE = `Pinch holds up to ${MAX_IMAGES} images at a time. Export or remove some to add more.`;
+const FULL_MESSAGE = `Pinch holds up to ${MAX_IMAGES} images at a time. Remove some to add more.`;
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
@@ -365,7 +342,7 @@ const pinOf = (id: string) =>
 /** One tab's name, so a tab can tell its own saves from another's. */
 const TAB_ID = newId();
 
-type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'account' | 'pay';
+type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'delete' | 'pay';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
 const digestOf = (list: Asset[]) => {
@@ -385,7 +362,6 @@ function Workspace() {
   const [selected, setSelected] = useState<string | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Status>(null);
-  const [exporting, setExporting] = useState<string | null>(null);
   // Suggestions: available on the server, and on in this browser (the default).
   const [suggestAvailable, setSuggestAvailable] = useState(false);
   const [suggestPref, setSuggestPref] = useState(true);
@@ -435,11 +411,6 @@ function Workspace() {
     const [mode, folder] = cloudKey.split(' ');
     return cloudBackend(folder, mode as 'blob' | 'memory');
   }, [cloudKey]);
-  // Saving the words of notes (D63), on unless the visitor switched it off (D82).
-  const [saveNotes, setSaveNotes] = useState(true);
-  useEffect(() => {
-    setSaveNotes(local.get(SAVE_NOTES_KEY) !== 'off');
-  }, []);
   const history = useRef<History>(null as unknown as History);
   history.current ??= new History();
   // The latest session, kept in step with history so handlers never read a stale render.
@@ -627,10 +598,10 @@ function Workspace() {
         setStatus({
           tone: 'error',
           text: store.isQuotaError(e)
-            ? 'Browser storage is full. Remove images or export, then continue.'
+            ? 'Browser storage is full. Remove some images, then continue.'
             : store.inMemory()
-              ? 'This browser blocks storage, so your session lasts until you close the tab. Export before you leave.'
-              : "Couldn't save in this browser. Export to keep your notes.",
+              ? 'This browser blocks storage, so your session lasts until you close the tab. Open Your rules before you leave.'
+              : "Couldn't save in this browser. Open Your rules to keep what your notes teach.",
         }),
       )
       .finally(() => {
@@ -1004,72 +975,6 @@ function Workspace() {
     },
     [asset, update],
   );
-  const setScale = useCallback(
-    (scale: Scale) => {
-      if (!asset) return;
-      update(asset.id, (a) => ({ ...a, scale }));
-    },
-    [asset, update],
-  );
-  // The fine luma grid of the last image measured: several notes on one image sample it once.
-  const measuredGrid = useRef<{ id: string; grid: LumaGrid | undefined } | null>(null);
-  /** The image's fine grid, or null when this browser can't decode or read it back. */
-  const gridOf = async (assetId: string): Promise<LumaGrid | null> => {
-    if (measuredGrid.current?.id === assetId) return measuredGrid.current.grid ?? null;
-    try {
-      const blob = await store.getImage(assetId);
-      if (!blob) return null;
-      const bitmap = await bitmapOf(blob);
-      let grid: LumaGrid | undefined;
-      try {
-        grid = measureGrid(bitmap);
-      } finally {
-        bitmap.close();
-      }
-      measuredGrid.current = { id: assetId, grid };
-      return grid ?? null;
-    } catch {
-      return null;
-    }
-  };
-  const markOf = (assetId: string, markId: string) =>
-    assetsRef.current.find((a) => a.id === assetId)?.marks.find((m) => m.id === markId);
-  const setOnMark = (assetId: string, markId: string, change: Partial<Mark>) =>
-    update(assetId, (a) => ({
-      ...a,
-      marks: a.marks.map((m) => (m.id === markId ? { ...m, ...change } : m)),
-    }));
-  const measureMark = async (assetId: string, markId: string): Promise<Measured> => {
-    const mark = markOf(assetId, markId);
-    if (!mark) return { ok: false, reason: 'empty' };
-    const grid = await gridOf(assetId);
-    // An image this browser can't decode or read back: nothing to measure on.
-    if (!grid) return { ok: false, reason: 'busy' };
-    const result = measureSpacing(grid, mark.shape);
-    if (result.ok) {
-      const spacing: Spacing = {
-        element: result.element,
-        gaps: result.gaps,
-        precision: result.precision,
-        shape: shapeKey(mark.shape),
-      };
-      setOnMark(assetId, markId, { spacing });
-    }
-    return result;
-  };
-  const checkMark = async (assetId: string, markId: string): Promise<Checked> => {
-    const mark = markOf(assetId, markId);
-    if (!mark) return { ok: false, reason: 'empty' };
-    const grid = await gridOf(assetId);
-    if (!grid) return { ok: false, reason: 'busy' };
-    const result = checkRhythm(grid, mark.shape);
-    if (result.ok) {
-      const { ok: _, ...found } = result;
-      const rhythm: Rhythm = { ...found, shape: shapeKey(mark.shape) };
-      setOnMark(assetId, markId, { rhythm });
-    }
-    return result;
-  };
   const setSourceForAll = () => {
     const source = asset?.source;
     if (!source) return;
@@ -1284,33 +1189,6 @@ function Workspace() {
   const tagged = assets.filter(hasMarks);
   const allMarks = tagged.flatMap((a) => a.marks.filter((m) => verdictOf(m) !== 'empty'));
 
-  /** Builds and downloads the zip; true when it went out. */
-  const exportZip = async (): Promise<boolean> => {
-    if (!tagged.length) {
-      setStatus({ tone: 'error', text: 'Write a note on at least one image first.' });
-      return false;
-    }
-    deselect();
-    try {
-      const { blob, name } = await buildExport(assets, store.getImage, (done, total) =>
-        setExporting(`Preparing ${Math.min(done + 1, total)} of ${total}…`),
-      );
-      download(blob, name);
-      markExported();
-      const skipped = assets.length - tagged.length;
-      setStatus({
-        tone: 'info',
-        text: `Exported ${count(tagged.length, 'image')} and ${count(allMarks.length, 'note')}${skipped ? `; ${count(skipped, 'image')} without notes left out` : ''}. The zip holds README.md and notes.json, your images, a marked copy of each, and a close-up of every note. Give your agent the whole folder, starting with README.md.`,
-      });
-      return true;
-    } catch (e) {
-      setStatus({ tone: 'error', text: (e as Error).message });
-      return false;
-    } finally {
-      setExporting(null);
-    }
-  };
-
   /** The image leaves the session; its file stays in the browser while Undo can bring it back. */
   const removeAsset = (id: string) => {
     const name = assets.find((a) => a.id === id)?.name ?? 'image';
@@ -1457,78 +1335,6 @@ function Workspace() {
               {tagged.length} of {assets.length} tagged · {count(allMarks.length, 'note')}
             </p>
           )}
-          {suggestAvailable && paid && batchTools && (
-            <label
-              htmlFor="suggestions"
-              className="flex min-h-9 items-center gap-2 px-1 text-sm"
-              title="Grey suggestions in empty notes; Tab takes one. Sends the marked area to Anthropic."
-            >
-              <Switch
-                id="suggestions"
-                size="sm"
-                checked={suggestPref}
-                onCheckedChange={toggleSuggestions}
-                aria-describedby="suggestions-note"
-              />
-              Suggestions
-            </label>
-          )}
-          {suggestAvailable && paid && batchTools && (
-            // The switch's description, outside its label so it doesn't join the name.
-            <span id="suggestions-note" className="sr-only">
-              Sends the marked area to Anthropic.
-            </span>
-          )}
-          {batchTools && (
-            <TooltipProvider>
-              <button
-                type="button"
-                onClick={() => (paid ? exportZip() : openPay('export'))}
-                disabled={Boolean(exporting)}
-                title={paid ? undefined : 'Exporting is part of Pinch'}
-                className={cn(
-                  hit,
-                  'flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-60',
-                )}
-              >
-                {paid ? (
-                  <Download className="size-4" aria-hidden />
-                ) : (
-                  <Lock className="size-4" aria-hidden />
-                )}
-                {/* One element, so the button's gap doesn't open a second space after "Export". */}
-                <span>
-                  {exporting ?? (
-                    <>
-                      Export<span className="max-[900px]:hidden"> for agent</span>
-                    </>
-                  )}
-                </span>
-              </button>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label="Keyboard shortcuts"
-                      aria-expanded={dialog === 'shortcuts'}
-                      data-shortcuts-trigger
-                      onClick={() => (dialog ? closeDialog() : openDialog('shortcuts'))}
-                      className={cn(
-                        hit,
-                        'flex size-9 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-                      )}
-                    >
-                      <Keyboard className="size-4" aria-hidden />
-                    </button>
-                  }
-                />
-                <TooltipContent>
-                  Keyboard shortcuts <Kbd>?</Kbd>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
           {loaded && (
             // Between the images and the rules, which take their place (D79). With images open
             // it is the batch's main step (D87): the notes go to the rules, which read them.
@@ -1566,45 +1372,24 @@ function Workspace() {
               Sign in
             </a>
           )}
-          {me?.user && (
-            <button
-              type="button"
-              aria-label={`Account: ${me.user.email}`}
-              title={me.user.email}
-              aria-expanded={dialog === 'account'}
-              onClick={() => openDialog('account')}
-              className={cn(
-                hit,
-                'flex size-8 items-center justify-center rounded-full bg-muted text-[13px] font-medium uppercase text-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-border',
-              )}
-            >
-              {(me.user.name || me.user.email).charAt(0)}
-            </button>
-          )}
-          <ThemeToggle />
-          {(assets.length > 0 || view === 'collections') && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label="How Pinch uses your data"
-                      aria-expanded={dialog === 'privacy'}
-                      data-privacy-trigger
-                      onClick={() => openDialog('privacy')}
-                      className={cn(
-                        hit,
-                        'flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-                      )}
-                    >
-                      <Lock className="size-4" aria-hidden />
-                    </button>
-                  }
-                />
-                <TooltipContent>How Pinch uses your data</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+          {loaded && (
+            // The account and the page's settings, at the far right (D93).
+            <AccountMenu
+              me={me}
+              landing={landing}
+              suggestions={
+                suggestAvailable && paid
+                  ? { on: suggestPref, onToggle: toggleSuggestions }
+                  : undefined
+              }
+              onShortcuts={() => openDialog('shortcuts')}
+              onPrivacy={() => openDialog('privacy')}
+              onDelete={() => openDialog('delete')}
+              onSignOut={async () => {
+                await signOut();
+                await leaveAccount('Signed out.');
+              }}
+            />
           )}
         </div>
         {/* Driven by the Add images buttons; hidden from assistive tech, which would read it as an unreachable "Choose files". */}
@@ -1630,8 +1415,8 @@ function Workspace() {
           inert={dialog !== null}
           className="m-0 shrink-0 border-b border-border bg-muted/60 px-4 py-2 text-center text-[13px] text-foreground"
         >
-          This browser blocks storage, so your session lasts until you close the tab. Export before
-          you leave.
+          This browser blocks storage, so your session lasts until you close the tab. Open Your
+          rules before you leave.
         </p>
       )}
 
@@ -1681,6 +1466,7 @@ function Workspace() {
           openPrints={openPrints}
           batchZip={batchZip}
           paid={paid}
+          account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
           price={me?.price ?? '$19'}
           onPay={openPay}
           onBack={() => setView('batch')}
@@ -1735,9 +1521,6 @@ function Workspace() {
               setSelected(id);
             }}
             onChangeMark={changeMark}
-            onMeasure={(markId) => measureMark(asset.id, markId)}
-            onCheck={(markId) => checkMark(asset.id, markId)}
-            onScale={setScale}
             onRemoveMark={removeMark}
             onDone={closeNote}
             onPrev={() => go(index - 1)}
@@ -1754,25 +1537,12 @@ function Workspace() {
         <ShortcutsDialog mac={mac} opener={opener.current} onClose={closeDialog} />
       )}
       {dialog === 'privacy' && (
-        <PrivacyDialog
-          opener={opener.current}
-          onClose={closeDialog}
-          saveNotes={saveNotes}
-          onSaveNotes={(on) => {
-            setSaveNotes(on);
-            local.set(SAVE_NOTES_KEY, on ? 'on' : 'off');
-          }}
-        />
+        <PrivacyDialog opener={opener.current} onClose={closeDialog} />
       )}
-      {dialog === 'account' && me && (
-        <AccountDialog
-          me={me}
+      {dialog === 'delete' && (
+        <DeleteAccountDialog
           opener={opener.current}
           onClose={closeDialog}
-          onSignOut={async () => {
-            await signOut();
-            await leaveAccount('Signed out.');
-          }}
           onDeleted={() =>
             leaveAccount('Your account and its rules were deleted. Your purchase is kept.')
           }
@@ -1783,7 +1553,7 @@ function Workspace() {
           <div className="space-y-3 text-[13px] leading-relaxed text-muted-foreground">
             <p className="m-0">
               {payWhy === 'export'
-                ? 'Exporting is part of Pinch: your notes and close-ups as a zip, and your rules as a file your agent follows.'
+                ? 'Connecting your agent is part of Pinch: it gets your current rules for each task.'
                 : 'See every rule Pinch found in your notes, and give them to your agent.'}{' '}
               {me.price} once, no subscription. Marking images stays free.
             </p>
@@ -1815,25 +1585,19 @@ function Workspace() {
         >
           <p className="m-0 text-muted-foreground">
             Your {count(assets.length, 'image')} and {count(allMarks.length, 'note')} are kept in
-            this browser until you start over.{' '}
-            {paid
-              ? 'Export them first if you want to keep them.'
-              : 'Open Your rules first to keep what your notes teach.'}
+            this browser until you start over. Open Your rules first to keep what your notes teach.
           </p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
               type="button"
-              onClick={async () => {
-                closeDialog();
-                if (!paid) setView('collections');
-                else if (await exportZip()) startOver();
-              }}
+              data-autofocus
+              onClick={closeDialog}
               className={cn(
                 hit,
                 'flex min-h-9 items-center rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
               )}
             >
-              {paid ? 'Export and start over' : 'Open your rules'}
+              Cancel
             </button>
             <button
               type="button"
@@ -1850,14 +1614,16 @@ function Workspace() {
             </button>
             <button
               type="button"
-              data-autofocus
-              onClick={closeDialog}
+              onClick={() => {
+                closeDialog();
+                setView('collections');
+              }}
               className={cn(
                 hit,
-                'flex min-h-9 items-center rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                'flex min-h-9 items-center rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
               )}
             >
-              Cancel
+              Open your rules
             </button>
           </div>
         </Dialog>
@@ -1866,22 +1632,15 @@ function Workspace() {
   );
 }
 
-/** How Pinch uses what the user gives it, said plainly; opened from the landing footer and the header. */
-function PrivacyDialog({
-  opener,
-  onClose,
-  saveNotes,
-  onSaveNotes,
-}: {
-  opener: HTMLElement | null;
-  onClose: () => void;
-  saveNotes: boolean;
-  onSaveNotes: (on: boolean) => void;
-}) {
+/**
+ * How Pinch uses what the user gives it, in four lines (D93); opened from the landing footer and
+ * the account menu. The terms page says the rest.
+ */
+function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClose: () => void }) {
   const item = (title: string, body: React.ReactNode) => (
-    <p>
+    <li>
       <strong className="font-medium text-foreground">{title}</strong> {body}
-    </p>
+    </li>
   );
   return (
     <Dialog
@@ -1889,57 +1648,25 @@ function PrivacyDialog({
       title="How Pinch uses your data"
       opener={opener}
       onClose={onClose}
-      fallback="[data-privacy-trigger]"
+      fallback="[data-account-trigger]"
     >
-      <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
+      <ul className="m-0 list-none space-y-2.5 p-0 text-[13px] leading-relaxed text-muted-foreground">
         {item(
-          'Your images',
-          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and, once you have bought Pinch, with your rules in your account.',
+          'Images',
+          'stay in this browser. Only AI suggestions send a crop to Anthropic, never stored; once you buy, your rules keep theirs in your account.',
         )}
         {item(
-          'AI suggestions',
-          'come with Pinch once bought, on by default; the switch is in the header. They are the only thing that sends images to Anthropic: when you open an empty note, a 768px copy of the screenshot and a crop around the marked spot are sent to Anthropic’s API (Claude Haiku) to write a suggestion. We don’t store them. Turn suggestions off and nothing is sent.',
+          'Notes',
+          'go to Anthropic to find your rules, and their words are kept anonymously for 90 days, topic-tagged by TypeSafe’s Jev.',
         )}
         {item(
-          'Notes text:',
-          'the words of your notes (what works, what doesn’t and the short name) are saved without your name, account, images, file names or links, and kept for 90 days, to learn how designers judge screens. Switch it off and nothing more is saved from this browser; what was saved stays anonymous and goes after 90 days. A salted hash of your IP address is used only to count daily limits.',
-        )}
-        <label
-          htmlFor="save-notes"
-          className="flex min-h-9 items-center gap-2 text-sm text-foreground"
-        >
-          <Switch
-            id="save-notes"
-            size="sm"
-            checked={saveNotes}
-            onCheckedChange={(on) => onSaveNotes(Boolean(on))}
-          />
-          Save my notes’ words
-        </label>
-        {item(
-          'Topic tags:',
-          'each saved note’s words are sent to TypeSafe’s Jev to tag its topic (type, colour, layout, and so on). Nothing else goes with them.',
-        )}
-        {item(
-          'Your account:',
-          'signing in with Google gives Pinch your email and name, kept with your account. Your purchase is kept under a hash of your email; Lemon Squeezy, who sell Pinch, keep the payment details.',
-        )}
-        {item(
-          'Your rules',
-          'are kept in this browser, and once you buy Pinch, privately in your account in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. When you open Your rules, the words of the notes it hasn’t read (what works, what doesn’t, the short name, their topics and whose design it is) and the words of your rules are sent to Anthropic’s API (Claude) to find the patterns. Never the images or file names, and we don’t store them.',
-        )}
-        {item(
-          'Your agent',
-          'connects with a key you make in Account, kept only as a hash. With it, your agent fetches your rules and their notes’ words from your account; never your images. A new key, Disconnect or deleting your account stops it.',
+          'Account',
+          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Your agent’s key is kept only as a hash. Deleting your account deletes your rules.',
         )}
         {item(
           'No ads, no analytics.',
-          'One cookie keeps you signed in; your theme and settings are kept in this browser.',
-        )}
-        {item(
-          'Contact:',
           <>
-            Created by{' '}
+            Made by{' '}
             <a
               href="https://yair-works.vercel.app"
               target="_blank"
@@ -1951,7 +1678,7 @@ function PrivacyDialog({
             .
           </>,
         )}
-      </div>
+      </ul>
     </Dialog>
   );
 }
@@ -2038,7 +1765,7 @@ function ShortcutsDialog({
       title="Keyboard shortcuts"
       opener={opener}
       onClose={onClose}
-      fallback="[data-shortcuts-trigger]"
+      fallback="[data-account-trigger]"
     >
       <div className="max-h-[70vh] space-y-4 overflow-y-auto">
         {SHORTCUTS.map((g) => (
@@ -2202,7 +1929,7 @@ function EmptyState({
               <div className="overflow-hidden rounded-[1.625rem] bg-white/90 px-7 pt-7 pb-6 text-[#1a1a1a] ring-1 ring-black/10 transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! dark:bg-[#0e0e10]/90 dark:text-[#f5f5f5] dark:ring-black/40">
                 <DropFolder
                   active={dragging}
-                  className="mx-auto -mt-2 mb-5 w-52 [@media(max-height:760px)]:w-44"
+                  className="mx-auto -mt-3 mb-3 w-64 [@media(max-height:760px)]:w-52"
                 />
                 <h1 className="m-0 text-center text-[1.4rem] leading-snug font-normal tracking-tight text-balance">
                   Your taste, in everything your agent creates.
@@ -2230,7 +1957,7 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {price
-                ? `Marking images is free. Seeing all your rules and exporting is ${price} once, with a Google sign-in. Images stay in this browser until you buy; the words of your notes go to Anthropic to find your rules.`
+                ? `Marking images is free. Seeing all your rules and connecting your agent is ${price} once, with a Google sign-in. Images stay in this browser until you buy; the words of your notes go to Anthropic to find your rules.`
                 : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"
@@ -2409,8 +2136,7 @@ const standardAreaAt = (p: { x: number; y: number }): Area => ({
   ...STANDARD_AREA,
 });
 /** What the first upload and an empty panel say. */
-const HOW_TO_MARK =
-  'Click the image for a dot, drag across it for an area, or pick Area or Arrow in the toolbar, then say what works and what doesn’t.';
+const HOW_TO_MARK = 'Click for a dot or drag for an area, then say what works and what doesn’t.';
 
 type ArrowEnd = 'tail' | 'head';
 
@@ -2688,8 +2414,6 @@ function Stage({
   // so it never leaks onto the stage and never clips a pin sitting on the edge.
   const openMark = asset.marks.find((m) => m.id === selected);
   const openArea = openMark?.shape;
-  const openSpacing = openMark ? currentSpacing(openMark) : undefined;
-  const openRhythm = openMark ? currentRhythm(openMark) : undefined;
   const dim = openArea?.kind === 'area' ? openArea : null;
 
   return (
@@ -2791,12 +2515,6 @@ function Stage({
               onKey={(e, end) => nudge(e, m, end)}
             />
           ))}
-          {openSpacing && (
-            <SpacingOverlay spacing={openSpacing} k={size.w / asset.width} size={size} />
-          )}
-          {openRhythm && (
-            <RhythmOverlay rhythm={openRhythm} k={size.w / asset.width} size={size} />
-          )}
           {draftArrow && (
             <svg
               aria-hidden
@@ -2821,157 +2539,6 @@ function Stage({
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * The open note's measured spacing on the stage, as the export draws it on the crop: a dashed
- * box on the element and a line across each measured gap with its size in screenshot pixels.
- * `k` is stage pixels per image pixel.
- */
-function SpacingOverlay({
-  spacing,
-  k,
-  size,
-}: {
-  spacing: Spacing;
-  k: number;
-  size: { w: number; h: number };
-}) {
-  const e = spacing.element;
-  const [x0, y0, x1, y1] = [e.x * k, e.y * k, (e.x + e.w) * k, (e.y + e.h) * k];
-  const mx = (x0 + x1) / 2;
-  const my = (y0 + y1) / 2;
-  const tick = 4;
-  return (
-    <svg
-      aria-hidden
-      width={size.w}
-      height={size.h}
-      className="pointer-events-none absolute inset-0 overflow-visible"
-      stroke={SPACING_COLOR}
-      strokeWidth={1.5}
-      fill="none"
-    >
-      <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} strokeDasharray="4 3" />
-      {SIDES.map((side) => {
-        const px = spacing.gaps[side];
-        if (px === undefined) return null;
-        const d = px * k;
-        const across = side === 'above' || side === 'below';
-        const [ax, ay, bx, by] =
-          side === 'above'
-            ? [mx, y0, mx, y0 - d]
-            : side === 'below'
-              ? [mx, y1, mx, y1 + d]
-              : side === 'left'
-                ? [x0, my, x0 - d, my]
-                : [x1, my, x1 + d, my];
-        const label = String(px);
-        const w = label.length * 7 + 8;
-        const lx = across ? (ax + bx) / 2 + 6 : (ax + bx) / 2 - w / 2;
-        const ly = across ? (ay + by) / 2 - 8 : (ay + by) / 2 - 22;
-        const ticks = across
-          ? `M${ax - tick} ${ay}H${ax + tick}M${bx - tick} ${by}H${bx + tick}`
-          : `M${ax} ${ay - tick}V${ay + tick}M${bx} ${by - tick}V${by + tick}`;
-        return (
-          <g key={side}>
-            <path d={`M${ax} ${ay}L${bx} ${by}${ticks}`} />
-            <rect x={lx} y={ly} width={w} height={16} rx={3} fill="#ffffff" />
-            <text
-              x={lx + w / 2}
-              y={ly + 12}
-              textAnchor="middle"
-              fill={SPACING_COLOR}
-              stroke="none"
-              className="font-mono text-[11px] font-semibold tabular-nums"
-            >
-              {label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/**
- * The open note's spacing check on the stage, as the crop shows it: each item dashed, each gap
- * bracketed with its size in screenshot pixels, an odd one in red. `k` is stage pixels per
- * image pixel.
- */
-function RhythmOverlay({
-  rhythm,
-  k,
-  size,
-}: {
-  rhythm: Rhythm;
-  k: number;
-  size: { w: number; h: number };
-}) {
-  const boxes = rhythm.items.map((i) => ({
-    x0: i.x * k,
-    y0: i.y * k,
-    x1: (i.x + i.w) * k,
-    y1: (i.y + i.h) * k,
-  }));
-  const column = rhythm.axis === 'column';
-  const tick = 4;
-  return (
-    <svg
-      aria-hidden
-      width={size.w}
-      height={size.h}
-      className="pointer-events-none absolute inset-0 overflow-visible"
-      strokeWidth={1.5}
-      fill="none"
-    >
-      {boxes.map((b, i) => (
-        <rect
-          // biome-ignore lint/suspicious/noArrayIndexKey: the items are in order and don't move
-          key={i}
-          x={b.x0}
-          y={b.y0}
-          width={b.x1 - b.x0}
-          height={b.y1 - b.y0}
-          stroke={SPACING_COLOR}
-          strokeDasharray="4 3"
-        />
-      ))}
-      {rhythm.gaps.map((px, i) => {
-        const a = boxes[i];
-        const z = boxes[i + 1];
-        const color = rhythm.odd.includes(i) ? ODD_COLOR : SPACING_COLOR;
-        const lo = column ? Math.max(a.x0, z.x0) : Math.max(a.y0, z.y0);
-        const hi = column ? Math.min(a.x1, z.x1) : Math.min(a.y1, z.y1);
-        const mid = hi > lo ? (lo + hi) / 2 : column ? (a.x0 + a.x1) / 2 : (a.y0 + a.y1) / 2;
-        const [ax, ay, bx, by] = column ? [mid, a.y1, mid, z.y0] : [a.x1, mid, z.x0, mid];
-        const ticks = column
-          ? `M${ax - tick} ${ay}H${ax + tick}M${bx - tick} ${by}H${bx + tick}`
-          : `M${ax} ${ay - tick}V${ay + tick}M${bx} ${by - tick}V${by + tick}`;
-        const label = String(px);
-        const w = label.length * 7 + 8;
-        const lx = column ? mid + 6 : (ax + bx) / 2 - w / 2;
-        const ly = column ? (ay + by) / 2 - 8 : mid - 22;
-        return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the gaps are in order and don't move
-          <g key={i} stroke={color}>
-            <path d={`M${ax} ${ay}L${bx} ${by}${ticks}`} />
-            <rect x={lx} y={ly} width={w} height={16} rx={3} fill="#ffffff" />
-            <text
-              x={lx + w / 2}
-              y={ly + 12}
-              textAnchor="middle"
-              fill={color}
-              stroke="none"
-              className="font-mono text-[11px] font-semibold tabular-nums"
-            >
-              {label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
   );
 }
 
@@ -3188,9 +2755,6 @@ function Panel({
   onSourceForAll,
   onSelect,
   onChangeMark,
-  onMeasure,
-  onCheck,
-  onScale,
   onRemoveMark,
   onDone,
   onPrev,
@@ -3209,9 +2773,6 @@ function Panel({
   onSourceForAll: () => void;
   onSelect: (id: string) => void;
   onChangeMark: (id: string, change: Partial<Mark>) => void;
-  onMeasure: (id: string) => Promise<Measured>;
-  onCheck: (id: string) => Promise<Checked>;
-  onScale: (scale: Scale) => void;
   onRemoveMark: (id: string) => void;
   onDone: () => void;
   onPrev: () => void;
@@ -3224,16 +2785,14 @@ function Panel({
   const mark = asset.marks.find((m) => m.id === selected);
   const markNumber = asset.marks.findIndex((m) => m.id === selected) + 1;
   const suggestion = mark && suggestionsOn ? currentSuggestion(mark) : undefined;
+  const mac = useIsMac();
 
   return (
     <aside
       aria-label="Notes"
       className="flex w-[22rem] shrink-0 flex-col border-l border-border max-[900px]:w-64"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        <span className="font-mono text-[13px] text-muted-foreground">
-          {number} / {total}
-        </span>
+      <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={asset.name}>
           {asset.name}
         </span>
@@ -3248,6 +2807,31 @@ function Panel({
         >
           <Trash2 className="size-4" aria-hidden />
         </button>
+        {mark && (
+          // The open note's way out, top right, above everything it closes (D93).
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-note-done
+                    onClick={onDone}
+                    className={cn(
+                      hit,
+                      'flex min-h-9 items-center rounded-md bg-foreground px-3.5 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
+                    )}
+                  >
+                    Done
+                  </button>
+                }
+              />
+              <TooltipContent>
+                <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
@@ -3271,34 +2855,18 @@ function Panel({
             onChange={(c) => onChangeMark(mark.id, c)}
             onRemove={() => onRemoveMark(mark.id)}
             onDone={onDone}
-          >
-            <SpacingSection
-              mark={mark}
-              scale={scaleOf(asset)}
-              onMeasure={() => onMeasure(mark.id)}
-              onScale={onScale}
-              onClear={() => onChangeMark(mark.id, { spacing: undefined })}
-            />
-            {mark.shape.kind === 'area' && (
-              <RhythmSection
-                mark={mark}
-                scale={scaleOf(asset)}
-                onCheck={() => onCheck(mark.id)}
-                onClear={() => onChangeMark(mark.id, { rhythm: undefined })}
-                onAdd={(field, text) => {
-                  const now = mark[field].trim();
-                  onChangeMark(mark.id, { [field]: now ? `${now} ${text}` : text });
-                }}
-              />
-            )}
-          </MarkEditor>
+          />
         ) : (
           <section>
-            <h2 className="m-0 mb-2 text-[13px] font-medium text-muted-foreground">
-              Notes on this image
-            </h2>
+            <h2 className="m-0 mb-2 text-[13px] font-medium text-muted-foreground">Notes</h2>
             {asset.marks.length === 0 ? (
-              <p className="m-0 text-sm text-muted-foreground">{HOW_TO_MARK}</p>
+              <p className="m-0 flex items-start gap-2 rounded-lg bg-muted px-3 py-2.5 text-[13px] leading-snug text-foreground">
+                <MousePointerClick
+                  aria-hidden
+                  className="mt-px size-4 shrink-0 text-muted-foreground"
+                />
+                {HOW_TO_MARK}
+              </p>
             ) : (
               <ol className="m-0 list-none space-y-1.5 p-0">
                 {asset.marks.map((m, i) => (
@@ -3396,7 +2964,6 @@ function MarkEditor({
   onChange,
   onRemove,
   onDone,
-  children,
 }: {
   mark: Mark;
   number: number;
@@ -3407,11 +2974,8 @@ function MarkEditor({
   onChange: (c: Partial<Mark>) => void;
   onRemove: () => void;
   onDone: () => void;
-  /** Shown under the two fields: the note's spacing. */
-  children?: React.ReactNode;
 }) {
   const first = useRef<HTMLTextAreaElement>(null);
-  const mac = useIsMac();
   // A note opens ready to type, however it was opened (a click on its pin, a key), so the next
   // keystrokes go into it and never fire a shortcut. The caret goes after any text already there.
   useEffect(() => {
@@ -3437,7 +3001,7 @@ function MarkEditor({
 
   return (
     <section className="space-y-3" aria-label={`Note ${number}`}>
-      {/* The note's actions sit by its title, as the image's do; the keys for them are in Done's tooltip. */}
+      {/* Deleting the note sits by its title; Done is at the panel's top right. */}
       <TooltipProvider>
         <div className="flex items-center gap-2">
           <h2 className="m-0 text-[13px] font-medium text-muted-foreground">
@@ -3460,26 +3024,6 @@ function MarkEditor({
               }
             />
             <TooltipContent>Delete note</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={onDone}
-                  className={cn(
-                    hit,
-                    'flex min-h-8 items-center gap-1 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-                  )}
-                >
-                  <Check className="size-4" aria-hidden />
-                  Done
-                </button>
-              }
-            />
-            <TooltipContent>
-              <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
-            </TooltipContent>
           </Tooltip>
         </div>
       </TooltipProvider>
@@ -3525,316 +3069,6 @@ function MarkEditor({
         suggested={suggestedTopics}
         onChange={(topics) => onChange({ topics })}
       />
-      {children}
-    </section>
-  );
-}
-
-const GAP_LABEL: Record<Side, string> = {
-  above: 'Above',
-  below: 'Below',
-  left: 'Left',
-  right: 'Right',
-};
-const MEASURE_FAILED: Record<'empty' | 'busy', string> = {
-  empty:
-    'Nothing to measure here: the spot is on empty space. Put the dot on the element, or draw an area around it.',
-  busy: 'Can’t measure here: a photo or a gradient has no flat background to measure against.',
-};
-
-/**
- * A note's spacing (`measure.ts`): measured on request from the element at the
- * dot or inside the area, shown as four gaps in screenshot pixels with the CSS
- * pixels at the screenshot's scale, which the author can correct. A note that
- * moved keeps its old numbers out of the export until it is measured again.
- * Arrows are not measured.
- */
-function SpacingSection({
-  mark,
-  scale,
-  onMeasure,
-  onScale,
-  onClear,
-}: {
-  mark: Mark;
-  scale: { scale: Scale; guessed: boolean };
-  onMeasure: () => Promise<Measured>;
-  onScale: (scale: Scale) => void;
-  onClear: () => void;
-}) {
-  const [measuring, setMeasuring] = useState(false);
-  const [failed, setFailed] = useState<{ reason: 'empty' | 'busy'; shape: string } | null>(null);
-  if (mark.shape.kind === 'arrow') return null;
-  const spacing = currentSpacing(mark);
-  const shape = shapeKey(mark.shape);
-  const stale = Boolean(mark.spacing) && !spacing;
-  const measure = async () => {
-    setMeasuring(true);
-    setFailed(null);
-    try {
-      const result = await onMeasure();
-      if (!result.ok && result.reason !== 'arrow') setFailed({ reason: result.reason, shape });
-    } finally {
-      setMeasuring(false);
-    }
-  };
-  const small = cn(
-    hit,
-    'min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-  );
-  const headingId = `spacing-${mark.id}`;
-  return (
-    <section aria-labelledby={headingId} className="space-y-2">
-      <div className="flex items-center gap-1">
-        <h3 id={headingId} className="m-0 text-[13px] font-medium text-muted-foreground">
-          Spacing
-        </h3>
-        {spacing && (
-          <>
-            <button
-              type="button"
-              onClick={measure}
-              disabled={measuring}
-              className={cn(small, 'ml-auto disabled:opacity-60')}
-            >
-              {measuring ? 'Measuring…' : 'Measure again'}
-            </button>
-            <button type="button" onClick={onClear} className={small}>
-              Remove
-            </button>
-          </>
-        )}
-      </div>
-      {spacing ? (
-        <>
-          <dl className="m-0 grid grid-cols-4 gap-1.5 text-center">
-            {SIDES.map((side) => {
-              const gap = spacing.gaps[side];
-              return (
-                <div key={side} className="rounded-md bg-muted px-1 py-1.5">
-                  <dt className="text-[13px] text-muted-foreground">{GAP_LABEL[side]}</dt>
-                  <dd className="m-0 text-sm font-medium tabular-nums">
-                    {gap === undefined ? (
-                      <>
-                        <span aria-hidden>–</span>
-                        <span className="sr-only">nothing within reach</span>
-                      </>
-                    ) : (
-                      gap
-                    )}
-                  </dd>
-                  {gap !== undefined && scale.scale > 1 && (
-                    <dd className="m-0 text-[13px] text-muted-foreground tabular-nums">
-                      {Math.round(gap / scale.scale)} CSS
-                    </dd>
-                  )}
-                </div>
-              );
-            })}
-          </dl>
-          <p className="m-0 text-[13px] text-muted-foreground">
-            Screenshot pixels{spacing.precision > 1 ? `, ±${spacing.precision}` : ''}, from the
-            element in the dashed box to the nearest element on each side. 0: touching or
-            overlapping. A dash: nothing within reach.{' '}
-            {mark.shape.kind === 'dot' &&
-              'A dot measures the line or shape under it; for a block of lines, draw an area around it.'}
-          </p>
-          <fieldset className="m-0 flex items-center gap-2 border-0 p-0">
-            <legend className="float-left mr-1 p-0 text-[13px] text-muted-foreground">
-              Screenshot scale{scale.guessed ? ' (guessed)' : ''}
-            </legend>
-            <div className="flex gap-0.5 rounded-full border border-border p-0.5">
-              {([1, 2, 3] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={scale.scale === s}
-                  onClick={() => onScale(s)}
-                  className={cn(
-                    hit,
-                    'min-h-7 min-w-9 rounded-full px-2 text-[13px] tabular-nums text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground aria-pressed:bg-accent aria-pressed:font-medium aria-pressed:text-foreground',
-                  )}
-                >
-                  {s}×
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={measure}
-            disabled={measuring}
-            className={cn(
-              hit,
-              'flex min-h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-60',
-            )}
-          >
-            <Ruler className="size-4" aria-hidden />
-            {measuring ? 'Measuring…' : stale ? 'Measure again' : 'Measure spacing'}
-          </button>
-          {stale && !measuring && (
-            <p className="m-0 text-[13px] text-muted-foreground">
-              The note moved since it was measured, so the old numbers are left out of the export.
-            </p>
-          )}
-        </>
-      )}
-      {/* After either button: measuring again where nothing can be measured says so too. */}
-      {failed && failed.shape === shape && (
-        <p role="status" className="m-0 text-[13px] text-muted-foreground">
-          {MEASURE_FAILED[failed.reason]}
-        </p>
-      )}
-    </section>
-  );
-}
-
-const CHECK_FAILED: Record<'few' | 'busy' | 'empty', string> = {
-  few: 'Found fewer than three items here. Draw the area around three or more rows, cards or links.',
-  busy: 'Can’t check here: a photo or a gradient has no flat background to measure against.',
-  empty: 'Nothing inside this area to check.',
-};
-
-/**
- * The spacing check for an area (`rhythm.ts`): the items inside it along one
- * axis and the gaps between them, an odd one in red. The suggested sentence
- * goes into the note only when the author adds it.
- */
-function RhythmSection({
-  mark,
-  scale,
-  onCheck,
-  onClear,
-  onAdd,
-}: {
-  mark: Mark;
-  scale: { scale: Scale; guessed: boolean };
-  onCheck: () => Promise<Checked>;
-  onClear: () => void;
-  onAdd: (field: 'good' | 'bad', text: string) => void;
-}) {
-  const [checking, setChecking] = useState(false);
-  const [failed, setFailed] = useState<{ reason: 'few' | 'busy' | 'empty'; shape: string } | null>(
-    null,
-  );
-  const rhythm = currentRhythm(mark);
-  const shape = shapeKey(mark.shape);
-  const stale = Boolean(mark.rhythm) && !rhythm;
-  const check = async () => {
-    setChecking(true);
-    setFailed(null);
-    try {
-      const result = await onCheck();
-      if (!result.ok && result.reason !== 'shape') setFailed({ reason: result.reason, shape });
-    } finally {
-      setChecking(false);
-    }
-  };
-  const small = cn(
-    hit,
-    'min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground disabled:opacity-60',
-  );
-  const suggestion = rhythm ? rhythmSuggestion(rhythm, scale.scale) : undefined;
-  const added = suggestion ? mark[suggestion.field].includes(suggestion.text) : false;
-  const headingId = `rhythm-${mark.id}`;
-  return (
-    <section aria-labelledby={headingId} className="space-y-2">
-      <div className="flex items-center gap-1">
-        <h3 id={headingId} className="m-0 text-[13px] font-medium text-muted-foreground">
-          Between items
-        </h3>
-        {rhythm && (
-          <>
-            <button
-              type="button"
-              onClick={check}
-              disabled={checking}
-              className={cn(small, 'ml-auto')}
-            >
-              {checking ? 'Checking…' : 'Check again'}
-            </button>
-            <button type="button" onClick={onClear} className={small}>
-              Remove
-            </button>
-          </>
-        )}
-      </div>
-      {rhythm ? (
-        <>
-          <p className="m-0 text-sm">
-            {rhythm.items.length} items in a {rhythm.axis}. Gaps{' '}
-            {rhythm.gaps.map((g, i) => (
-              <span key={`${rhythm.items[i].x},${rhythm.items[i].y}`}>
-                {i > 0 && <span className="text-muted-foreground"> · </span>}
-                <span
-                  className="font-medium tabular-nums"
-                  style={rhythm.odd.includes(i) ? { color: ODD_COLOR } : undefined}
-                >
-                  {g}
-                </span>
-              </span>
-            ))}
-            {scale.scale > 1 && (
-              <span className="text-muted-foreground">
-                {' '}
-                ({rhythm.gaps.map((g) => Math.round(g / scale.scale)).join(' · ')} CSS)
-              </span>
-            )}
-          </p>
-          <p className="m-0 text-[13px] text-muted-foreground">
-            {rhythm.odd.length === 0
-              ? 'Even: every gap is close to the typical one.'
-              : rhythm.gaps.length === 2
-                ? 'The two gaps differ.'
-                : `Red: off the typical ${rhythm.typical} by more than 12% or 2 px.`}{' '}
-            Screenshot pixels, between the dashed boxes.
-          </p>
-          {suggestion && (
-            <div className="rounded-md border border-border p-2.5">
-              <p className="m-0 text-[13px] text-muted-foreground">
-                Suggested for {suggestion.field === 'bad' ? 'What doesn’t' : 'What works'}
-              </p>
-              <p className="m-0 mt-1 text-sm">{suggestion.text}</p>
-              <button
-                type="button"
-                onClick={() => onAdd(suggestion.field, suggestion.text)}
-                disabled={added}
-                className={cn(small, '-ml-2 mt-1')}
-              >
-                {added ? 'Added to the note' : 'Add to the note'}
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={check}
-            disabled={checking}
-            className={cn(
-              hit,
-              'flex min-h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-60',
-            )}
-          >
-            <AlignVerticalSpaceBetween className="size-4" aria-hidden />
-            {checking ? 'Checking…' : stale ? 'Check again' : 'Check spacing between items'}
-          </button>
-          {stale && !checking && (
-            <p className="m-0 text-[13px] text-muted-foreground">
-              The area moved since it was checked, so the old check is left out of the export.
-            </p>
-          )}
-        </>
-      )}
-      {failed && failed.shape === shape && (
-        <p role="status" className="m-0 text-[13px] text-muted-foreground">
-          {CHECK_FAILED[failed.reason]}
-        </p>
-      )}
     </section>
   );
 }
@@ -4149,8 +3383,8 @@ function SuggestionHint({ id, ghost }: { id: string; ghost: string }) {
 }
 
 /**
- * Whose design the image is: four radio rows, optional (Clear takes it off). New images take
- * the open one's. Arrow keys move and choose, as in any radio group.
+ * Whose design the image is: four radio rows, optional (S cycles back to none). New images
+ * take the open one's. Arrow keys move and choose, as in any radio group.
  */
 /** One icon per source: our own product, a rival, the wider world, an idea. */
 const SOURCE_ICONS = { ours: House, competitor: Swords, other: Globe, concept: Lightbulb };
@@ -4196,17 +3430,8 @@ function SourcePicker({
         <h2 id="source-heading" className="m-0 text-[13px] font-medium text-muted-foreground">
           Source
         </h2>
-        {source && (
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            className={cn(small, 'ml-auto')}
-          >
-            Clear
-          </button>
-        )}
         {source && total > 1 && (
-          <button type="button" onClick={onForAll} className={small}>
+          <button type="button" onClick={onForAll} className={cn(small, 'ml-auto')}>
             Set for all {total}
           </button>
         )}

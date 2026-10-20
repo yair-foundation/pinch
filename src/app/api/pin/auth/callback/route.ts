@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     const user = userKeyOf(google.sub);
     await touchAccount(user, google.email, google.name, new Date().toISOString());
     const token = signSession(
-      { user, email: google.email, name: google.name },
+      { user, email: google.email, name: google.name, picture: google.picture },
       process.env.AUTH_SECRET as string,
     );
     return back(request, '', [clear, sessionCookie(token)]);

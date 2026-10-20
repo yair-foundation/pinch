@@ -24,6 +24,7 @@ export function Dialog({
   onClose,
   opener,
   fallback,
+  aside,
   children,
   className,
 }: {
@@ -35,6 +36,8 @@ export function Dialog({
   opener: HTMLElement | null;
   /** A selector for where focus goes when the opener is gone (it was a key, or a toast). */
   fallback?: string;
+  /** Beside the title: a small hint, such as an info tooltip. */
+  aside?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -103,6 +106,7 @@ export function Dialog({
           <h2 id={id} className="m-0 text-sm font-medium">
             {title}
           </h2>
+          {aside}
           <button
             type="button"
             aria-label="Close"
