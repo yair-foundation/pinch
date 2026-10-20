@@ -44,6 +44,11 @@ const TWO_SIZES = 1.8;
 const INSIDE_SHARE = 0.4;
 /** A gap is odd when it differs from the median by more than this share of it (or 2px). */
 const ODD_SHARE = 0.12;
+/**
+ * Inside the box, a UI is a few flat colours (a list, cards, text: 90% or more on its three most
+ * common colours); a photo spreads (40–70%). Below this, a box without items is a photo.
+ */
+const INSIDE_FLAT = 0.8;
 /** A run whose ink covers less of its box than this is text: only text joins across small gaps. */
 const SPARSE = 0.5;
 /** Items needed to speak of a rhythm: three, so there are two gaps to compare. */
@@ -189,7 +194,15 @@ export function checkRhythm(grid: LumaGrid, shape: Shape): Checked {
           ? 'column'
           : 'row';
   const runs = axis === 'column' ? columnRuns : rowRuns;
-  if (runs.length < FEWEST) return { ok: false, reason: 'few' };
+  if (runs.length < FEWEST) {
+    // Too few items, or a photo: a picture fills the box with ink and leaves no gaps to find.
+    // Then say it's a photo, not that the author drew the area around too few items.
+    const inside: number[] = [];
+    const step = Math.max(1, Math.round(Math.max(b.c1 - b.c0, b.r1 - b.r0) / 300));
+    for (let r = b.r0; r <= b.r1; r += step)
+      for (let c = b.c0; c <= b.c1; c += step) inside.push(at(c, r));
+    return { ok: false, reason: flatShare(inside) < INSIDE_FLAT ? 'busy' : 'few' };
+  }
 
   // Each item's box: its run along the axis, and the ink it holds across it.
   const items: Rect[] = runs.map((run) => {
@@ -226,23 +239,31 @@ const list = (items: string[]) =>
 
 const css = (px: number, scale: Scale) => Math.round(px / scale);
 
+type Found = Pick<Rhythm, 'axis' | 'items' | 'gaps' | 'typical' | 'odd' | 'precision'>;
+
 /**
  * The check as a sentence for the export: `5 items in a column; gaps 16, 16,
  * 24 and 16 px (8, 8, 12 and 8 CSS px at 2×, guessed from the image size).
  * The gap after item 3 differs: 24 px where the others are about 16.`
  */
-export function rhythmText(r: Pick<Rhythm, 'axis' | 'items' | 'gaps' | 'typical' | 'odd' | 'precision'>, scale: Scale, guessed: boolean) {
+export function rhythmText(r: Found, scale: Scale, guessed: boolean) {
   const how = guessed ? 'guessed from the image size' : 'set by the author';
   const off = r.precision > 1 ? `, ±${r.precision} px` : '';
   const px = list(r.gaps.map(String));
-  const cssPx = scale === 1 ? 'the same in CSS px at 1×' : `${list(r.gaps.map((g) => String(css(g, scale))))} CSS px at ${scale}×`;
+  const cssPx =
+    scale === 1
+      ? 'the same in CSS px at 1×'
+      : `${list(r.gaps.map((g) => String(css(g, scale))))} CSS px at ${scale}×`;
   const head = `${r.items.length} items in a ${r.axis}; gaps ${px} px (screenshot pixels${off}; ${cssPx}, ${how})`;
-  if (!r.odd.length)
-    return `${head}. Even: every gap is within 12% or 2 px of ${r.typical} px.`;
+  if (!r.odd.length) return `${head}. Even: every gap is within 12% or 2 px of ${r.typical} px.`;
   if (r.gaps.length === 2) return `${head}. Uneven: ${r.gaps[0]} px, then ${r.gaps[1]} px.`;
   const after = list(r.odd.map((i) => String(i + 1)));
-  const which = r.odd.length === 1 ? `The gap after item ${after} differs` : `The gaps after items ${after} differ`;
-  return `${head}. ${which}: ${list(r.odd.map((i) => `${r.gaps[i]} px`))} where the others are about ${r.typical}.`;
+  const which =
+    r.odd.length === 1
+      ? `The gap after item ${after} differs`
+      : `The gaps after items ${after} differ`;
+  const odd = list(r.odd.map((i) => `${r.gaps[i]} px`));
+  return `${head}. ${which}: ${odd} where the others are about ${r.typical}.`;
 }
 
 /**
@@ -250,19 +271,24 @@ export function rhythmText(r: Pick<Rhythm, 'axis' | 'items' | 'gaps' | 'typical'
  * doesn't" when a gap is off, for "what works" when the rhythm is even.
  */
 export function rhythmSuggestion(r: Pick<Rhythm, 'axis' | 'gaps' | 'typical' | 'odd'>, scale: Scale) {
-  const unit = scale === 1 ? 'px' : `CSS px`;
+  const unit = scale === 1 ? 'px' : 'CSS px';
   const things = r.axis === 'column' ? 'rows' : 'items';
+  const at = (px: number) => css(px, scale);
   if (!r.odd.length)
-    return { field: 'good' as const, text: `Even rhythm: every gap between the ${things} is ${css(r.typical, scale)} ${unit}.` };
+    return {
+      field: 'good' as const,
+      text: `Even rhythm: every gap between the ${things} is ${at(r.typical)} ${unit}.`,
+    };
   if (r.gaps.length === 2)
     return {
       field: 'bad' as const,
-      text: `Uneven spacing between the ${things}: ${css(r.gaps[0], scale)} ${unit}, then ${css(r.gaps[1], scale)} ${unit}.`,
+      text: `Uneven spacing between the ${things}: ${at(r.gaps[0])} ${unit}, then ${at(r.gaps[1])} ${unit}.`,
     };
   const after = list(r.odd.map((i) => String(i + 1)));
-  const gaps = list(r.odd.map((i) => `${css(r.gaps[i], scale)}`));
+  const gaps = list(r.odd.map((i) => String(at(r.gaps[i]))));
+  const item = r.odd.length === 1 ? 'item' : 'items';
   return {
     field: 'bad' as const,
-    text: `Uneven spacing between the ${things}: the gap after ${r.odd.length === 1 ? 'item' : 'items'} ${after} is ${gaps} ${unit} where the others are ${css(r.typical, scale)}.`,
+    text: `Uneven spacing between the ${things}: the gap after ${item} ${after} is ${gaps} ${unit} where the others are ${at(r.typical)}.`,
   };
 }

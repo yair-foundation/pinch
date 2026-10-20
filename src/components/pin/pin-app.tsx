@@ -3499,7 +3499,12 @@ function RhythmSection({
         </h3>
         {rhythm && (
           <>
-            <button type="button" onClick={check} disabled={checking} className={cn(small, 'ml-auto')}>
+            <button
+              type="button"
+              onClick={check}
+              disabled={checking}
+              className={cn(small, 'ml-auto')}
+            >
               {checking ? 'Checking…' : 'Check again'}
             </button>
             <button type="button" onClick={onClear} className={small}>

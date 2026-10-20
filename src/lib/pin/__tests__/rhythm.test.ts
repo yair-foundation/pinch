@@ -106,6 +106,14 @@ describe('checkRhythm', () => {
     assert.deepEqual(r.odd, [0, 1]);
   });
 
+  it('calls a photo a photo, not too few items, even on a flat page', () => {
+    // A noisy picture inside the area, the page flat around it.
+    const grid = page([]);
+    for (let y = 60; y < 200; y++)
+      for (let x = 100; x < 300; x++) (grid.luma as Uint8Array)[y * 400 + x] = ((x * 7919 + y * 104729) % 200) + 20;
+    assert.deepEqual(checkRhythm(grid, area(100, 60, 300, 200)), { ok: false, reason: 'busy' });
+  });
+
   it('says when there are too few items, nothing, a busy background or not an area', () => {
     assert.deepEqual(checkRhythm(page(rowsAt([40, 72])), area(90, 30, 210, 100)), {
       ok: false,
