@@ -267,7 +267,7 @@ const local = {
 };
 const SUGGEST_KEY = 'pinch-suggestions';
 const SENT_KEY = 'pinch-sent';
-/** "off" when the visitor switched off saving their notes' words (D80). */
+/** "off" when the visitor switched off saving their notes' words (D82). */
 const SAVE_NOTES_KEY = 'pinch-save-notes';
 /** Images removed from the session but kept for Undo; deleted on the next visit if still listed. */
 const ORPHANS_KEY = 'pinch-orphans';
@@ -422,11 +422,11 @@ function Workspace() {
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   // What a drag draws: a dot or area (Pin), or an arrow. Per visit; A toggles it, Esc leaves it.
   const [tool, setTool] = useState<Tool>('pin');
-  // The batch, or the collections in its place (D77). Per visit.
+  // The batch, or the collections in its place (D79). Per visit.
   const [view, setView] = useState<'batch' | 'collections'>('batch');
   const viewRef = useRef(view);
   viewRef.current = view;
-  // Who is looking, and whether Pinch is theirs to use (D79). Closed: billing is on, not bought.
+  // Who is looking, and whether Pinch is theirs to use (D81). Closed: billing is on, not bought.
   const { me, refresh: refreshMe } = useMe();
   const closed = isLocked(me);
   const closedRef = useRef(closed);
@@ -438,7 +438,7 @@ function Workspace() {
     const [mode, folder] = cloudKey.split(' ');
     return cloudBackend(folder, mode as 'blob' | 'memory');
   }, [cloudKey]);
-  // Saving the words of notes (D63), on unless the visitor switched it off (D80).
+  // Saving the words of notes (D63), on unless the visitor switched it off (D82).
   const [saveNotes, setSaveNotes] = useState(true);
   useEffect(() => {
     setSaveNotes(local.get(SAVE_NOTES_KEY) !== 'off');
@@ -1531,7 +1531,7 @@ function Workspace() {
             </TooltipProvider>
           )}
           {loaded && !closed && (
-            // Between the batch and the collections, which take its place (D77).
+            // Between the batch and the collections, which take its place (D79).
             <button
               type="button"
               onClick={() => setView(view === 'batch' ? 'collections' : 'batch')}
@@ -2084,7 +2084,7 @@ function EmptyState({
 }: {
   dragging: boolean;
   inert: boolean;
-  /** Pinch's price, once billing is on (D79). */
+  /** Pinch's price, once billing is on (D81). */
   price?: string;
   /** In place of Add images while Pinch is closed to this visitor: sign in, then buy. */
   gate?: (buttonClass: string, hintClass: string) => React.ReactNode;

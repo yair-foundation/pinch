@@ -5,7 +5,7 @@ import { billingConfig, paidOrderFor } from '@/lib/billing';
 import { sessionOf } from '@/lib/session';
 
 /*
- * "I paid, but Pinch doesn't know" (D79): with LEMONSQUEEZY_API_KEY set, asks
+ * "I paid, but Pinch doesn't know" (D81): with LEMONSQUEEZY_API_KEY set, asks
  * Lemon Squeezy for a paid order under the signed-in email and keeps it, as
  * the webhook would have. Without the key, it only reads what is kept.
  */

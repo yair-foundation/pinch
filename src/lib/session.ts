@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 /*
- * Who is signed in (D79): a cookie holding the account's key, email and name
+ * Who is signed in (D81): a cookie holding the account's key, email and name
  * and when it runs out, signed with AUTH_SECRET (HMAC-SHA256), so the server
  * keeps no session store. HttpOnly, Secure and SameSite=Lax: no page script
  * reads it, and another site's form can't send it with a write, while the

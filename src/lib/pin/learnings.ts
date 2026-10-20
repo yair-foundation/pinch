@@ -15,7 +15,7 @@ import {
  * learning per note: a rule the note teaches, drafted by the AI or written by
  * the author, marked as their personal taste or as this project's. Keeping a
  * rule is agreeing with it; the author edits or deletes the ones that miss
- * (D76). Rules export as a rules file an agent follows, each with the close-up
+ * (D78). Rules export as a rules file an agent follows, each with the close-up
  * it came from, all of them or the scopes and topics a task needs. This file
  * is the pure part; the browser keeps collections in IndexedDB
  * (`collections-store.ts`).

@@ -4,7 +4,7 @@ import { deleteCollection, MAX_COLLECTION_BYTES, saveCollection, validId } from 
 import { sessionOf } from '@/lib/session';
 
 /*
- * One of the account's collections (D79): PUT writes it whole (the page keeps
+ * One of the account's collections (D81): PUT writes it whole (the page keeps
  * the latest and sends it a moment after each change), DELETE removes it with
  * its batches' zips. Same-origin only.
  */

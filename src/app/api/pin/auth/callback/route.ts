@@ -3,7 +3,7 @@ import { callbackUrl, claimsOf, exchangeCode, googleConfigured, OAUTH_COOKIE } f
 import { cookie, cookieOf, sessionCookie, signSession } from '@/lib/session';
 
 /*
- * Back from Google (D79): the state must match the one in the cookie, the
+ * Back from Google (D81): the state must match the one in the cookie, the
  * code is traded for an ID token, the account is created or touched, and the
  * session cookie is set. Any failure goes back to the page with
  * `?signin=failed`; nothing about it is logged but that it failed.

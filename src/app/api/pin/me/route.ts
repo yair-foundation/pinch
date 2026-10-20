@@ -6,7 +6,7 @@ import { googleConfigured } from '@/lib/google';
 import { testLoginOn } from '@/lib/session';
 
 /*
- * What the page needs to know about whoever is looking (D79): whether Pinch
+ * What the page needs to know about whoever is looking (D81): whether Pinch
  * is paid here, who is signed in, whether they may use it, where to buy, and
  * where their collections are kept. Read fresh, so a purchase shows the
  * moment its webhook lands.

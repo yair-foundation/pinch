@@ -13,7 +13,7 @@ import {
 import { sessionOf } from '@/lib/session';
 
 /*
- * One of the account's batch zips (D79). GET answers with a URL to fetch it
+ * One of the account's batch zips (D81). GET answers with a URL to fetch it
  * from: a presigned URL into the store, good for a few minutes, or (without a
  * store, in local runs) this route with `?raw=1`, which sends the bytes; with
  * a store, `?raw=1` streams them too, for a page that couldn't fetch the

@@ -2,7 +2,7 @@ import { gate } from '@/lib/access';
 import { listCollections } from '@/lib/cloud';
 import { sessionOf } from '@/lib/session';
 
-/* The signed-in account's collections (D79). */
+/* The signed-in account's collections (D81). */
 
 export const dynamic = 'force-dynamic';
 

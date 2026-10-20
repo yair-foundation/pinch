@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 /*
- * Pinch's terms of sale and use (D79): what is bought, for how long, the
+ * Pinch's terms of sale and use (D81): what is bought, for how long, the
  * refund, what happens to the buyer's content, and who to ask. Plain words,
  * one page, in the site's own type and colours. The support address is
  * PINCH_SUPPORT_EMAIL when it is set; otherwise the maker's site.

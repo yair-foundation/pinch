@@ -5,9 +5,9 @@ The visual rules Pinch follows, condensed from the design foundations of the sys
 ## Principles
 
 - **Minimal, low-text.** One focal element; cut captions and side notes. Hidden-but-needed text is sr-only or in a tooltip.
-- **Colour is an accent, not a background.** Surfaces stay neutral; colour carries meaning: green for what works, red for what doesn't, amber for both (`VERDICT_COLOR` in `render.ts`), magenta only in the crops sent to the AI. The one exception is the topic tags (D74): each topic has a tint (`TOPIC_TONES` in `pin-app.tsx`; fuchsia, blue, teal, violet, orange, green, never red) that fills the tag and colours its label when it is on.
+- **Colour is an accent, not a background.** Surfaces stay neutral; colour carries meaning: green for what works, red for what doesn't, amber for both (`VERDICT_COLOR` in `render.ts`), magenta only in the crops sent to the AI. The one exception is the topic tags (D76): each topic has a tint (`TOPIC_TONES` in `pin-app.tsx`; fuchsia, blue, teal, violet, orange, green, never red) that fills the tag and colours its label when it is on.
 - **One style in both themes.** Light takes dark's visual language, not its colours: hollow bordered panels, a solid default button (black in light, light grey in dark), hollow secondary buttons, 6px buttons, 8px inputs and textareas. Badges, chips and icon buttons are pills or circles; topic tags are 28px with 6px corners.
-- **44px is the hit area, not the button.** Every control has a hit area at least 44px each way while the visible button keeps its size (28, 36 or 40px): the shared `Button` has it built in, raw controls add a centred `after:` pseudo-element (see the tool switch in `pin-app.tsx`). Inline text links are exempt. Topic tags are the one exception (D76): their hit areas are 36px tall, so rows 8px apart tile without overlapping.
+- **44px is the hit area, not the button.** Every control has a hit area at least 44px each way while the visible button keeps its size (28, 36 or 40px): the shared `Button` has it built in, raw controls add a centred `after:` pseudo-element (see the tool switch in `pin-app.tsx`). Inline text links are exempt. Topic tags are the one exception (D78): their hit areas are 36px tall, so rows 8px apart tile without overlapping.
 
 ## Typography
 

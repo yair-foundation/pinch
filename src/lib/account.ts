@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { deleteDocuments, listDocuments, readDocument, updateDocument } from './blob-doc';
 
 /*
- * Accounts and purchases (D79), as small documents in the private Blob store.
+ * Accounts and purchases (D81), as small documents in the private Blob store.
  * An account is keyed by a hash of its Google id and keeps the email and name
  * Google gave; its collections sit under `pinch-users/<key>/`. Purchases are
  * keyed by a hash of the buyer's email, so a payment that arrives before the

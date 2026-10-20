@@ -3,7 +3,7 @@ import { isSameOriginWrite } from '@/lib/auth';
 import { cookie, SESSION_COOKIE, sessionOf } from '@/lib/session';
 
 /*
- * Delete my account (D79): the account, its collections and their batches'
+ * Delete my account (D81): the account, its collections and their batches'
  * exports go from the store, and the session ends. The purchase stays, kept
  * under a hash of the email, so signing in again later still finds it.
  */

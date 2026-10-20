@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 /*
- * Paying for Pinch (D79): $19 once, through Lemon Squeezy, the merchant of
+ * Paying for Pinch (D81): $19 once, through Lemon Squeezy, the merchant of
  * record (it takes the payment and the tax, and sends the receipt). The
  * checkout link carries the signed-in email and account; Lemon Squeezy then
  * calls the webhook, signed with its secret, when an order is paid or

@@ -9,7 +9,7 @@ import {
 import { cookie } from '@/lib/session';
 
 /*
- * Sign in with Google (D79): off to Google with a fresh state and a PKCE
+ * Sign in with Google (D81): off to Google with a fresh state and a PKCE
  * challenge; the state and its verifier wait in a ten-minute cookie for the
  * callback. Without GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and AUTH_SECRET,
  * back to the page, which says sign-in isn't set up.

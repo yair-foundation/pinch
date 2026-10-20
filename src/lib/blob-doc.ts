@@ -10,7 +10,7 @@ import { BlobPreconditionFailedError, del, get, list, put } from '@vercel/blob';
  * Without Blob credentials (local development) the same logic runs on
  * in-memory documents.
  *
- * Accounts keep their collections here too (D79): one document per
+ * Accounts keep their collections here too (D81): one document per
  * collection under the account's folder, listed by prefix, written whole and
  * deleted with the account.
  */

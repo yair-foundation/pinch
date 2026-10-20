@@ -1,7 +1,7 @@
 import { isSameOriginWrite } from '@/lib/auth';
 import { cookie, SESSION_COOKIE } from '@/lib/session';
 
-/* Sign out (D79): the session cookie goes. Same-origin only, like every write. */
+/* Sign out (D81): the session cookie goes. Same-origin only, like every write. */
 
 export const dynamic = 'force-dynamic';
 

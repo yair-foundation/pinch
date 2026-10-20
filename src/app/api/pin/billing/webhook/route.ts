@@ -3,7 +3,7 @@ import { readAccount, recordOrder } from '@/lib/account';
 import { billingConfig, signatureOk, webhookOutcome } from '@/lib/billing';
 
 /*
- * Lemon Squeezy's order webhook (D79): `order_created` and `order_refunded`,
+ * Lemon Squeezy's order webhook (D81): `order_created` and `order_refunded`,
  * signed with LEMONSQUEEZY_WEBHOOK_SECRET in `X-Signature`. A paid or
  * refunded order of Pinch is kept under the buyer's email, and under the
  * signed-in account's email too when the checkout carried the account and the

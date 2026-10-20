@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 /*
- * Sign-in with Google (D79): the authorization-code flow with PKCE. The page
+ * Sign-in with Google (D81): the authorization-code flow with PKCE. The page
  * goes to Google with a random state and a code challenge kept in a short
  * cookie; Google sends it back with a code, which the server trades, with the
  * verifier and the client secret, for an ID token. That token comes straight

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, hit } from './dialog';
 
 /*
- * The account in the page (D79): who is signed in, whether they may use
+ * The account in the page (D81): who is signed in, whether they may use
  * Pinch, where to buy, and where their collections live, as `/api/pin/me`
  * says. Until billing is set up the answer is "open" and the page works as it
  * always did. Read again when the tab comes back, so a purchase made in

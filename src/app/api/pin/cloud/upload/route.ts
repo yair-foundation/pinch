@@ -6,7 +6,7 @@ import { ownBatchPath, uploadToken } from '@/lib/cloud';
 import { sessionOf } from '@/lib/session';
 
 /*
- * Uploads of batch zips straight from the browser to the store (D79): the
+ * Uploads of batch zips straight from the browser to the store (D81): the
  * page's `uploadPresigned` asks here for a presigned URL, and gets one only
  * for a zip under the signed-in account's own `batches/` folder, put-only,
  * for fifteen minutes, up to 300 MB. Needs the store (BLOB_STORE_ID or a

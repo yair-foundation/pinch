@@ -2,7 +2,7 @@ import type { Collection } from '@/lib/pin/learnings';
 
 /*
  * Where collections are kept: in this browser (`collections-store.ts`), or in
- * the signed-in account (`cloud-store.ts`, D79). The collections view works
+ * the signed-in account (`cloud-store.ts`, D81). The collections view works
  * the same on either; it only says which.
  */
 export type CollectionsBackend = {

@@ -56,14 +56,14 @@ import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
 /*
- * Collections (D77, D78): named, each holding batches (as their Pinch exports)
+ * Collections (D79, D80): named, each holding batches (as their Pinch exports)
  * and one learning per note. A learning is the rule a note teaches: drafted by
  * the AI from the note's words when drafting is on, or written by the author,
  * who edits or deletes the ones that miss, marks each personal taste or this
  * project, and can change what it is about. The rules export as a file, all of
  * them or the scopes and topics a task needs, or as text to paste into a chat.
  * A collection also downloads as one file, to keep or to open elsewhere. Kept
- * in this browser, or in the account when signed in (D79). Shown in place of
+ * in this browser, or in the account when signed in (D81). Shown in place of
  * the batch, from the header's Collections button.
  */
 
@@ -1158,7 +1158,7 @@ function CollectionPage({
 
 /**
  * One rule: the note's close-up and words as evidence, the rule (editable), its scope, what it is
- * about, and delete. Keeping a rule is agreeing with it (D78).
+ * about, and delete. Keeping a rule is agreeing with it (D80).
  */
 function LearningCard({
   learning: l,

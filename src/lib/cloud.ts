@@ -3,7 +3,7 @@ import { userFolder } from './account';
 import { deleteDocuments, hasBlob, listDocuments, putDocument, readDocument } from './blob-doc';
 
 /*
- * An account's collections in the private Blob store (D79): each collection
+ * An account's collections in the private Blob store (D81): each collection
  * is one JSON document, `pinch-users/<account>/collections/<id>.json`, and
  * each batch's export is one zip, `pinch-users/<account>/batches/<id>.zip`.
  * Zips are tens of megabytes, more than a function passes, so the browser

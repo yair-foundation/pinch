@@ -3,7 +3,7 @@ import type { Collection } from '@/lib/pin/learnings';
 import type { CollectionsBackend } from './collections-backend';
 
 /*
- * Collections in the signed-in account (D79), through Pinch's own routes:
+ * Collections in the signed-in account (D81), through Pinch's own routes:
  * each collection's document is read and written as JSON; a batch's export
  * zip goes straight to the store on a presigned URL (`uploadPresigned`) and
  * comes back the same way, or through the route when there is no store

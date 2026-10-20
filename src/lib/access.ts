@@ -4,7 +4,7 @@ import { googleConfigured } from './google';
 import { type Session, sessionOf } from './session';
 
 /*
- * Who may use Pinch (D79). Pinch is one paid tool: once Google sign-in and
+ * Who may use Pinch (D81). Pinch is one paid tool: once Google sign-in and
  * Lemon Squeezy are both set up, every step that costs or keeps something
  * (suggestions, rule drafts, the account's collections) needs a signed-in
  * account that has paid. Until then, nothing is gated, as before.
