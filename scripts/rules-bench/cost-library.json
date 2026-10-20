@@ -1,0 +1,1962 @@
+[
+  {
+    "id": "r1",
+    "text": "Use breadcrumbs only when pages sit more than two levels deep.",
+    "context": "",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r2",
+    "text": "Keep mobile headings tight enough that none wraps beyond three lines.",
+    "context": "on mobile",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r3",
+    "text": "Use quiet banners for system-wide issues and reserve modals for problems that block the task.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "visual"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r4",
+    "text": "Pair the hero headline with one primary button and at most one quieter secondary link.",
+    "context": "in hero sections",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r5",
+    "text": "Format dates the same way everywhere, using short month names rather than all-numeric dates.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r6",
+    "text": "Give icon-only navigation buttons accessible names, plus tooltips on desktop.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r7",
+    "text": "Keep completed checklist items readable and mark them with a check instead of striking them through.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r8",
+    "text": "Keep the header row sticky when a long table scrolls vertically.",
+    "context": "in data tables",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r9",
+    "text": "Validate a field when the user leaves it, not on every keystroke.",
+    "context": "in form validation",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r10",
+    "text": "Show an en dash for missing values, never a zero or a blank cell.",
+    "context": "",
+    "topics": [
+      "copy",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r11",
+    "text": "Order checkout steps as email first, then shipping, then payment, then review.",
+    "context": "",
+    "topics": [
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r12",
+    "text": "Place labels above inputs, left aligned.",
+    "context": "",
+    "topics": [
+      "layout",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r13",
+    "text": "Show money with its currency and two decimals.",
+    "context": "",
+    "topics": [
+      "copy",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r14",
+    "text": "Make the entity name in each row a link, and limit row-level buttons to one visible primary action.",
+    "context": "in data tables",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r15",
+    "text": "Keep page titles under six words.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r16",
+    "text": "Place the cookie notice at the bottom and keep it from covering the primary button.",
+    "context": "",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved",
+    "question": "Should the notice be a full-width banner or a small card?"
+  },
+  {
+    "id": "r17",
+    "text": "Explain the benefit of notifications on a screen before triggering the system permission prompt.",
+    "context": "",
+    "topics": [
+      "flow",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r18",
+    "text": "When one widget fails, show a short plain error with a retry button and leave the other widgets working.",
+    "context": "",
+    "topics": [
+      "flow",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r19",
+    "text": "Left-align text columns and keep their headers aligned the same way.",
+    "context": "in data tables",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r20",
+    "text": "Follow the headline with one sentence explaining the benefit of filling the space.",
+    "context": "in empty states",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r21",
+    "text": "Place the illustration or icon above the headline, never beside it.",
+    "context": "in empty states",
+    "topics": [
+      "layout",
+      "visual"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r22",
+    "text": "Show every account as a row in one list; no hero numbers.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r23",
+    "text": "Leave generous whitespace between sections so each reads as its own beat.",
+    "context": "on marketing pages",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r24",
+    "text": "Write button labels as the action they take (\"Save changes\", not \"OK\").",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r25",
+    "text": "Stack columns in reading priority, with the headline first and the image second.",
+    "context": "on mobile",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r26",
+    "text": "Draw forecasts with a dashed line so they read as different from actuals.",
+    "context": "in line charts",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r27",
+    "text": "Order dashboard widgets from summary to detail, top to bottom.",
+    "context": "",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r28",
+    "text": "Place the primary mobile action at the bottom of the screen, within thumb reach.",
+    "context": "on mobile screens",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r29",
+    "text": "Ask for one thing per screen in long onboarding flows.",
+    "context": "in mobile forms",
+    "topics": [
+      "flow",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r30",
+    "text": "Ask one question per screen during onboarding.",
+    "context": "in onboarding",
+    "topics": [
+      "flow",
+      "layout"
+    ],
+    "status": "dismissed"
+  },
+  {
+    "id": "r31",
+    "text": "Keep figures small and restrained; avoid big display numbers.",
+    "context": "",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r32",
+    "text": "Format card numbers into groups as the user types.",
+    "context": "in payment forms",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r33",
+    "text": "Let success toasts dismiss themselves, but keep error notifications on screen until the user closes them.",
+    "context": "",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved",
+    "question": "How long should a success toast stay visible before dismissing?"
+  },
+  {
+    "id": "r34",
+    "text": "Lead each section with one short headline and one line of support.",
+    "context": "",
+    "topics": [
+      "copy",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r35",
+    "text": "Use one accent colour, only for actions and selection.",
+    "context": "",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r36",
+    "text": "Keep the close control for menus and sheets in the same corner every time.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r37",
+    "text": "Default new privacy and sharing settings to the most private option.",
+    "context": "",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved",
+    "question": "Should privacy defaults differ for team accounts?"
+  },
+  {
+    "id": "r38",
+    "text": "Highlight the hovered row so the eye can track across a wide table.",
+    "context": "in data tables",
+    "topics": [
+      "interaction",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r39",
+    "text": "List password requirements before the user types and tick them off as each is met.",
+    "context": "in sign-up forms",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r40",
+    "text": "Keep everything the user typed after a failed submit; never clear the form.",
+    "context": "",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r41",
+    "text": "Limit top-level navigation to five items, with the main action set apart at the far end.",
+    "context": "in site headers",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r42",
+    "text": "Scroll mobile pages vertically only, allowing horizontal movement just in labelled galleries.",
+    "context": "on mobile screens",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r43",
+    "text": "Limit a guided tour to three tooltips, each one dismissible.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r44",
+    "text": "Repeat the primary call to action at the bottom of long pages.",
+    "context": "on long marketing pages",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r45",
+    "text": "After a failed submit, move focus to the first field with an error.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r46",
+    "text": "Alternate feature sections between image-left and image-right so long pages keep a rhythm.",
+    "context": "on long marketing pages",
+    "topics": [
+      "layout",
+      "visual"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r47",
+    "text": "State which email address the confirmation was sent to.",
+    "context": "after purchase",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r48",
+    "text": "Crop product screenshots to the relevant part of the interface rather than showing the whole window.",
+    "context": "",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r49",
+    "text": "Show password requirements before the user types, not after an error appears.",
+    "context": "in sign-up forms",
+    "topics": [
+      "accessibility",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r50",
+    "text": "Place destructive actions such as delete account in their own section at the bottom.",
+    "context": "",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r51",
+    "text": "Sort bar categories by value, largest first, unless the categories have a natural order such as time or stage.",
+    "context": "in bar charts",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r52",
+    "text": "Order navigation items by how often visitors need them, with pricing before company information.",
+    "context": "in site headers",
+    "topics": [
+      "flow",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r53",
+    "text": "Apply toggle changes immediately without a save button.",
+    "context": "in settings",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r54",
+    "text": "Add an info icon beside a metric name that reveals a one-sentence definition on hover or focus.",
+    "context": "",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r55",
+    "text": "Show a progress label that names the current step out of the total, such as Step 2 of 4.",
+    "context": "in multi-step onboarding",
+    "topics": [
+      "flow",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r56",
+    "text": "Postpone profile and account-detail questions until after the user has reached a first useful result.",
+    "context": "",
+    "topics": [
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r57",
+    "text": "Give empty state illustrations a text alternative, or mark them decorative when the headline already says it.",
+    "context": "",
+    "topics": [
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r58",
+    "text": "Use one accent for the focal series and neutral tones for the rest.",
+    "context": "",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r59",
+    "text": "Centre empty state content within the area it replaces.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r60",
+    "text": "Give each feature section one headline, one short paragraph, and one visual.",
+    "context": "",
+    "topics": [
+      "layout",
+      "copy"
+    ],
+    "status": "dismissed"
+  },
+  {
+    "id": "r61",
+    "text": "Align the submit button with the left edge of the fields.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r62",
+    "text": "Use a left list of sections on wide screens and a single stacked list on narrow ones.",
+    "context": "in settings pages",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r63",
+    "text": "Tuck secondary row actions into an overflow menu at the end of the row.",
+    "context": "in data tables",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r64",
+    "text": "Open the welcome screen with what the user can do, not with the product name.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r65",
+    "text": "Mark unread notifications with a dot and a bolder title, so colour is never the only signal.",
+    "context": "",
+    "topics": [
+      "visual",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r66",
+    "text": "Group footer links under three or four short column headings.",
+    "context": "in footers",
+    "topics": [
+      "layout",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r67",
+    "text": "Show a sort arrow only on the active column, and reveal it on hover for the others.",
+    "context": "in data tables",
+    "topics": [
+      "interaction",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r68",
+    "text": "Write errors in plain, human language and keep technical codes to a small line for support.",
+    "context": "in error copy",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r69",
+    "text": "Put inline error text directly under the field it refers to.",
+    "context": "",
+    "topics": [
+      "layout",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r70",
+    "text": "Say what failed and offer a retry button when an empty state comes from an error.",
+    "context": "",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r71",
+    "text": "Place labels above fields and never use placeholder text as the only label.",
+    "context": "",
+    "topics": [
+      "layout",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r72",
+    "text": "Let users toggle each notification category individually, with one master switch at the top.",
+    "context": "in notification settings",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r73",
+    "text": "Offer CSV export from a menu in the table's header corner, not as a loose button.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r74",
+    "text": "Lead every empty state with a headline that says what will live here.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r75",
+    "text": "Use a bottom sheet for secondary choices instead of sending people to a new page.",
+    "context": "on mobile",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r76",
+    "text": "Keep the bottom tab bar to four or five destinations, each with an icon and a label.",
+    "context": "on mobile",
+    "topics": [
+      "layout",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r77",
+    "text": "Open the mobile menu as a full-screen layer rather than a small dropdown.",
+    "context": "on mobile",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved",
+    "question": "Should the full-screen menu slide in from the side or fade in?"
+  },
+  {
+    "id": "r78",
+    "text": "End onboarding with a short success screen that names the next action.",
+    "context": "",
+    "topics": [
+      "flow",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r79",
+    "text": "Cap the setup checklist at five items.",
+    "context": "on first-run dashboards",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r80",
+    "text": "Add a search field at the top once settings span many sections.",
+    "context": "in settings",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r81",
+    "text": "Give the dashboard a single primary button, such as \"Create report\", at top right.",
+    "context": "",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r82",
+    "text": "Show skeleton rows that match the real column layout while data loads, instead of a spinner.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r83",
+    "text": "Set autofill attributes on every address and payment field.",
+    "context": "in checkout forms",
+    "topics": [
+      "interaction",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r84",
+    "text": "State units once in the column header or axis label instead of repeating them in every cell.",
+    "context": "",
+    "topics": [
+      "copy",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r85",
+    "text": "Preserve entered data when the user goes back to a previous onboarding step.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r86",
+    "text": "Summarise plan differences in a comparison of no more than six rows before the full table.",
+    "context": "on pricing pages",
+    "topics": [
+      "layout",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r87",
+    "text": "Ask for sign-up only after showing the visitor something of value.",
+    "context": "",
+    "topics": [
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r88",
+    "text": "Group related fields under a short heading so the form reads as a few chunks.",
+    "context": "in long forms",
+    "topics": [
+      "layout",
+      "visual"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r89",
+    "text": "Keep empty state body copy to two lines or fewer.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r90",
+    "text": "Show code in a monospace block with a copy button.",
+    "context": "",
+    "topics": [
+      "visual",
+      "interaction"
+    ],
+    "status": "dismissed"
+  },
+  {
+    "id": "r91",
+    "text": "Keep notification titles to five words or fewer.",
+    "context": "in notification lists",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r92",
+    "text": "Add one line of helper text under a setting only when the label alone is ambiguous.",
+    "context": "in settings",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r93",
+    "text": "Remember each user's sort, filters, and date range between sessions.",
+    "context": "",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r94",
+    "text": "Group notifications by day with the newest at the top.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r95",
+    "text": "Avoid disabled submit buttons; keep them active and explain what is missing when pressed.",
+    "context": "in forms",
+    "topics": [
+      "interaction",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r96",
+    "text": "Right-align numeric columns so digits line up for easy comparison.",
+    "context": "in data tables",
+    "topics": [
+      "layout",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r97",
+    "text": "Avoid carousels for key messages; show them in a static row or stack.",
+    "context": "",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r98",
+    "text": "Prefer bars over pie charts whenever more than three categories are compared.",
+    "context": "in charts",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r99",
+    "text": "Make the whole row tappable for radio buttons and checkboxes, not just the small control.",
+    "context": "on mobile",
+    "topics": [
+      "interaction",
+      "accessibility"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r100",
+    "text": "Limit onboarding to three steps before the user reaches the product itself.",
+    "context": "",
+    "topics": [
+      "flow",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r101",
+    "text": "Match the mobile keyboard to the field: numeric for card numbers, email layout for email addresses.",
+    "context": "",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r102",
+    "text": "Label the main button with the step's outcome, such as Create project, instead of Next.",
+    "context": "in onboarding",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r103",
+    "text": "Keep backgrounds neutral; use colour only for buttons and links.",
+    "context": "",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r104",
+    "text": "Pair every status colour with an icon or a word so meaning never depends on colour alone.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r105",
+    "text": "Pair the primary button with a text link for learning more, never a second filled button.",
+    "context": "in empty states",
+    "topics": [
+      "visual",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r106",
+    "text": "Show three customer logos at most in the first proof strip instead of a long wall of them.",
+    "context": "",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r107",
+    "text": "Write testimonials with the person's name, role, and a specific result.",
+    "context": "in testimonial blocks",
+    "topics": [
+      "copy",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r108",
+    "text": "Name exactly what will be deleted in the confirmation dialog for destructive actions.",
+    "context": "",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r109",
+    "text": "Show a skeleton layout while content loads rather than a blank screen or lone spinner.",
+    "context": "on mobile",
+    "topics": [
+      "interaction",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r110",
+    "text": "Offer guest checkout before asking anyone to create an account.",
+    "context": "in checkout",
+    "topics": [
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r111",
+    "text": "Group settings under plain-word section headings such as Account, Notifications and Privacy.",
+    "context": "",
+    "topics": [
+      "layout",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r112",
+    "text": "Tell users who can grant access when a list is empty because of permissions.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r113",
+    "text": "Open external links in the same tab unless leaving would lose form progress.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r114",
+    "text": "Put the FAQ below pricing and keep each answer under three sentences.",
+    "context": "",
+    "topics": [
+      "flow",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r115",
+    "text": "Place the change versus the previous period beside each headline number, using an arrow and a percentage.",
+    "context": "",
+    "topics": [
+      "copy",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r116",
+    "text": "Explain why information is requested in one sentence under the step heading.",
+    "context": "in onboarding forms",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r117",
+    "text": "Keep page header and navigation visible when content is empty.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r118",
+    "text": "Make tap targets comfortably large and leave clear space between neighbouring ones.",
+    "context": "on mobile screens",
+    "topics": [
+      "accessibility",
+      "interaction"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r119",
+    "text": "Pair closely related short fields on one row, such as city with postcode, or expiry with security code.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r120",
+    "text": "Show the full total including shipping and tax before the final step, never only on the last screen.",
+    "context": "",
+    "topics": [
+      "copy",
+      "flow"
+    ],
+    "status": "dismissed"
+  },
+  {
+    "id": "r121",
+    "text": "Order tooltip content as label, then date, then exact value.",
+    "context": "in charts",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r122",
+    "text": "Offer a clear filters button when a search or filter returns nothing.",
+    "context": "in lists and search",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r123",
+    "text": "Replace header-only empty tables with a proper empty state.",
+    "context": "in data tables",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r124",
+    "text": "Use a single column for forms.",
+    "context": "in forms",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r125",
+    "text": "Keep chart gridlines faint and horizontal only.",
+    "context": "in charts",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r126",
+    "text": "Collapse the promo code field behind a 'Have a code?' link.",
+    "context": "",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved",
+    "question": "Should the promo field also stay collapsed on desktop, or only on mobile?"
+  },
+  {
+    "id": "r127",
+    "text": "Don't blame the user: write 'We couldn't find that email' rather than 'You entered the wrong email'.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r128",
+    "text": "Let users edit any earlier step from the review screen without losing data entered later.",
+    "context": "",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r129",
+    "text": "Provide a reset-to-default link per section rather than one global reset.",
+    "context": "in settings",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r130",
+    "text": "Confirm destructive actions with a dialog that names the item being removed.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r131",
+    "text": "End the page with a closing headline that restates the offer in one sentence, above the footer.",
+    "context": "on landing pages",
+    "topics": [
+      "copy",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r132",
+    "text": "Put the primary action at the bottom of each step with a quiet skip link beside it.",
+    "context": "in onboarding steps",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r133",
+    "text": "Show the monthly price first, with annual savings stated as a note beside it.",
+    "context": "on pricing pages",
+    "topics": [
+      "copy",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r134",
+    "text": "Underline links in body copy so they read clearly as links.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r135",
+    "text": "Start bar chart baselines at zero so bar length stays honest.",
+    "context": "in bar charts",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r136",
+    "text": "Put page count and a rows-per-page selector at the bottom of paginated tables.",
+    "context": "in data tables",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r137",
+    "text": "Name metrics in plain language and avoid internal jargon or undefined abbreviations.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r138",
+    "text": "Show each setting's current value in its list row before the user opens it.",
+    "context": "in settings lists",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r139",
+    "text": "Mark the current page in navigation with more than colour alone.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r140",
+    "text": "Show a brief confirmation message beside the control after a setting is saved.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r141",
+    "text": "Order settings sections by how often people use them, most common first.",
+    "context": "in settings pages",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r142",
+    "text": "Preselect the saved delivery address and show a 'Change' link beside it.",
+    "context": "in returning-customer checkout",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r143",
+    "text": "Abbreviate large numbers, like 1.2M, in summary cards, and show full values in tables.",
+    "context": "",
+    "topics": [
+      "copy",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r144",
+    "text": "Offer a \"Compare to previous period\" toggle instead of permanently drawing a second line.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r145",
+    "text": "Keep keyboard focus clearly visible on rows and sortable headers, and let arrow keys move between cells.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r146",
+    "text": "Lead the dashboard with the three or four numbers that answer the user's main question, before any chart.",
+    "context": "",
+    "topics": [
+      "layout",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r147",
+    "text": "Show when data was last updated beside the dashboard title, in relative words like \"5 minutes ago\".",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r148",
+    "text": "Show the card brand icon once the number is recognised.",
+    "context": "",
+    "topics": [
+      "visual",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r149",
+    "text": "Use radio buttons when there are five options or fewer; switch to a dropdown beyond that.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r150",
+    "text": "Group related metrics into one card instead of scattering many cards that each hold a single number.",
+    "context": "",
+    "topics": [
+      "layout"
+    ],
+    "status": "dismissed",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r151",
+    "text": "Place the email field first and the password field second.",
+    "context": "in sign-up forms",
+    "topics": [
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r152",
+    "text": "Disable the pay button after one click and show a 'Processing' label to prevent double charges.",
+    "context": "at payment",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r153",
+    "text": "Show a faded preview of the filled state behind the empty message.",
+    "context": "in first-use empty states",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved",
+    "question": "Should the preview be a static image or live sample data?"
+  },
+  {
+    "id": "r154",
+    "text": "Make toggle state readable through an on or off label as well as position.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r155",
+    "text": "Show inline error messages beside the field, saying how to fix the problem.",
+    "context": "in forms",
+    "topics": [
+      "copy",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r156",
+    "text": "Never launch a tour over the interface on first load; offer it through a prompt the user can accept.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r157",
+    "text": "Show a clear back control at the top left of every detail screen.",
+    "context": "on mobile",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r158",
+    "text": "Use a single Save button for forms with text fields, disabled until something changes.",
+    "context": "in settings forms",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r159",
+    "text": "Keep filters in one row above the table and show each active filter as a removable chip.",
+    "context": "in data tables",
+    "topics": [
+      "layout",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r160",
+    "text": "Offer one primary button that creates the first item.",
+    "context": "in empty states",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r161",
+    "text": "Truncate long cell text with an ellipsis and reveal the full text on hover and keyboard focus.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r162",
+    "text": "Give each chart a text summary of its main trend for screen reader users.",
+    "context": "",
+    "topics": [
+      "accessibility",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r163",
+    "text": "Group dropdown menu items under headings rather than letting the list scroll.",
+    "context": "in mega menus",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r164",
+    "text": "Keep column headers to one or two words in sentence case.",
+    "context": "in data tables",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r165",
+    "text": "Put a 'Mark all as read' action at the top of the list.",
+    "context": "in notification lists",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r166",
+    "text": "Highlight one recommended plan and leave the other plans visually quiet.",
+    "context": "on pricing pages",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r167",
+    "text": "Separate nothing yet from no results in wording, since the first invites creation and the second invites changing filters.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r168",
+    "text": "Use real product screenshots in feature sections instead of abstract illustrations.",
+    "context": "",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r169",
+    "text": "Say what went wrong and how to fix it, in two short sentences at most.",
+    "context": "in error messages",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r170",
+    "text": "Let users skip any step that isn't required to start using the product.",
+    "context": "",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r171",
+    "text": "Give every empty state one clear action button.",
+    "context": "",
+    "topics": [
+      "layout",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r172",
+    "text": "Keep empty states to one short line of explanation and one action.",
+    "context": "on mobile screens",
+    "topics": [
+      "copy",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r173",
+    "text": "Place form labels above fields instead of using placeholders as labels.",
+    "context": "in forms",
+    "topics": [
+      "accessibility",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r174",
+    "text": "Use a sticky header that shrinks on scroll rather than one that disappears.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r175",
+    "text": "Label chart lines directly at their endpoints instead of sending the eye to a separate legend.",
+    "context": "in line charts",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r176",
+    "text": "Mark optional fields with the word 'optional' instead of marking required fields with asterisks.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r177",
+    "text": "Show progress as a step count, such as 'Step 2 of 4'.",
+    "context": "in multi-step flows",
+    "topics": [
+      "flow",
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r178",
+    "text": "Add an error summary at the top listing each problem as a link to its field.",
+    "context": "in long forms",
+    "topics": [
+      "accessibility",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r179",
+    "text": "Offer a search field and a link home.",
+    "context": "on error pages",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r180",
+    "text": "Write toggle labels as the thing being switched, such as Email reminders, not as a command like Enable email reminders.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "dismissed"
+  },
+  {
+    "id": "r181",
+    "text": "Ask for one piece of information per screen.",
+    "context": "in onboarding forms",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r182",
+    "text": "Show the result count beside the table title and update it as filters change.",
+    "context": "",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r183",
+    "text": "Write empty states in friendly, plain language and never apologise for the emptiness.",
+    "context": "",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r184",
+    "text": "Use axis-free sparklines inside table cells to show trends alongside the current value.",
+    "context": "",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r185",
+    "text": "Cap a line chart at four series and group everything else under a single series labelled \"Other\".",
+    "context": "in line charts",
+    "topics": [
+      "visual",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r186",
+    "text": "Use toasts only for confirmations that need no follow-up action.",
+    "context": "in notifications",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r187",
+    "text": "Keep the overview page to a small set of widgets and move the rest to dedicated detail pages.",
+    "context": "",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved",
+    "basis": "interpreted",
+    "question": "How many widgets is too many on an overview page?"
+  },
+  {
+    "id": "r188",
+    "text": "Prefer simple, sparse illustrations over busy hero graphics.",
+    "context": "in onboarding",
+    "topics": [
+      "visual"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r189",
+    "text": "Give password fields a show and hide toggle.",
+    "context": "",
+    "topics": [
+      "interaction",
+      "accessibility"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r190",
+    "text": "Offer an undo toast instead of a confirmation dialog when a deletion is reversible.",
+    "context": "in lists and tables",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r191",
+    "text": "Never say 'invalid' on its own; name the format the field expects.",
+    "context": "in error messages",
+    "topics": [
+      "copy"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r192",
+    "text": "Keep hero subheads to two lines or fewer.",
+    "context": "",
+    "topics": [
+      "copy",
+      "layout"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r193",
+    "text": "Keep offline messages calm: say 'You're offline' and retry automatically once the connection returns.",
+    "context": "",
+    "topics": [
+      "copy",
+      "interaction"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r194",
+    "text": "Offer a skip option on every optional onboarding step.",
+    "context": "in onboarding",
+    "topics": [
+      "flow",
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r195",
+    "text": "Keep body paragraphs to a short line length that reads comfortably.",
+    "context": "on desktop",
+    "topics": [
+      "layout",
+      "accessibility"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r196",
+    "text": "Explain why access is needed in a short pre-prompt before the system permission dialog appears.",
+    "context": "",
+    "topics": [
+      "copy",
+      "flow"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r197",
+    "text": "Keep a search field visible in the header when the site has more than a handful of pages.",
+    "context": "in site headers",
+    "topics": [
+      "layout",
+      "flow"
+    ],
+    "status": "approved",
+    "basis": "interpreted"
+  },
+  {
+    "id": "r198",
+    "text": "Let users show, hide, and reorder columns from a single columns menu.",
+    "context": "in data tables",
+    "topics": [
+      "interaction"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "r199",
+    "text": "Offer a density toggle with two options, comfortable and compact, near the table's top corner.",
+    "context": "in data tables",
+    "topics": [
+      "interaction",
+      "layout"
+    ],
+    "status": "approved",
+    "question": "Should the density choice be saved per user or per table?"
+  },
+  {
+    "id": "r200",
+    "text": "When rows are selected, replace the header with a bulk action bar that shows the selected count.",
+    "context": "in data tables",
+    "topics": [
+      "interaction",
+      "flow"
+    ],
+    "status": "approved"
+  }
+]
