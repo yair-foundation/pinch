@@ -87,16 +87,16 @@ describe('marks', () => {
 describe('cropRect', () => {
   it('crops a square around a dot and keeps it inside the image', () => {
     assert.deepEqual(cropRect({ kind: 'dot', x: 0.5, y: 0.5 }, 1600, 1000), {
-      x: 640,
-      y: 340,
-      w: 320,
-      h: 320,
+      x: 320,
+      y: 188,
+      w: 960,
+      h: 624,
     });
     assert.deepEqual(cropRect({ kind: 'dot', x: 0.99, y: 0.01 }, 1600, 1000), {
-      x: 1280,
+      x: 640,
       y: 0,
-      w: 320,
-      h: 320,
+      w: 960,
+      h: 624,
     });
   });
 
@@ -399,8 +399,8 @@ describe('export names and text', () => {
     const a = asset({ marks: [mark({ good: 'Fine.' })] });
     const data = manifest([a], '2026-10-19T10:00:00.000Z');
     assert.equal(data.contactSheet, 'contact-sheet.jpg');
-    assert.equal(data.guide, 'AGENTS.md');
-    assert.deepEqual(data.assets[0].notes[0].cropPixels, { x: 640, y: 340, w: 320, h: 320 });
+    assert.equal(data.guide, 'README.md');
+    assert.deepEqual(data.assets[0].notes[0].cropPixels, { x: 320, y: 188, w: 960, h: 624 });
     const settled = { x: 640, y: 360, w: 300, h: 280 };
     const withCrops = manifest([a], 'x', () => settled);
     assert.deepEqual(withCrops.assets[0].notes[0].cropPixels, settled);
