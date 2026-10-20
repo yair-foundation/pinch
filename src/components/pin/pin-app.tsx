@@ -1256,7 +1256,7 @@ function Workspace() {
           className={cn(
             'flex items-center gap-2.5',
             landing &&
-              'h-9 rounded-full bg-background/80 px-3.5 shadow-sm ring-1 ring-border/70 backdrop-blur-md',
+              'h-9 rounded-full bg-background/80 px-3.5 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
           )}
         >
           {landing ? (
@@ -1286,7 +1286,7 @@ function Workspace() {
           className={cn(
             'ml-auto flex items-center gap-2',
             landing &&
-              'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md',
+              'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
           )}
         >
           {assets.length > 0 && (
