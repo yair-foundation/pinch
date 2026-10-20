@@ -1,4 +1,4 @@
-import { BlobPreconditionFailedError, get, put } from '@vercel/blob';
+import { BlobPreconditionFailedError, del, get, list, put } from '@vercel/blob';
 
 /*
  * Small JSON documents in the private Vercel Blob store, changed by
@@ -9,6 +9,10 @@ import { BlobPreconditionFailedError, get, put } from '@vercel/blob';
  *
  * Without Blob credentials (local development) the same logic runs on
  * in-memory documents.
+ *
+ * Accounts keep their collections here too (D79): one document per
+ * collection under the account's folder, listed by prefix, written whole and
+ * deleted with the account.
  */
 
 /**
@@ -18,7 +22,7 @@ import { BlobPreconditionFailedError, get, put } from '@vercel/blob';
  */
 export const strongEtag = (etag: string) => etag.replace(/^W\//, '');
 
-const hasBlob = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+export const hasBlob = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 const memory = new Map<string, unknown>();
 
 export async function readDocument<T>(key: string, empty: T): Promise<{ doc: T; etag?: string }> {
@@ -67,4 +71,31 @@ export async function updateDocument<T, R>(
     }
   }
   throw new Error(busy);
+}
+
+/** Write a document whole, over whatever was there: for documents only their owner writes. */
+export async function putDocument<T>(key: string, doc: T) {
+  await writeDocument(key, doc);
+}
+
+/** The keys of every document under a prefix ("pinch-users/u1/collections/"). */
+export async function listDocuments(prefix: string): Promise<string[]> {
+  if (!hasBlob()) return [...memory.keys()].filter((k) => k.startsWith(prefix));
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix, cursor, limit: 1000 });
+    keys.push(...page.blobs.map((b) => b.pathname));
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+  return keys;
+}
+
+export async function deleteDocuments(keys: string[]) {
+  if (!keys.length) return;
+  if (!hasBlob()) {
+    for (const k of keys) memory.delete(k);
+    return;
+  }
+  await del(keys);
 }

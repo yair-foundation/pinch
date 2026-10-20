@@ -77,7 +77,7 @@ export type Notice = {
 const newId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => (b % 36).toString(36)).join('');
 const nowIso = () => new Date().toISOString();
-const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const OPEN_KEY = 'pinch-collection';
 /** A collection is written this long after its last change, so typing a rule isn't a write per key. */
 const SAVE_PAUSE = 600;
@@ -407,10 +407,10 @@ export function CollectionsView({
       const lost = collection.batches.length - kept.length;
       onStatus({
         tone: lost ? 'error' : 'info',
-        text: `Opened ${c.name}: ${count(kept.length, 'batch')}, ${count(
+        text: `Opened ${c.name}: ${count(kept.length, 'batch', 'batches')}, ${count(
           c.learnings.filter((l) => l.text.trim()).length,
           'rule',
-        )}.${lost ? ` ${count(lost, 'batch')} couldn’t be kept.` : ''}`,
+        )}.${lost ? ` ${count(lost, 'batch', 'batches')} couldn’t be kept.` : ''}`,
       });
     },
     [adopt, backend, onStatus, save],
@@ -565,7 +565,11 @@ export function CollectionsView({
       onStatus({
         tone: 'info',
         text: `Exported ${count(rules.length, 'rule')}${
-          untouched ? `, ${untouched} of them AI drafts you didn’t edit` : ''
+          untouched === 1
+            ? ', one of them an AI draft you didn’t edit'
+            : untouched
+              ? `, ${untouched} of them AI drafts you didn’t edit`
+              : ''
         }. Put design-rules.md where your agent reads its instructions, with the evidence folder beside it.`,
       });
       setExporting(false);
@@ -764,7 +768,7 @@ export function CollectionsView({
                   >
                     <span className="truncate text-sm font-medium">{c.name}</span>
                     <span className="text-[13px] text-muted-foreground">
-                      {count(written, 'rule')} · {count(c.batches.length, 'batch')}
+                      {count(written, 'rule')} · {count(c.batches.length, 'batch', 'batches')}
                     </span>
                   </button>
                 </li>
@@ -891,7 +895,7 @@ export function CollectionsView({
                   confirm.collection.learnings.filter((l) => l.batchId === confirm.batch.id).length,
                   'rule',
                 )} go with it. Download it first to keep the batch.`
-              : `Its ${count(confirm.collection.batches.length, 'batch')} and ${count(
+              : `Its ${count(confirm.collection.batches.length, 'batch', 'batches')} and ${count(
                   confirm.collection.learnings.length,
                   'rule',
                 )} are deleted${backend.kind === 'account' ? ' from your account' : ' from this browser'}. Download the collection first to keep it.`}
@@ -1012,7 +1016,7 @@ function CollectionPage({
           </button>
         </div>
         <p className="text-[13px] text-muted-foreground">
-          {count(c.batches.length, 'batch')} · {count(rules, 'rule')}
+          {count(c.batches.length, 'batch', 'batches')} · {count(rules, 'rule')}
           {empty ? ` · ${empty} to write` : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -1330,7 +1334,7 @@ function ExportDialog({
   return (
     <Dialog id="export-title" title="Export rules" opener={opener} onClose={onClose}>
       <div className="space-y-4 text-[13px]">
-        <fieldset className="m-0 min-w-0 border-0 p-0">
+        <fieldset className="min-w-0 border-0 p-0">
           <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">For</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {SCOPES.map((s) => (
@@ -1349,7 +1353,7 @@ function ExportDialog({
             ))}
           </div>
         </fieldset>
-        <fieldset className="m-0 min-w-0 border-0 p-0">
+        <fieldset className="min-w-0 border-0 p-0">
           <legend className="mb-1 p-0 leading-7 font-medium text-muted-foreground">About</legend>
           <div className="flex flex-wrap gap-2">
             {present.map((t) => {

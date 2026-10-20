@@ -31,6 +31,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -67,6 +68,8 @@ import { imageSummary } from '@/lib/pin/summary';
 import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
+import { AccessGate, AccountDialog, locked as isLocked, signOut, useMe } from './account';
+import { cloudBackend } from './cloud-store';
 import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
@@ -264,6 +267,8 @@ const local = {
 };
 const SUGGEST_KEY = 'pinch-suggestions';
 const SENT_KEY = 'pinch-sent';
+/** "off" when the visitor switched off saving their notes' words (D80). */
+const SAVE_NOTES_KEY = 'pinch-save-notes';
 /** Images removed from the session but kept for Undo; deleted on the next visit if still listed. */
 const ORPHANS_KEY = 'pinch-orphans';
 /** The open image's id, so a reload comes back to it. */
@@ -364,7 +369,7 @@ const pinOf = (id: string) =>
 /** One tab's name, so a tab can tell its own saves from another's. */
 const TAB_ID = newId();
 
-type DialogKind = 'shortcuts' | 'privacy' | 'home';
+type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'account';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
 const digestOf = (list: Asset[]) => {
@@ -421,6 +426,23 @@ function Workspace() {
   const [view, setView] = useState<'batch' | 'collections'>('batch');
   const viewRef = useRef(view);
   viewRef.current = view;
+  // Who is looking, and whether Pinch is theirs to use (D79). Closed: billing is on, not bought.
+  const { me, refresh: refreshMe } = useMe();
+  const closed = isLocked(me);
+  const closedRef = useRef(closed);
+  closedRef.current = closed;
+  // Collections live in the account once signed in, in this browser otherwise.
+  const cloudKey = me?.user && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
+  const backend = useMemo(() => {
+    if (!cloudKey) return browserBackend;
+    const [mode, folder] = cloudKey.split(' ');
+    return cloudBackend(folder, mode as 'blob' | 'memory');
+  }, [cloudKey]);
+  // Saving the words of notes (D63), on unless the visitor switched it off (D80).
+  const [saveNotes, setSaveNotes] = useState(true);
+  useEffect(() => {
+    setSaveNotes(local.get(SAVE_NOTES_KEY) !== 'off');
+  }, []);
   const history = useRef<History>(null as unknown as History);
   history.current ??= new History();
   // The latest session, kept in step with history so handlers never read a stale render.
@@ -543,6 +565,20 @@ function Workspace() {
     setSuggestPref(local.get(SUGGEST_KEY) !== 'off');
   }, []);
 
+  // Back from Google: say how it went, once, and take the word out of the address.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const signin = url.searchParams.get('signin');
+    if (!signin) return;
+    setStatus(
+      signin === 'off'
+        ? { tone: 'error', text: 'Sign-in isn’t set up on this site yet.' }
+        : { tone: 'error', text: 'Sign-in didn’t finish. Try again.' },
+    );
+    url.searchParams.delete('signin');
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+  }, []);
+
   // An information toast goes by itself, staying longer the more it says; an error stays until
   // dismissed, and so does a sticky one. One with an Undo button stays a little longer.
   useEffect(() => {
@@ -652,6 +688,7 @@ function Workspace() {
   const sent = useRef<Record<string, string> | null>(null);
   const sendingNotes = useRef(false);
   const flushNotes = useCallback((leaving = false) => {
+    if (local.get(SAVE_NOTES_KEY) === 'off') return;
     if (!sent.current) {
       try {
         sent.current = JSON.parse(local.get(SENT_KEY) ?? '{}');
@@ -766,6 +803,10 @@ function Workspace() {
 
   const addFiles = useCallback(
     async (dropped: File[]) => {
+      if (closedRef.current) {
+        setStatus({ tone: 'error', text: 'Get Pinch to add images.' });
+        return;
+      }
       for (const file of dropped.filter(isZip)) await openExport(file);
       const files = dropped.filter((f) => !isZip(f));
       if (!files.length) return;
@@ -993,7 +1034,7 @@ function Workspace() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys.
-      if (dialog || view === 'collections') return;
+      if (dialog || view === 'collections' || closed) return;
       if (e.key === 'Escape') {
         if (isTyping(e.target)) (e.target as HTMLElement).blur();
         else if (!selected && tool !== 'pin') setTool('pin');
@@ -1118,6 +1159,7 @@ function Workspace() {
     undo,
     redo,
     view,
+    closed,
   ]);
 
   const toggleSuggestions = () => {
@@ -1336,9 +1378,17 @@ function Workspace() {
   };
 
   // The landing: no image yet, so the header floats over the painting in two glass pills.
-  const landing = loaded && !asset && view === 'batch';
+  // Closed to this visitor, the landing stays, with sign-in and buy in place of Add images.
+  const landing = loaded && (!asset || closed) && view === 'batch';
   // The batch's own controls in the header: its count, suggestions, copy, export and keys.
-  const batchTools = view === 'batch' && assets.length > 0;
+  const batchTools = view === 'batch' && assets.length > 0 && !closed;
+
+  const leaveAccount = async (text: string) => {
+    closeDialog();
+    setView('batch');
+    await refreshMe();
+    setStatus({ tone: 'info', text });
+  };
 
   return (
     <div className="relative flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -1480,7 +1530,7 @@ function Workspace() {
               </Tooltip>
             </TooltipProvider>
           )}
-          {loaded && (
+          {loaded && !closed && (
             // Between the batch and the collections, which take its place (D77).
             <button
               type="button"
@@ -1499,6 +1549,21 @@ function Workspace() {
                 <ArrowLeft className="size-4" aria-hidden />
               )}
               {view === 'batch' ? 'Collections' : assets.length ? 'Back to batch' : 'Back'}
+            </button>
+          )}
+          {me?.user && (
+            <button
+              type="button"
+              aria-label={`Account: ${me.user.email}`}
+              title={me.user.email}
+              aria-expanded={dialog === 'account'}
+              onClick={() => openDialog('account')}
+              className={cn(
+                hit,
+                'flex size-8 items-center justify-center rounded-full bg-muted text-[13px] font-medium uppercase text-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-border',
+              )}
+            >
+              {(me.user.name || me.user.email).charAt(0)}
             </button>
           )}
           <ThemeToggle />
@@ -1594,17 +1659,46 @@ function Workspace() {
 
       {!loaded ? null : view === 'collections' ? (
         <CollectionsView
+          key={cloudKey || 'browser'}
           inert={dialog !== null}
-          backend={browserBackend}
+          backend={backend}
+          moveFrom={cloudKey ? browserBackend : undefined}
           openNotes={allMarks.length}
           batchZip={batchZip}
           onOpenBatch={openStoredBatch}
           onStatus={setStatus}
         />
-      ) : !asset ? (
+      ) : !asset || closed ? (
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
+          price={me?.paywall ? me.price : undefined}
+          gate={
+            !me
+              ? // Until the account is known, the card holds the action's place empty.
+                (buttonClass, hintClass) => (
+                  <>
+                    <span aria-hidden className={cn(buttonClass, 'invisible')}>
+                      Add images
+                    </span>
+                    <span aria-hidden className={cn(hintClass, 'invisible')}>
+                      Or drag images here.
+                    </span>
+                  </>
+                )
+              : closed
+              ? (buttonClass, hintClass) => (
+                  <AccessGate
+                    me={me}
+                    buttonClass={buttonClass}
+                    hintClass={hintClass}
+                    onRefresh={refreshMe}
+                    onSignOut={() => leaveAccount('Signed out.')}
+                    onMessage={(tone, text) => setStatus({ tone, text })}
+                  />
+                )
+              : undefined
+          }
           onChoose={() => fileInput.current?.click()}
           onPrivacy={() => openDialog('privacy')}
         />
@@ -1664,7 +1758,31 @@ function Workspace() {
       {dialog === 'shortcuts' && (
         <ShortcutsDialog mac={mac} opener={opener.current} onClose={closeDialog} />
       )}
-      {dialog === 'privacy' && <PrivacyDialog opener={opener.current} onClose={closeDialog} />}
+      {dialog === 'privacy' && (
+        <PrivacyDialog
+          opener={opener.current}
+          onClose={closeDialog}
+          saveNotes={saveNotes}
+          onSaveNotes={(on) => {
+            setSaveNotes(on);
+            local.set(SAVE_NOTES_KEY, on ? 'on' : 'off');
+          }}
+        />
+      )}
+      {dialog === 'account' && me && (
+        <AccountDialog
+          me={me}
+          opener={opener.current}
+          onClose={closeDialog}
+          onSignOut={async () => {
+            await signOut();
+            await leaveAccount('Signed out.');
+          }}
+          onDeleted={() =>
+            leaveAccount('Your account and its collections were deleted. Your purchase is kept.')
+          }
+        />
+      )}
       {dialog === 'home' && (
         <Dialog
           id="home-title"
@@ -1722,9 +1840,19 @@ function Workspace() {
 }
 
 /** How Pinch uses what the user gives it, said plainly; opened from the landing footer and the header. */
-function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClose: () => void }) {
+function PrivacyDialog({
+  opener,
+  onClose,
+  saveNotes,
+  onSaveNotes,
+}: {
+  opener: HTMLElement | null;
+  onClose: () => void;
+  saveNotes: boolean;
+  onSaveNotes: (on: boolean) => void;
+}) {
   const item = (title: string, body: React.ReactNode) => (
-    <p className="m-0">
+    <p>
       <strong className="font-medium text-foreground">{title}</strong> {body}
     </p>
   );
@@ -1739,7 +1867,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <div className="max-h-[70vh] space-y-3 overflow-y-auto text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Your images',
-          'stay in this browser, stored in its IndexedDB. They are not uploaded, except for AI suggestions, as below.',
+          'stay in this browser, stored in its IndexedDB. They leave it only for AI suggestions, as below, and when you keep a batch in a collection in your account.',
         )}
         {item(
           'AI suggestions',
@@ -1747,19 +1875,35 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Notes text:',
-          'the words of your notes (what works, what doesn’t and the short name) are saved without your name, images, file names or links, and kept for 90 days, to learn how designers judge screens. This can’t be switched off. A salted hash of your IP address is used only to count daily limits.',
+          'the words of your notes (what works, what doesn’t and the short name) are saved without your name, account, images, file names or links, and kept for 90 days, to learn how designers judge screens. Switch it off and nothing more is saved from this browser; what was saved stays anonymous and goes after 90 days. A salted hash of your IP address is used only to count daily limits.',
         )}
+        <label
+          htmlFor="save-notes"
+          className="flex min-h-9 items-center gap-2 text-sm text-foreground"
+        >
+          <Switch
+            id="save-notes"
+            size="sm"
+            checked={saveNotes}
+            onCheckedChange={(on) => onSaveNotes(Boolean(on))}
+          />
+          Save my notes’ words
+        </label>
         {item(
           'Topic tags:',
           'each saved note’s words are sent to TypeSafe’s Jev to tag its topic (type, colour, layout, and so on). Nothing else goes with them.',
         )}
         {item(
-          'Collections',
-          'and their batches and rules stay in this browser. When you ask for drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
+          'Your account:',
+          'signing in with Google gives Pinch your email and name, kept with your account. Your purchase is kept under a hash of your email; Lemon Squeezy, who sell Pinch, keep the payment details.',
         )}
         {item(
-          'No accounts, no ads, no analytics.',
-          'Your theme and settings are kept in this browser.',
+          'Collections',
+          'in your account, with their batches (screenshots included) and rules, are kept privately in Pinch’s storage on Vercel, for you alone; deleting your account deletes them. Without an account they stay in this browser. When you ask for rule drafts, the words of a collection’s notes (what works, what doesn’t, their topics and whose design it is) are sent to Anthropic’s API (Claude) to draft a rule for each. Never the images or file names, and we don’t store them.',
+        )}
+        {item(
+          'No ads, no analytics.',
+          'One cookie keeps you signed in; your theme and settings are kept in this browser.',
         )}
         {item(
           'Contact:',
@@ -1925,14 +2069,25 @@ const PARALLAX = { x: 44, y: 28 };
 /** The painting is drawn this much larger, so its edges never show as it drifts. */
 const PARALLAX_SCALE = 1.1;
 
+/** The landing card's main button and the hint under it, shared with the sign-in and buy gate. */
+const LANDING_BUTTON =
+  'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
+const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
+
 function EmptyState({
   dragging,
   inert,
+  price,
+  gate,
   onChoose,
   onPrivacy,
 }: {
   dragging: boolean;
   inert: boolean;
+  /** Pinch's price, once billing is on (D79). */
+  price?: string;
+  /** In place of Add images while Pinch is closed to this visitor: sign in, then buy. */
+  gate?: (buttonClass: string, hintClass: string) => React.ReactNode;
   onChoose: () => void;
   onPrivacy: () => void;
 }) {
@@ -2045,32 +2200,32 @@ function EmptyState({
                   agent.
                 </p>
                 <div className="mt-5 flex flex-col items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={onChoose}
-                    className="flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white"
-                  >
-                    <Plus className="size-4" aria-hidden />
-                    Add images
-                  </button>
-                  <p
-                    className="m-0 text-center text-[13px] leading-relaxed text-current/80"
-                    aria-live="polite"
-                  >
-                    {dragging ? (
-                      <span className="text-current">Drop to add them.</span>
-                    ) : (
-                      'Or drag images or a Pinch export here, or paste.'
-                    )}
-                  </p>
+                  {gate ? (
+                    gate(LANDING_BUTTON, LANDING_HINT)
+                  ) : (
+                    <>
+                      <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
+                        <Plus className="size-4" aria-hidden />
+                        Add images
+                      </button>
+                      <p className={LANDING_HINT} aria-live="polite">
+                        {dragging ? (
+                          <span className="text-current">Drop to add them.</span>
+                        ) : (
+                          'Or drag images or a Pinch export here, or paste.'
+                        )}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           </div>
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
-              Free, no account. Images stay in this browser; AI suggestions send the marked area to
-              Anthropic.{' '}
+              {price
+                ? `Pinch is ${price} once, with a Google sign-in. Images stay in this browser unless you keep them in a collection; AI suggestions send the marked area to Anthropic.`
+                : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"
                 data-privacy-trigger
@@ -2081,7 +2236,13 @@ function EmptyState({
               </button>
             </span>
             <span className="mx-auto mt-1 block">
-              Created by{' '}
+              <a
+                href="/terms"
+                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                Terms
+              </a>{' '}
+              · Created by{' '}
               <a
                 href="https://yair-works.vercel.app"
                 target="_blank"

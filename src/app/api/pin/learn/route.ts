@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import { gate } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { costUsd, visitorKey } from '@/lib/budget';
 import { reserveLearning, settleLearning } from '@/lib/pin/ai-budget';
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
   if (!available()) return fail(503, 'Drafting is off right now.');
   if (!isSameOriginWrite(request.headers, new URL(request.url).origin))
     return fail(403, 'Forbidden');
+  const blocked = await gate(request);
+  if (blocked) return blocked;
 
   const body = await request.text().catch(() => '');
   if (!body || body.length > MAX_BODY) return fail(400, 'Send a few notes.');

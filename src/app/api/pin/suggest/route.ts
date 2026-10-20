@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import { gate } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { sniffImage } from '@/lib/image';
 import { reserveSuggestion, settleSuggestion } from '@/lib/pin/ai-budget';
@@ -39,6 +40,8 @@ export async function POST(request: Request) {
   if (!available()) return fail(503, 'Suggestions are off right now.');
   if (!isSameOriginWrite(request.headers, new URL(request.url).origin))
     return fail(403, 'Forbidden');
+  const blocked = await gate(request);
+  if (blocked) return blocked;
 
   let form: FormData;
   try {
