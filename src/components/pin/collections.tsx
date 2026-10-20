@@ -3,6 +3,7 @@
 import {
   Check,
   ChevronDown,
+  FileText,
   Cloud,
   Lock,
   Pencil,
@@ -1028,19 +1029,32 @@ function RuleCard({
           {r.title && (
             <h4 className="text-[15px] leading-snug font-medium text-foreground">{r.title}</h4>
           )}
-          <p
-            id={`${id}-text`}
-            className={cn(
-              editing
-                ? 'sr-only'
-                : r.title
-                  ? 'text-sm leading-relaxed text-muted-foreground'
-                  : 'text-[15px] leading-snug',
-              !editing && !r.title && (waiting(r) ? 'text-muted-foreground' : 'text-foreground'),
-            )}
-          >
-            {r.text}
-          </p>
+          {editing ? (
+            <p id={`${id}-text`} className="sr-only">
+              {r.text}
+            </p>
+          ) : (
+            // The rule's words, behind a document icon in a small box, its first line beside it.
+            <div className="flex gap-2.5">
+              <span className={r.title ? 'mt-0.5' : undefined}>
+                <SmallIcon>
+                  <FileText />
+                </SmallIcon>
+              </span>
+              <p
+                id={`${id}-text`}
+                className={cn(
+                  'min-w-0',
+                  r.title
+                    ? 'text-sm leading-relaxed text-muted-foreground'
+                    : 'text-[15px] leading-snug',
+                  !r.title && (waiting(r) ? 'text-muted-foreground' : 'text-foreground'),
+                )}
+              >
+                {r.text}
+              </p>
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -1244,8 +1258,8 @@ function RuleCard({
   );
 }
 
-/** A thumb in a small rounded box, as the note panel shows its fields' icons. */
-function Thumb({ children }: { children: React.ReactNode }) {
+/** An icon in a small rounded box, as the note panel shows its fields' icons. */
+function SmallIcon({ children }: { children: React.ReactNode }) {
   return (
     <span
       aria-hidden
@@ -1288,18 +1302,18 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
         <div className="mt-2.5 space-y-2">
           {note.works && (
             <p className="flex gap-2 whitespace-pre-line text-foreground">
-              <Thumb>
+              <SmallIcon>
                 <ThumbsUp />
-              </Thumb>
+              </SmallIcon>
               <span className="sr-only">To learn: </span>
               <span className="min-w-0 pt-px">{note.works}</span>
             </p>
           )}
           {note.doesNotWork && (
             <p className="flex gap-2 whitespace-pre-line text-foreground">
-              <Thumb>
+              <SmallIcon>
                 <ThumbsDown />
-              </Thumb>
+              </SmallIcon>
               <span className="sr-only">To avoid: </span>
               <span className="min-w-0 pt-px">{note.doesNotWork}</span>
             </p>
