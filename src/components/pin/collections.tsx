@@ -1244,6 +1244,18 @@ function RuleCard({
   );
 }
 
+/** A thumb in a small rounded box, as the note panel shows its fields' icons. */
+function Thumb({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="flex size-5 shrink-0 items-center justify-center rounded-md bg-foreground/[0.07] [&>svg]:size-3"
+    >
+      {children}
+    </span>
+  );
+}
+
 /** One note a rule draws on: its close-up, where it is, and what the author wrote. */
 function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
   return (
@@ -1267,25 +1279,32 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
           No close-up
         </div>
       )}
-      <div className="min-w-0 space-y-1 text-[13px] text-muted-foreground">
+      <div className="min-w-0 text-[13px] text-muted-foreground">
         <p className="truncate">
           <span className="font-mono">{note.ref}</span> · {note.image}
           {note.source ? ` · ${sourceLabel(note.source)}` : ''}
         </p>
-        {note.works && (
-          <p className="flex gap-1.5 whitespace-pre-line text-foreground">
-            <ThumbsUp aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <span className="sr-only">To learn: </span>
-            {note.works}
-          </p>
-        )}
-        {note.doesNotWork && (
-          <p className="flex gap-1.5 whitespace-pre-line text-foreground">
-            <ThumbsDown aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <span className="sr-only">To avoid: </span>
-            {note.doesNotWork}
-          </p>
-        )}
+        {/* What it says, each side behind its thumb in a small box, with room under the title line. */}
+        <div className="mt-2.5 space-y-2">
+          {note.works && (
+            <p className="flex gap-2 whitespace-pre-line text-foreground">
+              <Thumb>
+                <ThumbsUp />
+              </Thumb>
+              <span className="sr-only">To learn: </span>
+              <span className="min-w-0 pt-px">{note.works}</span>
+            </p>
+          )}
+          {note.doesNotWork && (
+            <p className="flex gap-2 whitespace-pre-line text-foreground">
+              <Thumb>
+                <ThumbsDown />
+              </Thumb>
+              <span className="sr-only">To avoid: </span>
+              <span className="min-w-0 pt-px">{note.doesNotWork}</span>
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
