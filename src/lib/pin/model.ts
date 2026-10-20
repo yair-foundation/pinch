@@ -184,8 +184,10 @@ export function cropRect(shape: Shape, width: number, height: number): Rect {
     return { x, y, w: cw, h: ch };
   };
   if (shape.kind === 'dot') {
-    const side = Math.min(720, Math.max(320, Math.round(Math.min(width, height) * 0.3)));
-    return fit(shape.x * width, shape.y * height, side, side);
+    // A landscape window, wide enough for the lines and controls around the dot, at 1:1 on a small
+    // image rather than a tiny square blown up.
+    const w = Math.min(1400, Math.max(480, Math.round(width * 0.6)));
+    return fit(shape.x * width, shape.y * height, w, Math.max(360, Math.round(w * 0.65)));
   }
   if (shape.kind === 'arrow') {
     const w = Math.abs(shape.x2 - shape.x) * width;
@@ -432,7 +434,7 @@ const HOW_TO_USE = [
 
 const FILES = [
   `\`${SHEET_FILE}\`: every image's marked copy on one sheet, each with its number.`,
-  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image with every note drawn on it: a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: a close-up of each note with its marker drawn in. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
+  '`images/`: each image as it was added; screenshots over 16 megapixels were scaled down to fit. `marked/`: the same image, scaled to 1800 px on its long side, with every note drawn on it (positions are always in the pixels of `images/`): a small ring on a dot, a box around an area, an arrow from its tail to its head, each with its number on a disc beside it. The spot the author means is the ring, the box or the two ends of the arrow, never the numbered disc: it sits nearby on a short line, and can overlap neighbouring content. `crops/`: a close-up of each note with its marker drawn in. Its edges are moved to nearby white space where there is some, but a crop can still cut through text, and a small one is scaled up (`cropPixels` in `notes.json` is the part of the original it shows).',
   'Every note below names its crop and says exactly where it sits: x from the left edge and y from the top, as a percentage of the image and in pixels of the image in `images/`. An arrow gives its tail, then its head. When the picture and the numbers seem to disagree, trust the numbers: they are the exact spot the author pointed at.',
   "Marker colours: green means what works, red what doesn't, amber both.",
   '"What works" and "What doesn\'t" are the author\'s words.',
@@ -518,7 +520,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
     coordinates:
       'Fractions of the image: x from the left edge, y from the top, 0 to 1. Pixels are of the image in images/.',
     contactSheet: SHEET_FILE,
-    guide: GUIDE_FILE,
+    guide: 'README.md',
     assets: list.map((a, i) => {
       const files = assetFiles(a, i, list.length);
       return {
