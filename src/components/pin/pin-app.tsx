@@ -2959,22 +2959,52 @@ function MarkEditor({
 
   return (
     <section className="space-y-3" aria-label={`Note ${number}`}>
-      <div className="flex items-center gap-2">
-        <h2 className="m-0 text-[13px] font-medium text-muted-foreground">
-          Note {number} · {mark.shape.kind}
-        </h2>
-        <button
-          type="button"
-          onClick={onDone}
-          className={cn(
-            hit,
-            'ml-auto flex min-h-8 items-center gap-1 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-          )}
-        >
-          <Check className="size-4" aria-hidden />
-          Done
-        </button>
-      </div>
+      {/* The note's actions sit by its title, as the image's do; the keys for them are in Done's tooltip. */}
+      <TooltipProvider>
+        <div className="flex items-center gap-2">
+          <h2 className="m-0 text-[13px] font-medium text-muted-foreground">
+            Note {number} · {mark.shape.kind}
+          </h2>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Delete note"
+                  onClick={onRemove}
+                  className={cn(
+                    hit,
+                    'ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+                  )}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                </button>
+              }
+            />
+            <TooltipContent>Delete note</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onDone}
+                  className={cn(
+                    hit,
+                    'flex min-h-8 items-center gap-1 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                  )}
+                >
+                  <Check className="size-4" aria-hidden />
+                  Done
+                </button>
+              }
+            />
+            <TooltipContent>
+              <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </TooltipProvider>
       <SuggestedField
         ref={first}
         id={`works-${mark.id}`}
@@ -3017,23 +3047,6 @@ function MarkEditor({
         suggested={suggestedTopics}
         onChange={(topics) => onChange({ topics })}
       />
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onRemove}
-          className={cn(
-            hit,
-            'flex min-h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm whitespace-nowrap text-red-600 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted dark:text-red-400',
-          )}
-        >
-          <Trash2 className="size-4" aria-hidden />
-          Delete note
-        </button>
-        <span className="ml-auto flex items-center gap-1 text-[13px] whitespace-nowrap text-muted-foreground">
-          <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd>
-          <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
-        </span>
-      </div>
     </section>
   );
 }
@@ -3091,8 +3104,9 @@ function TopicPicker({
 }) {
   return (
     <fieldset className="m-0 min-w-0 border-0 p-0 text-[13px] text-muted-foreground">
-      <legend className="mb-1 p-0 text-[13px] leading-7 font-medium">About</legend>
-      <div className="flex flex-wrap gap-x-1.5 gap-y-4">
+      <legend className="mb-1 p-0 text-[13px] leading-7 font-medium">This note is about</legend>
+      {/* Columns as wide as their widest tag, so the rows line up: three on the wide panel, two on the narrow one. */}
+      <div className="grid grid-cols-[repeat(2,auto)] justify-start gap-x-2 gap-y-4 min-[900px]:grid-cols-[repeat(3,auto)]">
         {TOPICS.map((t) => {
           const on = Boolean(topics?.includes(t.kind));
           const hinted = !on && Boolean(suggested?.includes(t.kind));
