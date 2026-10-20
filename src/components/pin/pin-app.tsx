@@ -7,13 +7,17 @@ import {
   ChevronDown,
   Copy,
   Download,
+  Globe,
+  House,
   Keyboard,
+  Lightbulb,
   Loader2,
   MapPin,
   MoveUpRight,
   Plus,
   RotateCcw,
   Square,
+  Swords,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -3422,6 +3426,9 @@ function SuggestionHint({ id, ghost }: { id: string; ghost: string }) {
  * Whose design the image is: four radio rows, optional (Clear takes it off). New images take
  * the open one's. Arrow keys move and choose, as in any radio group.
  */
+/** One icon per source: our own product, a rival, the wider world, an idea. */
+const SOURCE_ICONS = { ours: House, competitor: Swords, other: Globe, concept: Lightbulb };
+
 function SourcePicker({
   source,
   total,
@@ -3487,6 +3494,7 @@ function SourcePicker({
       >
         {SOURCES.map((s, i) => {
           const checked = i === current;
+          const Icon = SOURCE_ICONS[s.kind];
           return (
             // biome-ignore lint/a11y/useSemanticElements: a styled radio row; the group keeps its own roving tabindex and arrow keys
             <button
@@ -3515,6 +3523,7 @@ function SourcePicker({
               >
                 {checked && <span className="size-2 rounded-full bg-choice" />}
               </span>
+              <Icon aria-hidden className="size-4 shrink-0" />
               {s.label}
             </button>
           );
