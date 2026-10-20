@@ -281,12 +281,16 @@ export function cleanReading(
 /**
  * The reading as a visitor who hasn't bought Pinch gets it (D87): `reveal` new rules in full,
  * the rest as placeholders (their topics and notes, never their words, readings or questions),
- * so the page can say how many more Pinch found. The rules shown are the surest ones: those
- * that wait on no question, then those drawn from the most notes (D90).
+ * so the page can say how many more Pinch found. The rules shown are the surest ones: the notes'
+ * own words first, then readings, then questions, each drawn from the most notes (D90, D91).
  */
 export function previewReading(r: CleanReading, reveal: number) {
   const surest = r.propose
-    .map((p, i) => ({ i, open: p.question ? 1 : 0, notes: p.notes.length }))
+    .map((p, i) => ({
+      i,
+      open: p.question ? 2 : p.basis === 'interpreted' ? 1 : 0,
+      notes: p.notes.length,
+    }))
     .sort((a, b) => a.open - b.open || b.notes - a.notes || a.i - b.i)
     .slice(0, Math.max(0, reveal))
     .map((x) => x.i);

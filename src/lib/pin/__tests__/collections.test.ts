@@ -23,6 +23,7 @@ import {
   type Collection,
   cleanTag,
   collectionSlug,
+  confirmRule,
   imagesOf,
   knownNotes,
   mergeCollection,
@@ -42,6 +43,7 @@ import {
   unlockRules,
   unreadNotes,
   upgradeCollection,
+  waiting,
   withBatch,
   withRule,
 } from '../learnings';
@@ -445,7 +447,7 @@ describe('the taste library', () => {
     );
   });
 
-  it('keeps a rule waiting on its question from agents until the author answers', () => {
+  it('keeps a question or a reading from agents until the author answers or confirms it', () => {
     const asking = applyReading(
       collection(),
       {
@@ -483,25 +485,31 @@ describe('the taste library', () => {
     const [q, quiet] = asking.rules;
     assert.equal(q.basis, 'interpreted');
     assert.equal(q.question?.options.length, 2);
+    assert.equal(waiting(q), true, 'a question waits for its answer');
+    assert.equal(waiting(quiet), true, 'a reading waits for the author to confirm it');
+    assert.equal(rulesOf(asking).length, 0, 'no agent gets a rule waiting for its author');
+
+    const confirmed = confirmRule(asking, quiet.id, 'later');
+    const yes = confirmed.rules[1];
+    assert.equal(waiting(yes), false);
+    assert.equal(yes.text, 'Keep screens quiet: few elements competing for attention.');
+    assert.equal(originOf(yes), 'ai', 'confirmed, not rewritten');
     assert.deepEqual(
-      rulesOf(asking).map((r) => r.rule.text),
+      rulesOf(confirmed).map((r) => r.rule.text),
       ['Keep screens quiet: few elements competing for attention.'],
-      'no agent gets a rule waiting on its question',
+      'confirmed, the agent gets it',
     );
-    const md = rulesMarkdown(asking, rulesOf(asking), 'x');
-    assert.match(md, /^Pinch's reading: “quiet” as few elements competing for attention$/m);
-    assert.match(md, /is Pinch's interpretation of vaguer words/);
+    const md = rulesMarkdown(confirmed, rulesOf(confirmed), 'x');
     assert.match(md, /^Explained by: One focal point, Colour carries meaning\.$/m);
     assert.match(md, /the author's notes are what make it their preference/);
-    assert.match(rulesText(asking, rulesOf(asking)), /^ {3}Explained by: One focal point/m);
-    assert.deepEqual(rulesManifest(asking, rulesOf(asking), 'x').rules[0].principles, [
+    assert.doesNotMatch(md, /Pinch's reading/);
+    assert.match(rulesText(confirmed, rulesOf(confirmed)), /^ {3}Explained by: One focal point/m);
+    assert.deepEqual(rulesManifest(confirmed, rulesOf(confirmed), 'x').rules[0].principles, [
       'focus',
       'colour',
     ]);
-    assert.match(rulesText(asking, rulesOf(asking)), /^ {3}Pinch's reading: “quiet”/m);
-    assert.equal(rulesManifest(asking, rulesOf(asking), 'x').rules[0].basis, 'interpreted');
 
-    const answered = answerRule(asking, q.id, 1, 'later');
+    const answered = answerRule(confirmed, q.id, 1, 'later');
     const a = answered.rules[0];
     assert.equal(a.text, 'Make headings clearly larger than body text.');
     assert.equal(a.basis, 'stated');
@@ -516,17 +524,17 @@ describe('the taste library', () => {
       'browse by the principle that explains a rule',
     );
     assert.equal(asking.rules.filter((r) => picked(r, { principles: ['type'] })).length, 0);
-    const removed = withRule(asking, quiet.id, { status: 'dismissed' }, 'later');
+    const removed = withRule(confirmed, quiet.id, { status: 'dismissed' }, 'later');
     assert.equal(rulesOf(removed).length, 0, 'a removed rule leaves exports');
     const rewritten = withRule(asking, quiet.id, ownWords({ text: 'Keep it calm.' }), 'later');
     assert.equal(rewritten.rules[1].basis, 'stated');
     assert.equal(rewritten.rules[1].reading, undefined);
+    assert.equal(waiting(rewritten.rules[1]), false, 'rewritten, it is the author’s own');
     assert.deepEqual(
       rewritten.rules[1].principles,
       ['focus', 'colour'],
       'still explained, still browsed',
     );
-    assert.equal(rulesManifest(rewritten, rulesOf(rewritten), 'x').rules[0].basis, 'stated');
   });
 
   it('slices by topic and by the author’s own tags', () => {
@@ -860,11 +868,16 @@ describe('reading notes into rules', () => {
     };
     const one = { rule: 'From one note.', context: '', topics: [], notes: ['n1'], basis: 'stated' as const };
     const two = { ...one, rule: 'From two notes.', notes: ['n1', 'n2'] };
-    const preview = previewReading({ strengthen: [], propose: [asks, one, two] }, 2);
+    const read = { ...one, rule: 'Read from three notes.', notes: ['n1', 'n2', 'n3'], basis: 'interpreted' as const };
+    const preview = previewReading({ strengthen: [], propose: [asks, one, two, read] }, 2);
     assert.deepEqual(
       preview.propose.map((p) => p.rule),
-      ['', 'From one note.', 'From two notes.'],
-      'a rule waiting on a question is shown last; more notes first',
+      ['', 'From one note.', 'From two notes.', ''],
+      'the notes’ own words first, then readings, then questions; more notes first',
+    );
+    assert.deepEqual(
+      previewReading({ strengthen: [], propose: [asks, read] }, 1).propose.map((p) => p.rule),
+      ['', 'Read from three notes.'],
     );
     assert.equal(JSON.stringify(preview).includes('Secret'), false);
   });

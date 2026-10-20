@@ -26,6 +26,7 @@ import {
   type Batch,
   type BatchNote,
   byTopic,
+  confirmRule,
   type Collection,
   cleanTag,
   collectionSlug,
@@ -51,6 +52,7 @@ import {
   unlockRules,
   unreadNotes,
   upgradeCollection,
+  waiting,
   withBatch,
   withRule,
 } from '@/lib/pin/learnings';
@@ -486,7 +488,7 @@ export function CollectionsView({
         made += reading.propose.filter((p) => !p.locked).length;
         hidden += reading.propose.filter((p) => p.locked).length;
         conflicts += reading.propose.filter((p) => p.conflictsWith).length;
-        asked += reading.propose.filter((p) => p.question).length;
+        asked += reading.propose.filter((p) => !p.locked && waiting(p)).length;
         change((x) => applyReading(x, reading, notes, nowIso(), newId), true);
         done += todo.length;
         setReading({ done: Math.min(done, total), total });
@@ -495,7 +497,7 @@ export function CollectionsView({
         made ? count(made, 'new rule') : '',
         strengthened ? `${count(strengthened, 'rule')} strengthened` : '',
         conflicts ? `${count(conflicts, 'conflict')} with your rules` : '',
-        asked ? `${count(asked, 'question')} for you` : '',
+        asked ? `${asked} waiting for you` : '',
         hidden ? `${hidden} more found` : '',
       ].filter(Boolean);
       onStatus({
@@ -597,7 +599,7 @@ export function CollectionsView({
   const live = c.rules.filter((r) => !r.locked && r.status !== 'dismissed');
   const shown = live.filter((r) => picked(r, pickOf(slice)));
   const locked = c.rules.filter((r) => r.locked);
-  const questions = live.filter((r) => r.question).length;
+  const waits = live.filter(waiting).length;
   const noteCount = c.batches.reduce((n, b) => n + b.notes.length, 0);
   const imageCount = new Set(c.batches.flatMap((b) => b.notes.map((n) => `${b.id}/${n.image}`)))
     .size;
@@ -613,6 +615,7 @@ export function CollectionsView({
         isNew={r.createdAt >= since.current}
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
         onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
+        onConfirm={() => change((c) => confirmRule(c, r.id, nowIso()), true)}
         onRemove={() => {
           // Removed, a rule is kept as dismissed: out of sight and exports, never written again.
           change((c) => withRule(c, r.id, { status: 'dismissed' }, nowIso()), true);
@@ -646,7 +649,7 @@ export function CollectionsView({
                 </p>
                 <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
                   <span>{count(live.length, 'rule')} ·</span>
-                  {questions > 0 && <span>{count(questions, 'question')} for you ·</span>}
+                  {waits > 0 && <span>{waits} waiting for you ·</span>}
                   <span className="flex items-center gap-1.5">
                     <Where className="size-3.5" aria-hidden />
                     {backend.kind === 'account' ? 'Kept in your account' : 'Kept in this browser'}
@@ -909,6 +912,7 @@ function RuleCard({
   isNew,
   onChange,
   onAnswer,
+  onConfirm,
   onRemove,
 }: {
   rule: Rule;
@@ -922,6 +926,8 @@ function RuleCard({
   onChange: (change: Partial<Rule>, now?: boolean) => void;
   /** The author picks one of the answers to the rule's question (D90). */
   onAnswer: (option: number) => void;
+  /** The author confirms Pinch's reading of a rule (D91). */
+  onConfirm: () => void;
   /** The author removes an outdated rule. */
   onRemove: () => void;
 }) {
@@ -1106,7 +1112,7 @@ function RuleCard({
             id={`${id}-text`}
             className={cn(
               'text-[15px] leading-snug',
-              r.question ? 'text-muted-foreground' : 'text-foreground',
+              waiting(r) ? 'text-muted-foreground' : 'text-foreground',
             )}
           >
             {r.text}
@@ -1164,6 +1170,23 @@ function RuleCard({
             </button>
           </div>
           <p className="text-muted-foreground">Your agent gets this rule once you answer.</p>
+        </fieldset>
+      )}
+
+      {r.basis === 'interpreted' && !r.question && !editing && (
+        <fieldset className="min-w-0 space-y-2.5 rounded-lg border border-border bg-muted/50 px-3 py-3 text-[13px]">
+          <legend className="float-left w-full text-sm font-medium text-foreground">
+            Is this what you meant?
+          </legend>
+          <div className="clear-left flex flex-wrap gap-2">
+            <button type="button" onClick={onConfirm} className={cn(button, 'bg-background')}>
+              Yes
+            </button>
+            <button type="button" onClick={edit} className={small}>
+              Something else
+            </button>
+          </div>
+          <p className="text-muted-foreground">Your agent gets this rule once you confirm it.</p>
         </fieldset>
       )}
 
