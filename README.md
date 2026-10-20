@@ -1,6 +1,6 @@
 # Pinch
 
-Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, and say why and what it's about (visual, layout, copy, interaction, flow, accessibility). Then open Your rules: Pinch reads your notes, finds the patterns across images and keeps them as one taste library of rules, each with the notes and close-ups it draws on. Overlapping notes become one rule, notes that pull different ways keep where each holds, and a new batch strengthens a rule, adds one or flags a conflict. Edit or remove any rule, slice them by topic, and connect your agent: over MCP it fetches the current rules for each task, or copy them as a prompt for one chat (D93).
+Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, and say why and what it's about (visual, layout, copy, interaction, flow, accessibility). Then open Your rules: Pinch reads your notes, finds the patterns across images and keeps them as one taste library of rules, each with the notes and close-ups it draws on. Overlapping notes become one rule, notes that pull different ways keep where each holds, and a new batch strengthens a rule, adds one or flags a conflict. Edit or remove any rule, slice them by topic, and connect your agent: over MCP it fetches the current rules for each task, and a rule's close-ups with where each spot is when it needs to see them (D94), or copy them as a prompt for one chat (D93).
 
 Pinch is $19 once, with a Google sign-in, sold through Lemon Squeezy (D81, D87). Marking images needs no account, and Your rules shows the first two rules Pinch finds; every rule, connecting an agent and AI suggestions come with buying. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose rules stay in the browser.
 
@@ -43,6 +43,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 | `PIN_SUGGEST_CALLS_PER_DAY` | `4000` | Suggestions per day, all visitors. |
 | `PIN_LEARN` | unset | `0` turns reading notes into rules off. |
 | `PIN_LEARN_MODEL` | `claude-opus-5-5` | Model that reads notes into rules (`/api/pin/learn`). |
+| `PIN_TITLE_MODEL` | `claude-haiku-5-5` | Model that names rules written without a title (`/api/pin/learn/titles`, D95). |
 | `PIN_LEARN_DAILY_USD` | `10` | Reading notes into rules for buyers: USD cap per day. |
 | `PIN_LEARN_PER_VISITOR` | `60` | Readings (up to 30 notes each) per visitor per day; a visitor also gets at most a third of the day's dollars. |
 | `PIN_LEARN_CALLS_PER_DAY` | `600` | Readings per day, all buyers. |

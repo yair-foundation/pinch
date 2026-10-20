@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
   Check,
   Globe,
   House,
@@ -16,6 +17,7 @@ import {
   RotateCcw,
   SquareDashed,
   Swords,
+  Tag,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -28,6 +30,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1661,7 +1664,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Account',
-          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Your agent’s key is kept only as a hash. Deleting your account deletes your rules.',
+          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Your agent’s key is kept only as a hash; with it your agent gets your rules and their close-ups. Deleting your account deletes your rules.',
         )}
         {item(
           'No ads, no analytics.',
@@ -2136,7 +2139,7 @@ const standardAreaAt = (p: { x: number; y: number }): Area => ({
   ...STANDARD_AREA,
 });
 /** What the first upload and an empty panel say. */
-const HOW_TO_MARK = 'Click for a dot or drag for an area, then say what works and what doesn’t.';
+const HOW_TO_MARK = 'Click for a dot or drag for an area, then say what to learn and what to avoid.';
 
 type ArrowEnd = 'tail' | 'head';
 
@@ -2741,9 +2744,6 @@ function MarkView({
 /* ---------- Panel: notes on this image ---------- */
 
 // Placeholders and suggestions sit a clear step lighter than typed text, still at 4.5:1 on the page.
-const field =
-  'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm placeholder:text-[#737373] dark:placeholder:text-[#7a7a7a] focus-visible:outline-2 focus-visible:outline-ring';
-
 function Panel({
   asset,
   number,
@@ -2807,31 +2807,6 @@ function Panel({
         >
           <Trash2 className="size-4" aria-hidden />
         </button>
-        {mark && (
-          // The open note's way out, top right, above everything it closes (D93).
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    data-note-done
-                    onClick={onDone}
-                    className={cn(
-                      hit,
-                      'flex min-h-9 items-center rounded-md bg-foreground px-3.5 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
-                    )}
-                  >
-                    Done
-                  </button>
-                }
-              />
-              <TooltipContent>
-                <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
@@ -2880,7 +2855,32 @@ function Panel({
         )}
       </div>
 
-      <div className="flex shrink-0 gap-2 border-t border-border p-3">
+      <div className="flex shrink-0 flex-wrap gap-2 border-t border-border p-3">
+        {mark && (
+          // The open note's way out, full width, right above the image's own steps (D95).
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-note-done
+                    onClick={onDone}
+                    className={cn(
+                      hit,
+                      'flex min-h-10 w-full basis-full items-center justify-center rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
+                    )}
+                  >
+                    Done
+                  </button>
+                }
+              />
+              <TooltipContent>
+                <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <button
           type="button"
           onClick={onPrev}
@@ -2939,7 +2939,7 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
               {(v === 'bad' || v === 'both') && (
                 <ThumbsDown aria-hidden className="size-3.5" />
               )}
-              {v === 'both' ? 'works and doesn’t' : v === 'good' ? 'works' : 'doesn’t work'}
+              {v === 'both' ? 'to learn and to avoid' : v === 'good' ? 'to learn' : 'to avoid'}
             </>
           )}
           {topics.length > 0 && (
@@ -3000,42 +3000,17 @@ function MarkEditor({
   };
 
   return (
-    <section className="space-y-3" aria-label={`Note ${number}`}>
-      {/* Deleting the note sits by its title; Done is at the panel's top right. */}
-      <TooltipProvider>
-        <div className="flex items-center gap-2">
-          <h2 className="m-0 text-[13px] font-medium text-muted-foreground">
-            Note {number} · {mark.shape.kind}
-          </h2>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label="Delete note"
-                  onClick={onRemove}
-                  className={cn(
-                    hit,
-                    'ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-                  )}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                </button>
-              }
-            />
-            <TooltipContent>Delete note</TooltipContent>
-          </Tooltip>
-        </div>
-      </TooltipProvider>
-      <SuggestedField
+    <section className="space-y-5" aria-label={`Note ${number}`}>
+      <ItemsField
         ref={first}
         id={`works-${mark.id}`}
-        label="What works"
+        label="What to learn"
         verdict="good"
         value={mark.good}
         suggestion={ghost('works')}
         suggesting={suggesting}
         example="One big number with nothing competing"
+        another="Another thing to learn"
         onChange={(good, accepted) =>
           onChange({
             good,
@@ -3046,14 +3021,15 @@ function MarkEditor({
         onDismiss={() => onDismiss('works')}
         onKeyDown={doneOnShortcut}
       />
-      <SuggestedField
+      <ItemsField
         id={`doesnt-${mark.id}`}
-        label="What doesn’t"
+        label="What to avoid"
         verdict="bad"
         value={mark.bad}
         suggestion={ghost('doesNotWork')}
         suggesting={suggesting}
         example="Six badges compete for attention"
+        another="Another thing to avoid"
         onChange={(bad, accepted) =>
           onChange({
             bad,
@@ -3065,10 +3041,29 @@ function MarkEditor({
         onKeyDown={doneOnShortcut}
       />
       <TopicPicker
+        legend={
+          <span className="flex items-center gap-2 text-foreground">
+            <IconBox>
+              <Tag />
+            </IconBox>
+            Tags
+          </span>
+        }
         topics={mark.topics}
         suggested={suggestedTopics}
         onChange={(topics) => onChange({ topics })}
       />
+      <button
+        type="button"
+        onClick={onRemove}
+        className={cn(
+          hit,
+          '-mx-2 flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-red-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
+        )}
+      >
+        <Trash2 className="size-4" aria-hidden />
+        Delete note
+      </button>
     </section>
   );
 }
@@ -3128,43 +3123,6 @@ function useLingers(on: boolean, ms: number) {
     return () => clearTimeout(timer);
   }, [on, ms]);
   return on || lingering;
-}
-
-/**
- * The grey suggestion drawn over an empty field: the field's own box, padding and type, so it
- * reads as a placeholder, but it can fade in and out, which a native placeholder cannot. Hidden
- * from assistive tech (the sr-only hint beside the field carries the words); it follows the
- * field's size when the user resizes it. The last text stays while it fades out.
- */
-function Ghost({
-  text,
-  field,
-}: {
-  text: string;
-  field: React.RefObject<HTMLElement | null>;
-}) {
-  const last = useRef(text);
-  if (text) last.current = text;
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  useEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setSize({ w: el.offsetWidth, h: el.offsetHeight }));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [field]);
-  return (
-    <div
-      aria-hidden
-      className={cn(
-        'pointer-events-none absolute top-0 left-0 size-full overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm whitespace-pre-wrap text-[#737373] [overflow-wrap:break-word] dark:text-[#7a7a7a]',
-        ghostFade,
-      )}
-      style={{ opacity: text ? 1 : 0, width: size?.w, height: size?.h }}
-    >
-      {last.current}
-    </div>
-  );
 }
 
 /*
@@ -3261,7 +3219,29 @@ function SuggestionTip({ visible, onClose }: { visible: boolean; onClose: () => 
  * text, Escape dismisses it, any other key types over it. The example placeholder shows only
  * when no suggestion applies.
  */
-function SuggestedField({
+/** An icon in a small rounded box, beside a field's label. */
+function IconBox({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground [&>svg]:size-3.5"
+    >
+      {children}
+    </span>
+  );
+}
+
+/** One item's text, the same box for the field and the grey suggestion over it. */
+const itemText = 'px-1.5 py-1 text-sm leading-5';
+
+/**
+ * A note's field as a list (D95): one short item per line, easy to scan. Enter starts a new item
+ * (split at the caret), Backspace at an item's start joins it to the one above, the arrow keys
+ * move between items, and pasted lines become items. Each written item has a checkbox that only
+ * selects it, to delete it: it isn't a to-do, so a selected item looks selected, never done. While
+ * the field is empty, the grey suggestion shows in its first item; Tab takes it.
+ */
+function ItemsField({
   ref,
   id,
   label,
@@ -3270,6 +3250,7 @@ function SuggestedField({
   suggestion,
   suggesting,
   example,
+  another,
   onChange,
   onDismiss,
   onKeyDown,
@@ -3281,95 +3262,239 @@ function SuggestedField({
   value: string;
   suggestion?: string;
   suggesting: boolean;
+  /** The first item's placeholder. */
   example: string;
+  /** Every later item's placeholder. */
+  another: string;
   onChange: (value: string, accepted: boolean) => void;
   onDismiss: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
+  const items = value === '' ? [''] : value.split('\n');
   const ghost = !value && suggestion ? suggestion : '';
-  const inner = useRef<HTMLTextAreaElement | null>(null);
-  const setRef = useCallback(
-    (el: HTMLTextAreaElement | null) => {
-      inner.current = el;
-      if (typeof ref === 'function') ref(el);
-      else if (ref) ref.current = el;
-    },
-    [ref],
-  );
+  const rows = useRef<(HTMLTextAreaElement | null)[]>([]);
+  // Where focus goes once the items are re-rendered: an item, and a caret position in it.
+  const focusNext = useRef<{ i: number; at: number } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const hint = useSuggestionHint(id, ghost);
   const ghostLingers = useLingers(Boolean(ghost), 220);
   const Icon = verdict === 'good' ? ThumbsUp : ThumbsDown;
+  // Each item grows with its text; then focus lands where an edit asked.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measured again whenever the text changes
+  useLayoutEffect(() => {
+    for (const el of rows.current) {
+      if (!el) continue;
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }
+    const f = focusNext.current;
+    if (!f) return;
+    focusNext.current = null;
+    const el = rows.current[f.i];
+    if (!el) return;
+    el.focus();
+    const at = Math.min(f.at, el.value.length);
+    el.setSelectionRange(at, at);
+  }, [value]);
+  const setItems = (next: string[], focus?: { i: number; at: number }) => {
+    if (focus) focusNext.current = focus;
+    if (next.length !== items.length) setSelected(new Set());
+    onChange(next.join('\n'), false);
+  };
+  const removeSelected = () => {
+    const next = items.filter((_, i) => !selected.has(i));
+    setSelected(new Set());
+    focusNext.current = { i: 0, at: Number.MAX_SAFE_INTEGER };
+    onChange(next.length ? next.join('\n') : '', false);
+  };
+  const onRowKey = (e: React.KeyboardEvent<HTMLTextAreaElement>, i: number) => {
+    if (i === 0) {
+      const used = ghostKey(
+        e,
+        ghost,
+        () => {
+          if (hint.visible) hint.dismiss();
+          onChange(ghost, true);
+        },
+        () => {
+          if (hint.visible) hint.dismiss();
+          onDismiss();
+        },
+      );
+      if (used) return;
+    }
+    const el = e.currentTarget;
+    const start = el.selectionStart;
+    const collapsed = start === el.selectionEnd;
+    const plainEnter =
+      e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing;
+    if (plainEnter) {
+      e.preventDefault();
+      // An empty last item stays the only empty one: Enter there doesn't stack more.
+      if (!items[i].trim() && i === items.length - 1) return;
+      const next = [...items];
+      next.splice(i, 1, items[i].slice(0, start), items[i].slice(el.selectionEnd));
+      setItems(next, { i: i + 1, at: 0 });
+      return;
+    }
+    if (e.key === 'Backspace' && collapsed && start === 0 && i > 0) {
+      e.preventDefault();
+      const at = items[i - 1].length;
+      const next = [...items];
+      next.splice(i - 1, 2, items[i - 1] + items[i]);
+      setItems(next, { i: i - 1, at });
+      return;
+    }
+    if (e.key === 'ArrowUp' && collapsed && start === 0 && i > 0) {
+      e.preventDefault();
+      focusNext.current = null;
+      rows.current[i - 1]?.focus();
+      return;
+    }
+    if (e.key === 'ArrowDown' && collapsed && start === el.value.length && i < items.length - 1) {
+      e.preventDefault();
+      const below = rows.current[i + 1];
+      below?.focus();
+      below?.setSelectionRange(0, 0);
+      return;
+    }
+    onKeyDown(e);
+  };
+  const toggle = (i: number) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const nSelected = [...selected].filter((i) => items[i]?.trim()).length;
   return (
-    <div className="relative text-[13px] text-muted-foreground">
-      <SuggestionLabel id={id} working={!value && suggesting}>
-        <Icon aria-hidden className="size-4 shrink-0" />
-        {label}
-      </SuggestionLabel>
+    <div className="relative">
+      <div className="mb-2.5 flex min-h-7 items-center gap-2">
+        <label htmlFor={id} className="flex items-center gap-2 text-[13px] font-medium">
+          <IconBox>
+            <Icon />
+          </IconBox>
+          {label}
+        </label>
+        {nSelected > 0 ? (
+          <button
+            type="button"
+            onClick={removeSelected}
+            className={cn(
+              hit,
+              'ml-auto flex min-h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-red-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted dark:text-red-400',
+            )}
+          >
+            <Trash2 className="size-3.5" aria-hidden />
+            Delete {nSelected}
+          </button>
+        ) : (
+          <WorkingPill
+            aria-hidden={!(suggesting && !value)}
+            className={cn(
+              'ml-auto',
+              ghostFade,
+              suggesting && !value ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            Suggesting…
+          </WorkingPill>
+        )}
+        <span className="sr-only" aria-live="polite">
+          {suggesting && !value ? 'Suggesting…' : ''}
+        </span>
+      </div>
       <div className="relative">
         <SuggestionTip visible={hint.visible} onClose={hint.dismiss} />
-        <textarea
-          ref={setRef}
-          id={id}
-          rows={3}
-          maxLength={1000}
-          value={value}
-          onChange={(e) => {
-            if (hint.visible) hint.dismiss();
-            onChange(e.target.value, false);
-          }}
-          onKeyDown={(e) => {
-            const used = ghostKey(
-              e,
-              ghost,
-              () => {
-                if (hint.visible) hint.dismiss();
-                onChange(ghost, true);
-              },
-              () => {
-                if (hint.visible) hint.dismiss();
-                onDismiss();
-              },
+        <ul className="m-0 list-none space-y-px rounded-lg border border-border p-1 transition-colors duration-150 motion-reduce:transition-none focus-within:border-foreground/25">
+          {items.map((text, i) => {
+            const on = selected.has(i) && Boolean(text.trim());
+            const showGhost = i === 0 && ghostLingers;
+            return (
+              <li
+                // Items have no ids of their own; a row is its place in the list.
+                // biome-ignore lint/suspicious/noArrayIndexKey: the place is what a row stands for
+                key={i}
+                className={cn(
+                  'flex items-start gap-1.5 rounded-md pl-1.5 transition-colors duration-150 motion-reduce:transition-none',
+                  on && 'bg-muted',
+                )}
+              >
+                {/* biome-ignore lint/a11y/useSemanticElements: a drawn checkbox, sized to the item's first line */}
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={`Select “${text.trim() || 'empty item'}” to delete`}
+                  disabled={!text.trim()}
+                  onClick={() => toggle(i)}
+                  className={cn(
+                    'mt-[7px] flex size-4 shrink-0 items-center justify-center rounded border transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:invisible',
+                    on
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-foreground/30 hover:border-foreground/60',
+                  )}
+                >
+                  {on && <Check className="size-3" strokeWidth={3} aria-hidden />}
+                </button>
+                <div className="relative min-w-0 flex-1">
+                  {showGhost && (
+                    <div
+                      aria-hidden
+                      className={cn(
+                        itemText,
+                        'pointer-events-none whitespace-pre-wrap text-[#737373] [overflow-wrap:break-word] dark:text-[#7a7a7a]',
+                        ghostFade,
+                      )}
+                      style={{ opacity: ghost ? 1 : 0 }}
+                    >
+                      {ghost || ' '}
+                    </div>
+                  )}
+                  <textarea
+                    ref={(el) => {
+                      rows.current[i] = el;
+                      if (i !== 0) return;
+                      if (typeof ref === 'function') ref(el);
+                      else if (ref) ref.current = el;
+                    }}
+                    id={i === 0 ? id : `${id}-${i}`}
+                    rows={1}
+                    maxLength={1000}
+                    value={text}
+                    aria-label={i === 0 ? undefined : `${label}, item ${i + 1}`}
+                    aria-describedby={i === 0 && ghost ? `${id}-hint` : undefined}
+                    placeholder={
+                      i === 0 ? (ghostLingers || suggesting ? '' : example) : another
+                    }
+                    onChange={(e) => {
+                      if (hint.visible) hint.dismiss();
+                      const parts = e.target.value.split('\n');
+                      const next = [...items];
+                      next.splice(i, 1, ...parts);
+                      setItems(
+                        next,
+                        parts.length > 1
+                          ? { i: i + parts.length - 1, at: Number.MAX_SAFE_INTEGER }
+                          : undefined,
+                      );
+                    }}
+                    onKeyDown={(e) => onRowKey(e, i)}
+                    className={cn(
+                      itemText,
+                      'block w-full resize-none overflow-hidden bg-transparent outline-none placeholder:text-[#737373] dark:placeholder:text-[#7a7a7a]',
+                      showGhost && 'absolute inset-0',
+                    )}
+                  />
+                </div>
+              </li>
             );
-            if (!used) onKeyDown(e);
-          }}
-          aria-describedby={ghost ? `${id}-hint` : undefined}
-          className={field}
-          placeholder={ghostLingers || suggesting ? '' : example}
-        />
-        <Ghost text={ghost} field={inner} />
+          })}
+        </ul>
       </div>
       <SuggestionHint id={id} ghost={ghost} />
     </div>
-  );
-}
-
-/**
- * A field's label row with, on the right, the "Suggesting…" pill, which fades and keeps its
- * height, so a suggestion arriving doesn't move the field.
- */
-function SuggestionLabel({
-  id,
-  working,
-  children,
-}: {
-  id: string;
-  working: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    // Positioned, so its sr-only live region stays inside the panel's scroll area.
-    <label htmlFor={id} className="relative mb-1 flex min-h-7 items-center gap-1.5">
-      {children}
-      <WorkingPill
-        aria-hidden={!working}
-        className={cn('ml-auto', ghostFade, working ? 'opacity-100' : 'opacity-0')}
-      >
-        Suggesting…
-      </WorkingPill>
-      <span className="sr-only" aria-live="polite">
-        {working ? 'Suggesting…' : ''}
-      </span>
-    </label>
   );
 }
 
@@ -3426,8 +3551,11 @@ function SourcePicker({
   );
   return (
     <section aria-labelledby="source-heading">
-      <div className="mb-2 flex items-center gap-1">
-        <h2 id="source-heading" className="m-0 text-[13px] font-medium text-muted-foreground">
+      <div className="mb-2.5 flex items-center gap-1">
+        <h2 id="source-heading" className="m-0 flex items-center gap-2 text-[13px] font-medium">
+          <IconBox>
+            <Building2 />
+          </IconBox>
           Source
         </h2>
         {source && total > 1 && (

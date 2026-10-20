@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { answer, PROTOCOL_VERSIONS, pickOf, type TOOLS, topicsText } from '../agent';
+import {
+  answer,
+  type BatchFiles,
+  boxInCrop,
+  MAX_EVIDENCE,
+  MAX_EVIDENCE_BYTES,
+  PROTOCOL_VERSIONS,
+  pickOf,
+  placeOf,
+  type TOOLS,
+  topicsText,
+} from '../agent';
 import { type Collection, newCollection, type Rule } from '../learnings';
 
 const rule = (id: string, text: string, extra: Partial<Rule> = {}): Rule => ({
@@ -110,7 +121,7 @@ describe('Pinch for agents (MCP)', () => {
     )) as { result: { tools: typeof TOOLS } };
     assert.deepEqual(
       tools.result.tools.map((t) => t.name),
-      ['get_design_rules', 'list_rule_topics'],
+      ['get_design_rules', 'get_rule_evidence', 'list_rule_topics'],
     );
     assert.equal(
       (
@@ -138,7 +149,8 @@ describe('Pinch for agents (MCP)', () => {
     assert.match(all, /note 01\.1 on dashboard\.png \(Competitor\): works: "Spacing separates/);
     const copy = textOf(await call('get_design_rules', { topics: ['copy', 'nonsense'] }));
     assert.match(copy, /1 rule\./);
-    assert.match(copy, /Lead with a short headline/);
+    assert.match(copy, /R3\. Lead with a short headline/, 'a rule keeps its number in any pick');
+    assert.match(copy, /call get_rule_evidence with its number/);
     const acme = textOf(await call('get_design_rules', { tags: ['Acme'] }));
     assert.match(acme, /3 rules\./, 'a tag brings its rules along with the untagged ones');
     const none = textOf(await call('get_design_rules', { topics: ['accessibility'] }));
@@ -170,5 +182,200 @@ describe('Pinch for agents (MCP)', () => {
       tags: ['Acme', null],
     });
     assert.deepEqual(pickOf(undefined), {});
+  });
+});
+
+/** A JPEG's headers only, enough to tell its size. */
+const jpegHead = (width: number, height: number) =>
+  new Uint8Array([
+    0xff,
+    0xd8,
+    0xff,
+    0xc0,
+    0x00,
+    0x11,
+    0x08,
+    height >> 8,
+    height & 0xff,
+    width >> 8,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x22,
+    0x00,
+    0x02,
+    0x11,
+    0x01,
+    0x03,
+    0x11,
+    0x01,
+    0xff,
+    0xd9,
+  ]);
+
+/** The batch's zip as the page keeps it: notes.json with the note's shape and crop, and the crop. */
+const manifest = {
+  assets: [
+    {
+      number: '01',
+      width: 2000,
+      height: 1000,
+      notes: [
+        {
+          number: 1,
+          shape: { kind: 'area', x: 0.25, y: 0.2, w: 0.1, h: 0.05 },
+          cropPixels: { x: 400, y: 100, w: 600, h: 300 },
+        },
+      ],
+    },
+  ],
+};
+const asked: string[][] = [];
+const files: BatchFiles = async (batchId, paths) => {
+  asked.push([batchId, ...paths]);
+  return new Map([
+    ['pinch-2026-10-20/notes.json', new TextEncoder().encode(JSON.stringify(manifest))],
+    ['pinch-2026-10-20/crops/01-dashboard-note-1.jpg', jpegHead(1200, 600)],
+  ]);
+};
+const evidence = (rule: unknown, f: BatchFiles | null = files) =>
+  answer(
+    {
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'tools/call',
+      params: { name: 'get_rule_evidence', arguments: { rule } },
+    },
+    async () => library(),
+    f ?? undefined,
+  ) as Promise<{
+    result: {
+      content: (
+        | { type: 'text'; text: string }
+        | { type: 'image'; data: string; mimeType: string }
+      )[];
+      isError?: boolean;
+    };
+  }>;
+
+describe('a rule’s close-ups over MCP (D94)', () => {
+  it('sends the close-up as an image, with the box in its pixels and in the screenshot’s', async () => {
+    asked.length = 0;
+    const r = (await evidence('R1')).result;
+    assert.equal(r.isError, undefined);
+    const [head, note, image] = r.content;
+    assert.equal(head.type, 'text');
+    assert.match((head as { text: string }).text, /^R1\. Separate content with spacing/);
+    assert.match((head as { text: string }).text, /top-left corner/);
+    const lines = (note as { text: string }).text.split('\n');
+    assert.match(
+      lines[0],
+      /^Note 01\.1 on dashboard\.png \(Competitor\): works: "Spacing separates/,
+    );
+    assert.deepEqual(JSON.parse(lines[1]), {
+      shape: 'area',
+      screenshot: {
+        width: 2000,
+        height: 1000,
+        box: { x: 500, y: 200, w: 200, h: 50 },
+        fraction: { x: 0.25, y: 0.2, w: 0.1, h: 0.05 },
+      },
+      closeUp: {
+        width: 1200,
+        height: 600,
+        box: { x: 200, y: 200, w: 400, h: 100 },
+        showsScreenshotPixels: { x: 400, y: 100, w: 600, h: 300 },
+      },
+    });
+    assert.equal(image.type, 'image');
+    assert.equal((image as { mimeType: string }).mimeType, 'image/jpeg');
+    assert.deepEqual(
+      new Uint8Array(Buffer.from((image as { data: string }).data, 'base64')),
+      jpegHead(1200, 600),
+    );
+    assert.deepEqual(asked, [
+      ['b1', 'pinch-2026-10-20/notes.json', 'pinch-2026-10-20/crops/01-dashboard-note-1.jpg'],
+    ]);
+  });
+
+  it('takes the number however it is written, and says when there is no such rule', async () => {
+    for (const n of ['r1', '1', ' R1 '])
+      assert.match(((await evidence(n)).result.content[0] as { text: string }).text, /^R1\./);
+    const none = (await evidence('R40')).result;
+    assert.equal(none.isError, true);
+    assert.match(
+      (none.content[0] as { text: string }).text,
+      /No rule R40\. Rules are numbered R1 to R3/,
+    );
+    assert.equal((await evidence(undefined)).result.isError, true);
+  });
+
+  it('still says where the spot is when the close-up is missing', async () => {
+    const r = (
+      await evidence(
+        'R1',
+        async () =>
+          new Map([
+            ['pinch-2026-10-20/notes.json', new TextEncoder().encode(JSON.stringify(manifest))],
+          ]),
+      )
+    ).result;
+    assert.equal(r.content.filter((c) => c.type === 'image').length, 0);
+    const where = JSON.parse((r.content[1] as { text: string }).text.split('\n')[1]);
+    assert.deepEqual(where.screenshot.box, { x: 500, y: 200, w: 200, h: 50 });
+    assert.equal(where.closeUp, undefined);
+    assert.equal((r.content[2] as { text: string }).text, 'No close-up for this note.');
+    assert.equal((await evidence('R1', null)).result.isError, true);
+    const huge = new Uint8Array(MAX_EVIDENCE_BYTES + 1);
+    huge.set(jpegHead(1200, 600));
+    const over = (
+      await evidence(
+        'R1',
+        async () =>
+          new Map([
+            ['pinch-2026-10-20/notes.json', new TextEncoder().encode(JSON.stringify(manifest))],
+            ['pinch-2026-10-20/crops/01-dashboard-note-1.jpg', huge],
+          ]),
+      )
+    ).result;
+    assert.equal(over.content.filter((c) => c.type === 'image').length, 0);
+    assert.equal(
+      (over.content[2] as { text: string }).text,
+      'Close-up left out to keep this answer small.',
+    );
+  });
+
+  it('reads a note’s place, and moves a box of each shape into the crop', () => {
+    assert.equal(placeOf(manifest, '01.2'), null);
+    assert.equal(
+      placeOf(
+        {
+          assets: [
+            {
+              number: '01',
+              width: 10,
+              height: 10,
+              notes: [{ number: 1, shape: { kind: 'dot', x: 2, y: 0 } }],
+            },
+          ],
+        },
+        '01.1',
+      ),
+      null,
+      'fractions only',
+    );
+    assert.deepEqual(placeOf(manifest, '01.1')?.crop, { x: 400, y: 100, w: 600, h: 300 });
+    const crop = { x: 100, y: 50, w: 400, h: 200 };
+    const size = { width: 800, height: 400 };
+    assert.deepEqual(boxInCrop({ x: 300, y: 150 }, crop, size), { x: 400, y: 200 });
+    assert.deepEqual(boxInCrop({ x: 100, y: 50, x2: 500, y2: 250 }, crop, size), {
+      x: 0,
+      y: 0,
+      x2: 800,
+      y2: 400,
+    });
+    assert.ok(MAX_EVIDENCE >= 4);
+    // Eight crops at their budget's share and base64 stay under a function's 4.5 MB answer.
+    assert.ok((MAX_EVIDENCE_BYTES * 4) / 3 < 4_500_000);
   });
 });

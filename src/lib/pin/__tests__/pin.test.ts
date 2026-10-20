@@ -32,6 +32,8 @@ import {
   suggestionUse,
   toggleTopic,
   verdictOf,
+  itemsLine,
+  itemsOf,
 } from '../model';
 import { layoutSheet, planSheetRows, SHEET_MAX_EDGE, SHEET_MAX_PIXELS } from '../sheet';
 import {
@@ -801,5 +803,44 @@ describe('Pinch saved note text', () => {
       expiredDays(['2026-07-20', '2026-07-21', '2026-10-19', 'junk'], '2026-10-19', 90),
       ['2026-07-20'],
     );
+  });
+});
+
+describe('a note field as items (D95)', () => {
+  it('reads one item per line and joins them for one line, a lone item as it was', () => {
+    assert.deepEqual(itemsOf(' One number \n\n  Quiet   cards. \n'), [
+      'One number',
+      'Quiet cards.',
+    ]);
+    assert.equal(itemsLine('Quiet cards.'), 'Quiet cards.');
+    assert.equal(
+      itemsLine('One number.\nQuiet cards;\nNo badges.'),
+      'One number; Quiet cards; No badges.',
+    );
+    assert.equal(itemsLine('\n \n'), '');
+  });
+
+  it('exports each item on its own line, and joined in the README', () => {
+    const a: Asset = {
+      id: 'a',
+      name: 'pricing.png',
+      type: 'image/png',
+      width: 100,
+      height: 100,
+      note: '',
+      marks: [
+        {
+          id: 'm',
+          shape: { kind: 'dot', x: 0.5, y: 0.5 },
+          label: '',
+          origin: 'user',
+          good: 'One number\n\nQuiet cards',
+          bad: '',
+        },
+      ],
+    };
+    const m = manifest([a], '2026-10-20T00:00:00Z');
+    assert.equal(m.assets[0].notes[0].works, 'One number\nQuiet cards');
+    assert.match(readme([a], '2026-10-20T00:00:00Z'), /What works: One number; Quiet cards/);
   });
 });

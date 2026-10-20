@@ -10,7 +10,8 @@ const END = 0x06054b50;
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 
-async function inflate(data: Uint8Array): Promise<Uint8Array> {
+/** A deflated entry's bytes, inflated (also used by `zip-range.ts`). */
+export async function inflate(data: Uint8Array): Promise<Uint8Array> {
   const stream = new Blob([data as BlobPart])
     .stream()
     .pipeThrough(new DecompressionStream('deflate-raw'));
