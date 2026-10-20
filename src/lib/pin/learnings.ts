@@ -1,13 +1,24 @@
-import { type SourceKind, sourceLabel, TOPICS, type Topic, topicLabel } from './model';
+import { z } from 'zod';
+import {
+  SOURCES,
+  type SourceKind,
+  sortTopics,
+  sourceLabel,
+  TOPICS,
+  type Topic,
+  topicLabel,
+} from './model';
 
 /*
  * Collections: what a designer keeps from batch to batch. A collection holds
  * batches (each kept as its Pinch export, so it can be opened again) and one
  * learning per note: a rule the note teaches, drafted by the AI or written by
- * the author, which the author approves, edits or rejects, and marks as their
- * personal taste or as this project's. Approved learnings export as a rules
- * file an agent follows, each with the close-up it came from. This file is the
- * pure part; the browser keeps collections in IndexedDB (`collections-store.ts`).
+ * the author, marked as their personal taste or as this project's. Keeping a
+ * rule is agreeing with it; the author edits or deletes the ones that miss
+ * (D76). Rules export as a rules file an agent follows, each with the close-up
+ * it came from, all of them or the scopes and topics a task needs. This file
+ * is the pure part; the browser keeps collections in IndexedDB
+ * (`collections-store.ts`).
  */
 
 /** A note as a collection keeps it: its words and where its close-up is in the batch's export. */
@@ -45,8 +56,6 @@ export const SCOPES: { kind: Scope; label: string }[] = [
 ];
 export const scopeLabel = (s: Scope) => SCOPES.find((x) => x.kind === s)?.label ?? s;
 
-export type LearningStatus = 'draft' | 'approved' | 'rejected';
-
 export type Learning = {
   id: string;
   batchId: string;
@@ -56,7 +65,6 @@ export type Learning = {
   text: string;
   /** The AI's draft as it came, so the export can say whether the author changed it. */
   drafted?: string;
-  status: LearningStatus;
   scope: Scope;
   topics: Topic[];
 };
@@ -78,7 +86,7 @@ export function newCollection(name: string, id: string, now: string): Collection
   return { id, name, createdAt: now, updatedAt: now, batches: [], learnings: [] };
 }
 
-/** The collection with a batch added, and an empty draft learning for each of its notes. */
+/** The collection with a batch added, and an empty learning for each of its notes. */
 export function withBatch(
   c: Collection,
   batch: Batch,
@@ -90,7 +98,6 @@ export function withBatch(
     batchId: batch.id,
     note: n.ref,
     text: '',
-    status: 'draft',
     scope: defaultScope(n.source),
     topics: n.topics,
   }));
@@ -134,9 +141,9 @@ export function noteOf(c: Collection, l: Learning): { batch: Batch; note: BatchN
   return batch && note ? { batch, note } : undefined;
 }
 
-/** Drafts with nothing written yet: what the AI is asked to draft. */
+/** Learnings with nothing written and never drafted: what the AI is asked to draft. */
 export const unwritten = (c: Collection) =>
-  c.learnings.filter((l) => l.status === 'draft' && !l.text.trim() && l.drafted === undefined);
+  c.learnings.filter((l) => !l.text.trim() && l.drafted === undefined);
 
 /** Whose words a learning is: the AI's as drafted, the AI's edited by the author, or the author's. */
 export function originOf(l: Learning): 'ai' | 'ai-edited' | 'author' {
@@ -174,12 +181,26 @@ export type Rule = {
 };
 
 /**
- * The rules an export carries: the approved learnings among `ids` that have
- * words and a note, personal taste first, then by topic, then in the order the
- * batches were added. Numbered R1, R2, … in that order, each with its close-up's
- * file name in `evidence/`.
+ * Which rules a task needs: the scopes and topics to take. A rule is taken when
+ * its scope is among `scopes` and any of its topics is among `topics` (`null`
+ * stands for a rule with no topic). Leaving either out takes them all.
  */
-export function rulesOf(c: Collection, ids: ReadonlySet<string>): Rule[] {
+export type RulePick = { scopes?: readonly Scope[]; topics?: readonly (Topic | null)[] };
+
+const picked = (l: Learning, pick: RulePick) =>
+  (!pick.scopes || pick.scopes.includes(l.scope)) &&
+  (!pick.topics ||
+    (l.topics.length
+      ? l.topics.some((t) => pick.topics?.includes(t))
+      : pick.topics.includes(null)));
+
+/**
+ * The rules an export carries: every learning with words and a note that the
+ * pick takes, personal taste first, then by topic, then in the order the
+ * batches were added. Numbered R1, R2, … in that order, each with its
+ * close-up's file name in `evidence/`.
+ */
+export function rulesOf(c: Collection, pick: RulePick = {}): Rule[] {
   const scopeOrder = (s: Scope) => SCOPES.findIndex((x) => x.kind === s);
   const topicOrder = (l: Learning) => {
     const i = TOPICS.findIndex((t) => l.topics.includes(t.kind));
@@ -187,7 +208,7 @@ export function rulesOf(c: Collection, ids: ReadonlySet<string>): Rule[] {
   };
   const batchOrder = (l: Learning) => c.batches.findIndex((b) => b.id === l.batchId);
   const chosen = c.learnings
-    .filter((l) => ids.has(l.id) && l.status === 'approved' && l.text.trim() && noteOf(c, l))
+    .filter((l) => l.text.trim() && noteOf(c, l) && picked(l, pick))
     .sort(
       (a, b) =>
         scopeOrder(a.scope) - scopeOrder(b.scope) ||
@@ -213,7 +234,7 @@ const fromLine = (r: Rule) =>
   `note ${r.note.ref} on ${r.note.image}${r.note.source ? ` (${sourceLabel(r.note.source)})` : ''}, ${r.batch.name}`;
 
 const HOW_TO_USE = [
-  'These are design rules the author approved, each drawn from a note they wrote on a screenshot. Follow them in design and front-end work for this author.',
+  'These are design rules the author keeps, each drawn from a note they wrote on a screenshot. Follow them in design and front-end work for this author.',
   '"Personal taste" rules hold for everything the author makes. "This project" rules hold for the project this file sits in.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule names its close-up in `evidence/` and the note it came from. Open the close-up when you need to see what the rule means; the note says what the author saw there.',
@@ -280,6 +301,130 @@ export function rulesManifest(c: Collection, rules: Rule[], exportedAt: string) 
         ...(r.note.doesNotWork.trim() ? { doesNotWork: r.note.doesNotWork.trim() } : {}),
       },
     })),
+  };
+}
+
+/**
+ * The rules as text to paste into a chat with an agent for one task: the same
+ * rules and notes as `design-rules.md`, without the close-ups.
+ */
+export function rulesText(c: Collection, rules: Rule[]): string {
+  const lines = [
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; "Personal taste" holds everywhere, "This project" for this project. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
+  ];
+  for (const r of rules) {
+    const about = r.learning.topics.map(topicLabel).join(', ');
+    const said = [
+      r.note.works.trim() ? `works: "${oneLine(r.note.works)}"` : '',
+      r.note.doesNotWork.trim() ? `doesn't: "${oneLine(r.note.doesNotWork)}"` : '',
+    ].filter(Boolean);
+    lines.push(
+      '',
+      `${r.id}. ${oneLine(r.learning.text)} (${scopeLabel(r.learning.scope)}${about ? `; ${about}` : ''})`,
+      `   From a note on ${r.note.image}${r.note.source ? ` (${sourceLabel(r.note.source)})` : ''}: ${said.join('; ')}`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/*
+ * Moving a collection to another browser: one zip with `collection.json` (its
+ * name, batches and learnings) and each batch's own export under `batches/`.
+ * Read back, it becomes a new collection with fresh ids, beside any already
+ * there. Nothing goes through a server.
+ */
+
+export const COLLECTION_FILE = 'collection.json';
+export const batchFileName = (batchId: string) => `batches/${batchId}.zip`;
+
+const source = z.enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]]);
+const topics = z
+  .array(z.string().max(40))
+  .max(20)
+  .transform((t) => sortTopics(t));
+const collectionSchema = z.object({
+  tool: z.literal('Pinch'),
+  kind: z.literal('collection'),
+  version: z.literal(1),
+  name: z.string().max(200),
+  createdAt: z.string().max(40),
+  batches: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        name: z.string().max(200),
+        addedAt: z.string().max(40),
+        exportedAt: z.string().max(40),
+        root: z.string().max(200),
+        images: z.number().int().min(0),
+        notes: z
+          .array(
+            z.object({
+              ref: z.string().max(10),
+              image: z.string().max(300),
+              source: source.nullable(),
+              topics,
+              works: z.string().max(5000),
+              doesNotWork: z.string().max(5000),
+              label: z.string().max(200).optional(),
+              crop: z.string().max(300),
+            }),
+          )
+          .max(5000),
+      }),
+    )
+    .max(500),
+  learnings: z
+    .array(
+      z.object({
+        batchId: z.string().min(1).max(40),
+        note: z.string().max(10),
+        text: z.string().max(2000),
+        drafted: z.string().max(2000).optional(),
+        scope: z.enum(['personal', 'project']),
+        topics,
+      }),
+    )
+    .max(20000),
+});
+
+/** `collection.json`: what a collection holds besides its batches' exports. */
+export const collectionManifest = (c: Collection) => ({
+  tool: 'Pinch' as const,
+  kind: 'collection' as const,
+  version: 1 as const,
+  name: c.name,
+  createdAt: c.createdAt,
+  batches: c.batches,
+  learnings: c.learnings.map(({ id: _, ...l }) => l),
+});
+
+/**
+ * A collection read back from its file, with fresh ids for it, its batches and
+ * its learnings; `batchIds` maps each batch's id in the file to its new one, to
+ * find its export under `batches/`.
+ */
+export function readCollection(
+  json: unknown,
+  newId: () => string,
+  now: string,
+): { collection: Collection; batchIds: Map<string, string> } {
+  const parsed = collectionSchema.safeParse(json);
+  if (!parsed.success) throw new Error('It isn’t a Pinch collection this version reads.');
+  const d = parsed.data;
+  const batchIds = new Map(d.batches.map((b) => [b.id, newId()]));
+  return {
+    batchIds,
+    collection: {
+      id: newId(),
+      name: d.name || 'Untitled collection',
+      createdAt: d.createdAt,
+      updatedAt: now,
+      batches: d.batches.map((b) => ({ ...b, id: batchIds.get(b.id) as string })),
+      learnings: d.learnings
+        .filter((l) => batchIds.has(l.batchId))
+        .map((l) => ({ ...l, id: newId(), batchId: batchIds.get(l.batchId) as string })),
+    },
   };
 }
 

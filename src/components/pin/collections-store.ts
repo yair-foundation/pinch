@@ -1,4 +1,5 @@
 import type { Collection } from '@/lib/pin/learnings';
+import type { CollectionsBackend } from './collections-backend';
 
 /*
  * Collections live in their own IndexedDB database, beside the session's
@@ -132,3 +133,20 @@ export async function deleteCollection(c: Collection) {
     },
   );
 }
+
+/** Collections in this browser, as the collections view uses them. */
+export const browserBackend: CollectionsBackend = {
+  kind: 'browser',
+  list: listCollections,
+  save: async (c) => {
+    await saveCollection(c);
+  },
+  remove: deleteCollection,
+  putBatch: async (id, zip) => {
+    await putBatch(id, zip);
+  },
+  getBatch,
+  deleteBatch: async (id) => {
+    await deleteBatch(id);
+  },
+};

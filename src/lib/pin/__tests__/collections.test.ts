@@ -6,14 +6,18 @@ import { assetsOf, batchNotes, readExport } from '../import';
 import { cleanLearnings, learnPrompt, learnRequestSchema, learnSystem } from '../learn';
 import {
   type Batch,
+  batchFileName,
   byTopic,
   type Collection,
+  collectionManifest,
   collectionSlug,
   newCollection,
   originOf,
+  readCollection,
   rulesManifest,
   rulesMarkdown,
   rulesOf,
+  rulesText,
   unwritten,
   withBatch,
   withLearning,
@@ -229,18 +233,21 @@ function collection(): Collection {
 }
 
 describe('collections and learnings', () => {
-  it('adds a draft per note, scoped by whose design it is', () => {
+  it('adds an empty learning per note, scoped by whose design it is', () => {
     const c = collection();
     assert.equal(c.learnings.length, 3);
     assert.deepEqual(
-      c.learnings.map((l) => [l.note, l.status, l.scope, l.text]),
+      c.learnings.map((l) => [l.note, l.scope, l.text]),
       [
-        ['01.1', 'draft', 'personal', ''],
-        ['01.2', 'draft', 'personal', ''],
-        ['02.1', 'draft', 'project', ''],
+        ['01.1', 'personal', ''],
+        ['01.2', 'personal', ''],
+        ['02.1', 'project', ''],
       ],
     );
     assert.equal(unwritten(c).length, 3);
+    // A note the AI found no rule in isn't asked about again.
+    const drafted = withLearning(c, c.learnings[0].id, { drafted: '' }, 'x');
+    assert.equal(unwritten(drafted).length, 2);
     assert.equal(withoutBatch(c, 'b1', 'later').learnings.length, 0);
   });
 
@@ -260,18 +267,18 @@ describe('collections and learnings', () => {
     assert.equal(originOf({ ...l, text: 'Better rule.', drafted: 'Rule.' }), 'ai-edited');
   });
 
-  it('exports only the chosen approved rules, personal taste first, numbered', () => {
+  /** Two written rules and one left empty. */
+  function written(): Collection {
     let c = collection();
-    const [a, b, d] = c.learnings;
-    c = withLearning(c, a.id, { text: 'Lead with a short headline.', status: 'approved' }, 'x');
-    c = withLearning(c, b.id, { text: 'Give dense areas room.', status: 'draft' }, 'x');
-    c = withLearning(
-      c,
-      d.id,
-      { text: 'Align related controls.', drafted: 'Align controls.', status: 'approved' },
-      'x',
-    );
-    const rules = rulesOf(c, new Set([a.id, b.id, d.id]));
+    const [a, , d] = c.learnings;
+    c = withLearning(c, a.id, { text: 'Lead with a short headline.' }, 'x');
+    c = withLearning(c, d.id, { text: 'Align related controls.', drafted: 'Align controls.' }, 'x');
+    return c;
+  }
+
+  it('exports every written rule, personal taste first, numbered', () => {
+    const c = written();
+    const rules = rulesOf(c);
     assert.deepEqual(
       rules.map((r) => [r.id, r.learning.note, r.evidence]),
       [
@@ -279,20 +286,61 @@ describe('collections and learnings', () => {
         ['R2', '02.1', 'evidence/r02.jpg'],
       ],
     );
-    assert.equal(rulesOf(c, new Set([d.id])).length, 1);
     const md = rulesMarkdown(c, rules, '2026-10-20T12:00:00Z');
     assert.match(md, /^# Design rules: Acme$/m);
     assert.match(md, /2 rules\./);
+    assert.match(md, /design rules the author keeps/);
     assert.ok(md.indexOf('## Personal taste') < md.indexOf('## This project'));
     assert.match(md, /^\*\*R1\.\*\* Lead with a short headline\.$/m);
     assert.match(md, /from note 01\.1 on Pricing\.png \(Competitor\), pinch-2026-10-20\./);
     assert.match(md, /^What works: Short headline\.$/m);
     assert.match(md, /Also about: Layout\./);
-    assert.doesNotMatch(md, /Give dense areas room/);
     const data = rulesManifest(c, rules, 'x');
     assert.equal(data.rules[1].origin, 'ai-edited');
     assert.equal(data.rules[0].note.source, 'competitor');
     assert.equal(collectionSlug('Acme Dashboard, v2'), 'acme-dashboard-v2');
+  });
+
+  it('picks the rules a task needs, by scope and topic', () => {
+    const c = written();
+    const notes = (pick: Parameters<typeof rulesOf>[1]) =>
+      rulesOf(c, pick).map((r) => r.learning.note);
+    assert.deepEqual(notes({ scopes: ['project'] }), ['02.1']);
+    assert.deepEqual(notes({ topics: ['copy'] }), ['01.1']);
+    assert.deepEqual(notes({ topics: ['layout'] }), ['02.1'], 'any of its topics counts');
+    assert.deepEqual(notes({ topics: [null] }), [], 'the untagged rule is empty, so not a rule');
+    assert.deepEqual(notes({ scopes: [], topics: ['copy'] }), []);
+    // Numbering follows the pick, so a task's file reads R1, R2, …
+    assert.equal(rulesOf(c, { scopes: ['project'] })[0].id, 'R1');
+    const text = rulesText(c, rulesOf(c));
+    assert.match(text, /^Design rules from Acme \(Pinch\), 2 rules\./);
+    assert.match(text, /^R2\. Align related controls\. \(This project; Visual, Layout\)$/m);
+    assert.match(
+      text,
+      /From a note on Home\.jpg \(Ours\): works: "Aligned\."; doesn't: "Too far\."/,
+    );
+    assert.doesNotMatch(text, /evidence/);
+  });
+
+  it('moves a collection to another browser with fresh ids', () => {
+    const c = written();
+    const json = JSON.parse(JSON.stringify(collectionManifest(c)));
+    assert.equal(json.learnings[0].id, undefined);
+    counter = 100;
+    const { collection: back, batchIds } = readCollection(json, newId, 'now');
+    assert.notEqual(back.id, c.id);
+    assert.equal(back.name, 'Acme');
+    assert.equal(batchIds.get('b1'), back.batches[0].id);
+    assert.deepEqual(
+      back.learnings.map((l) => [l.batchId === back.batches[0].id, l.note, l.text]),
+      c.learnings.map((l) => [true, l.note, l.text]),
+    );
+    assert.equal(rulesOf(back).length, 2);
+    assert.throws(
+      () => readCollection({ tool: 'Pinch' }, newId, 'now'),
+      /isn’t a Pinch collection/,
+    );
+    assert.equal(batchFileName('b1'), 'batches/b1.zip');
   });
 });
 
