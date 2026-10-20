@@ -362,13 +362,15 @@ export function answerRule(c: Collection, id: string, option: number, now: strin
   return withRule(c, id, ownWords({ text: o.rule, drafted: o.rule }), now);
 }
 
-/** A change that makes a rule the author's own words: no reading, no question, nothing explained. */
+/**
+ * A change that makes a rule the author's own words: no reading, no question. The principles
+ * stay: they explain the notes, which haven't changed, and the rule is still browsed by them.
+ */
 export const ownWords = (change: Partial<Rule>): Partial<Rule> => ({
   ...change,
   basis: 'stated',
   reading: undefined,
   question: undefined,
-  principles: undefined,
 });
 
 /** The names of the principles that helped read a rule, for the author and their agent. */
@@ -426,7 +428,12 @@ export function byTopic(rules: Rule[]): TopicGroup[] {
  * is among `topics`, and any of its own tags among `tags` (`null` stands for none, in both).
  * Leaving either out takes them all.
  */
-export type RulePick = { topics?: readonly (Topic | null)[]; tags?: readonly (string | null)[] };
+/** Which rules to take: by topic, by the author's tag, by the principle that explains them. */
+export type RulePick = {
+  topics?: readonly (Topic | null)[];
+  tags?: readonly (string | null)[];
+  principles?: readonly string[];
+};
 
 export const picked = (r: Rule, pick: RulePick) =>
   (!pick.topics ||
@@ -434,7 +441,8 @@ export const picked = (r: Rule, pick: RulePick) =>
       ? r.topics.some((t) => pick.topics?.includes(t))
       : pick.topics.includes(null))) &&
   (!pick.tags ||
-    (r.tags.length ? r.tags.some((t) => pick.tags?.includes(t)) : pick.tags.includes(null)));
+    (r.tags.length ? r.tags.some((t) => pick.tags?.includes(t)) : pick.tags.includes(null))) &&
+  (!pick.principles || (r.principles ?? []).some((p) => pick.principles?.includes(p)));
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 

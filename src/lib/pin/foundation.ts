@@ -40,6 +40,8 @@ export type FoundationSource = keyof typeof FOUNDATION_SOURCES;
 
 export type Principle = {
   id: string;
+  /** What it is about, in a word or two, to browse rules by: "Typography", "Spacing". */
+  area: string;
   name: string;
   /** The principle, as a design lead holds it. */
   holds: string;
@@ -55,6 +57,7 @@ export type Principle = {
 export const PRINCIPLES: Principle[] = [
   {
     id: 'focus',
+    area: 'Hierarchy',
     name: 'One focal point',
     holds:
       'a screen answers what it is for with one focal element and one main action; the rest sits quieter, and boldness is spent in one place',
@@ -67,6 +70,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'task',
+    area: 'Task focus',
     name: 'A task screen holds the task',
     holds:
       'where someone finishes a task, anything that is not the task (promotions, upsells, unrelated links) pulls them away from it',
@@ -78,6 +82,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'grouping',
+    area: 'Spacing',
     name: 'Space groups before lines',
     holds:
       'nearness and alignment group content first; every border, divider, outline or box adds weight, so lines go where space can’t do the job',
@@ -90,6 +95,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'structure',
+    area: 'Structure',
     name: 'Structure carries information',
     holds:
       'numbering, labels over headings, dividers and outlines say something about the content (a sequence, a group, a status); as decoration they read as template chrome',
@@ -100,6 +106,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'colour',
+    area: 'Colour',
     name: 'Colour carries meaning',
     holds:
       'colour marks selection, status, data or the main action; as decoration it makes a screen loud, and a coloured edge reads as selected or wrong',
@@ -112,6 +119,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'not-colour-alone',
+    area: 'Status cues',
     name: 'Never colour alone',
     holds:
       'status and kinds carry a label, icon or shape as well as colour, and charts use colours people with colour blindness can tell apart',
@@ -123,6 +131,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'density',
+    area: 'Density',
     name: 'Density follows the job',
     holds:
       'screens people scan and work in all day (tables, dashboards, editors, inboxes) bear density; first-run, onboarding, checkout and marketing need room',
@@ -134,6 +143,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'type',
+    area: 'Typography',
     name: 'Type follows its role',
     holds:
       'size and weight follow what the text is (title, body, label) with clear steps between levels; one or two families, clearly distinct, whose character fits the subject; lines short enough to read in comfort; numbers that are compared line up',
@@ -145,6 +155,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'elevation',
+    area: 'Depth',
     name: 'A shadow means it floats',
     holds:
       'a shadow says something floats above the page (a menu, a dialog, something dragged); on resting surfaces shadows read as noise or a template kit, and where they are used they read like real light',
@@ -155,6 +166,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'subject',
+    area: 'Character',
     name: 'Character comes from the subject',
     holds:
       'a screen feels its own when its imagery, type and colour come from its subject’s world; what any product would use (stock photos, generic gradients, the same card kit) reads as generic',
@@ -165,6 +177,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'motion',
+    area: 'Motion',
     name: 'Motion answers or explains',
     holds:
       'motion earns its place when it answers an action or shows what changed; one deliberate moment beats effects everywhere; nothing moves by itself while people read unless they can stop it; reduced motion is respected',
@@ -176,6 +189,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'states',
+    area: 'Feedback',
     name: 'Controls show they respond',
     holds:
       'what can be used looks usable, hover, press and focus stand out more than rest, focus always shows, and nothing that looks usable is dead',
@@ -186,6 +200,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'reach',
+    area: 'Sizing',
     name: 'Sized for where it is used',
     holds:
       'targets are generous and as big as they look, text is big enough to read where and how the screen is used, and zoom is never blocked',
@@ -196,6 +211,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'words',
+    area: 'Tone and words',
     name: 'Words say what happens',
     holds:
       'labels name things as people know them; a button says what it does and keeps that name through the flow; an error says what went wrong and how to fix it, without jokes or apology; tone is plain where something is at stake (errors, money, deleting) and can be lighter where nothing is',
@@ -207,6 +223,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'flows',
+    area: 'Edge states',
     name: 'Every state has a way on',
     holds:
       'empty, loading, partial, very long and failed states are designed, each with a next step; loading keeps its label; what can’t be undone asks first or offers undo; what is off says why',
@@ -217,6 +234,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     id: 'alignment',
+    area: 'Alignment',
     name: 'Alignment is deliberate',
     holds:
       'every element lines up with something on purpose (an edge, a grid, a baseline); inner corners fit inside outer ones; an icon beside text matches its weight',

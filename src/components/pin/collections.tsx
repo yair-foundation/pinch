@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react';
@@ -108,12 +109,24 @@ const field =
 const chip =
   'flex h-7 items-center gap-1 rounded-md border px-2 text-[13px] leading-none whitespace-nowrap transition-colors duration-150 motion-reduce:transition-none';
 
-/** What the page slices the rules by: one topic or one of the author's tags, or nothing. */
-type Slice = { topic: Topic | null } | { tag: string | null } | null;
+/** What the page slices rules by: a topic, one of the author's tags, a principle, or nothing. */
+type Slice = { topic: Topic | null } | { tag: string | null } | { principle: string } | null;
 const sliceKey = (s: Slice) =>
-  !s ? 'all' : 'topic' in s ? `topic:${s.topic ?? ''}` : `tag:${s.tag ?? ''}`;
+  !s
+    ? 'all'
+    : 'topic' in s
+      ? `topic:${s.topic ?? ''}`
+      : 'tag' in s
+        ? `tag:${s.tag ?? ''}`
+        : `principle:${s.principle}`;
 const pickOf = (s: Slice): RulePick =>
-  !s ? {} : 'topic' in s ? { topics: [s.topic] } : { tags: [s.tag] };
+  !s
+    ? {}
+    : 'topic' in s
+      ? { topics: [s.topic] }
+      : 'tag' in s
+        ? { tags: [s.tag] }
+        : { principles: [s.principle] };
 
 export function CollectionsView({
   inert,
@@ -600,6 +613,18 @@ export function CollectionsView({
         isNew={r.createdAt >= since.current}
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
         onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
+        onRemove={() => {
+          // Removed, a rule is kept as dismissed: out of sight and exports, never written again.
+          change((c) => withRule(c, r.id, { status: 'dismissed' }, nowIso()), true);
+          onStatus({
+            tone: 'info',
+            text: 'Rule removed. Pinch won’t write it again.',
+            action: {
+              label: 'Undo',
+              run: () => change((c) => withRule(c, r.id, { status: 'approved' }, nowIso()), true),
+            },
+          });
+        }}
       />
     </li>
   );
@@ -798,41 +823,57 @@ function SliceBar({
       ? [
           {
             slice: { tag: null } as Slice,
-            label: 'No tag',
+            label: 'General',
             n: live.filter((r) => !r.tags.length).length,
           },
         ]
       : []),
   ];
+  const areas = PRINCIPLES.map((p) => ({
+    slice: { principle: p.id } as Slice,
+    label: p.area,
+    n: live.filter((r) => r.principles?.includes(p.id)).length,
+  })).filter((o) => o.n);
+  const chipOf = (o: { slice: Slice; label: string; n: number; topic?: Topic }) => {
+    const on = sliceKey(o.slice) === sliceKey(slice);
+    return (
+      <button
+        key={sliceKey(o.slice)}
+        type="button"
+        aria-pressed={on}
+        onClick={() => onSlice(on ? null : o.slice)}
+        className={cn(
+          tagHit,
+          chip,
+          on
+            ? o.topic
+              ? cn('border-transparent', TOPIC_TONES[o.topic].fill, TOPIC_TONES[o.topic].ink)
+              : 'border-foreground bg-muted text-foreground'
+            : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+        )}
+      >
+        {o.label}
+        <span className="font-mono opacity-70">{o.n}</span>
+      </button>
+    );
+  };
   return (
-    <fieldset className="min-w-0 border-0 p-0">
-      <legend className="sr-only">Show rules about</legend>
-      <div className="flex flex-wrap gap-2">
-        {options.map((o) => {
-          const on = sliceKey(o.slice) === sliceKey(slice);
-          return (
-            <button
-              key={sliceKey(o.slice)}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onSlice(on ? null : o.slice)}
-              className={cn(
-                tagHit,
-                chip,
-                on
-                  ? o.topic
-                    ? cn('border-transparent', TOPIC_TONES[o.topic].fill, TOPIC_TONES[o.topic].ink)
-                    : 'border-foreground bg-muted text-foreground'
-                  : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              {o.label}
-              <span className="font-mono opacity-70">{o.n}</span>
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
+    <div className="space-y-2">
+      <fieldset className="min-w-0 border-0 p-0">
+        <legend className="sr-only">Show rules about</legend>
+        <div className="flex flex-wrap gap-2">{options.map(chipOf)}</div>
+      </fieldset>
+      {areas.length > 0 && (
+        <fieldset className="min-w-0 border-0 p-0">
+          <legend
+            className="float-left flex h-7 items-center pr-2 text-[13px] text-muted-foreground"
+          >
+            By principle
+          </legend>
+          <div className="flex flex-wrap gap-2">{areas.map(chipOf)}</div>
+        </fieldset>
+      )}
+    </div>
   );
 }
 
@@ -868,6 +909,7 @@ function RuleCard({
   isNew,
   onChange,
   onAnswer,
+  onRemove,
 }: {
   rule: Rule;
   collection: Collection;
@@ -880,6 +922,8 @@ function RuleCard({
   onChange: (change: Partial<Rule>, now?: boolean) => void;
   /** The author picks one of the answers to the rule's question (D90). */
   onAnswer: (option: number) => void;
+  /** The author removes an outdated rule. */
+  onRemove: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const started = useRef('');
@@ -1039,7 +1083,22 @@ function RuleCard({
                   ))}
               </datalist>
             </div>
+            <p className="text-[13px] text-muted-foreground">
+              A tag keeps a rule to that project or client. A rule with no tag is your own taste,
+              for every project.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={onRemove}
+            className={cn(
+              small,
+              'text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
+            )}
+          >
+            <Trash2 className="size-4" aria-hidden />
+            Remove rule
+          </button>
         </div>
       ) : (
         <div className="space-y-1.5 pr-10">

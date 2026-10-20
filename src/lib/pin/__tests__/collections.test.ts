@@ -510,10 +510,22 @@ describe('the taste library', () => {
     assert.equal(rulesOf(answered).length, 2, 'answered, the agent gets it');
     assert.equal(answerRule(asking, q.id, 5, 'later'), asking, 'no such answer, no change');
 
+    assert.deepEqual(
+      asking.rules.filter((r) => picked(r, { principles: ['colour'] })).map((r) => r.id),
+      [quiet.id],
+      'browse by the principle that explains a rule',
+    );
+    assert.equal(asking.rules.filter((r) => picked(r, { principles: ['type'] })).length, 0);
+    const removed = withRule(asking, quiet.id, { status: 'dismissed' }, 'later');
+    assert.equal(rulesOf(removed).length, 0, 'a removed rule leaves exports');
     const rewritten = withRule(asking, quiet.id, ownWords({ text: 'Keep it calm.' }), 'later');
     assert.equal(rewritten.rules[1].basis, 'stated');
     assert.equal(rewritten.rules[1].reading, undefined);
-    assert.equal(rewritten.rules[1].principles, undefined, 'their words, nothing explained');
+    assert.deepEqual(
+      rewritten.rules[1].principles,
+      ['focus', 'colour'],
+      'still explained, still browsed',
+    );
     assert.equal(rulesManifest(rewritten, rulesOf(rewritten), 'x').rules[0].basis, 'stated');
   });
 
@@ -880,6 +892,10 @@ describe('the expert foundation', () => {
       for (const s of p.sources) assert.ok(FOUNDATION_SOURCES[s].licence, `${s} has a licence`);
     }
     for (const s of SHORTHAND) for (const id of s.principles) assert.ok(ids.has(id), id);
+    const areas = PRINCIPLES.map((p) => p.area);
+    assert.equal(new Set(areas).size, areas.length, 'each principle browses under its own name');
+    for (const a of ['Typography', 'Hierarchy', 'Spacing', 'Tone and words'])
+      assert.ok(areas.includes(a), a);
   });
 
   it('tells the reader which library rules are its readings and which wait on a question', () => {
