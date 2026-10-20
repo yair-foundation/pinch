@@ -76,6 +76,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 - **Anthropic.** Put `ANTHROPIC_API_KEY` in `.env.local` and run `pnpm dev`; the header shows the Suggestions switch, and Your rules reads new notes into rules on its own. Each step keeps its own daily ledger (in memory locally).
 - **Jev, without a key.** `pnpm jev-stub` starts a stand-in on port 3999 that answers the area questions from keywords in the note. In a second terminal: `JEV_API_KEY=stub JEV_ENDPOINT=http://localhost:3999 pnpm dev`. Write a note, wait about six seconds for it to be saved, and read it back (below) to see its `tags`. The stub tests the plumbing, never the tagging quality.
 - **Paid mode, locally.** Set the Google and Lemon Squeezy variables to any test values, plus `AUTH_SECRET` and `PINCH_TEST_LOGIN=1`, then `pnpm build && pnpm start`. Sign in with `POST /api/pin/auth/test` (`{"email": "you@example.com"}`, same origin), and mark the purchase by sending the webhook route an `order_created` body signed with the webhook secret (HMAC-SHA256 of the raw body, hex, in `X-Signature`). Without a Blob store, the account's rules live in the server's memory. Signed in but not bought, Your rules gets the preview: two rules in full, the rest hidden.
+- **The rules benchmark.** `ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/run.ts <out-dir> [runs] [builds] [held-out]` reads the cases in `scripts/rules-bench/cases.ts` with a plain prompt, with Pinch before the foundation and with Pinch as it is, has a judge score each against the case's key, then puts each one's guidance to work on a fresh task (D90). A few dollars a run; results in [docs/rules-bench.md](docs/rules-bench.md).
 - **Reading saved notes.** `GET /api/pin/notes` lists the saved days; `?day=YYYY-MM-DD` returns a day's document (each note under its random id, with `at` and, once tagged, `tags`); `?summary=YYYY-MM` counts a month's notes by area. In production send the password: `curl -u admin:$ADMIN_PASSWORD "https://get-pinch.io/api/pin/notes?summary=2026-10"`. In `next dev` without `ADMIN_PASSWORD` the route is open.
 
 ## Project structure
@@ -97,7 +98,7 @@ src/lib/                 session, google, account, billing, access, cloud (sign-
                          account's collections); blob-doc (JSON documents in Blob), budget (prices, refusal, visitor
                          key), jev (one request to Jev), auth (admin Basic auth, same-origin check), image (sniffing)
 public/pin-notes/        icon.svg (favicon), landing.webp, landing-night.webp (the paintings)
-scripts/                 jev-stub.mjs, format.mjs
+scripts/                 jev-stub.mjs, format.mjs, rules-bench/ (the rules benchmark: cases, the baseline, the runner)
 docs/                    architecture, decisions, design, status
 ```
 
@@ -124,3 +125,5 @@ Images stay in the browser (IndexedDB) until a signed-in buyer's rules move into
 ## License
 
 No license chosen yet. All rights reserved until one is.
+
+The expert foundation (`src/lib/pin/foundation.ts`) is written in Pinch's own words, drawing on GenUI's design foundations (the Yair Foundation's), Anthropic's [frontend-design skill](https://github.com/anthropics/skills/tree/main/skills/frontend-design) (Apache License 2.0) and Vercel's [Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines) (MIT, © Vercel Labs). No text of theirs is copied.

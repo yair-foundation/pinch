@@ -52,6 +52,17 @@ function library(): Collection {
       rule('c', 'Lead with a short headline.', { topics: ['copy'] }),
       rule('d', 'A rule they dismissed.', { topics: ['copy'], status: 'dismissed' }),
       rule('e', '', { topics: ['flow'], locked: true }),
+      rule('f', 'Keep headings short.', {
+        topics: ['copy'],
+        basis: 'interpreted',
+        question: {
+          ask: 'What do you like about this heading?',
+          options: [
+            { answer: 'Its wording', rule: 'Keep headings short.' },
+            { answer: 'Its size', rule: 'Make headings large.' },
+          ],
+        },
+      }),
     ],
   };
 }
@@ -120,6 +131,7 @@ describe('Pinch for agents (MCP)', () => {
     const all = textOf(await call('get_design_rules'));
     assert.match(all, /^Design rules from My rules \(Pinch\), 3 rules\./);
     assert.doesNotMatch(all, /dismissed/);
+    assert.doesNotMatch(all, /Keep headings short/, 'a rule waiting on its question stays back');
     assert.match(all, /Keep data tables dense\. \(where: in data tables\) \[Layout, Acme\]/);
     assert.match(all, /note 01\.1 on dashboard\.png \(Competitor\): works: "Spacing separates/);
     const copy = textOf(await call('get_design_rules', { topics: ['copy', 'nonsense'] }));

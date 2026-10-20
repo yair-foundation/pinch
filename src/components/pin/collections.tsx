@@ -16,9 +16,11 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
 import { MAX_LEARN_NOTES, MAX_LEARN_RULES } from '@/lib/pin/learn';
 import {
+  answerRule,
   applyReading,
   type Batch,
   type BatchNote,
@@ -34,6 +36,7 @@ import {
   newCollection,
   newNotes,
   originOf,
+  ownWords,
   picked,
   RULES_NAME,
   type Reading,
@@ -409,6 +412,7 @@ export function CollectionsView({
     let strengthened = 0;
     let conflicts = 0;
     let hidden = 0;
+    let asked = 0;
     const total = ref.current ? unreadNotes(ref.current).length : 0;
     if (!total) return;
     setReadError(null);
@@ -445,6 +449,8 @@ export function CollectionsView({
               context: r.context,
               topics: r.topics,
               status: r.status,
+              ...(r.basis === 'interpreted' ? { basis: r.basis } : {}),
+              ...(r.question ? { question: r.question.ask } : {}),
             })),
             shown: ref.current.rules.filter((r) => !r.locked && r.text.trim()).length,
           }),
@@ -467,6 +473,7 @@ export function CollectionsView({
         made += reading.propose.filter((p) => !p.locked).length;
         hidden += reading.propose.filter((p) => p.locked).length;
         conflicts += reading.propose.filter((p) => p.conflictsWith).length;
+        asked += reading.propose.filter((p) => p.question).length;
         change((x) => applyReading(x, reading, notes, nowIso(), newId), true);
         done += todo.length;
         setReading({ done: Math.min(done, total), total });
@@ -475,6 +482,7 @@ export function CollectionsView({
         made ? count(made, 'new rule') : '',
         strengthened ? `${count(strengthened, 'rule')} strengthened` : '',
         conflicts ? `${count(conflicts, 'conflict')} with your rules` : '',
+        asked ? `${count(asked, 'question')} for you` : '',
         hidden ? `${hidden} more found` : '',
       ].filter(Boolean);
       onStatus({
@@ -576,6 +584,7 @@ export function CollectionsView({
   const live = c.rules.filter((r) => !r.locked && r.status !== 'dismissed');
   const shown = live.filter((r) => picked(r, pickOf(slice)));
   const locked = c.rules.filter((r) => r.locked);
+  const questions = live.filter((r) => r.question).length;
   const noteCount = c.batches.reduce((n, b) => n + b.notes.length, 0);
   const imageCount = new Set(c.batches.flatMap((b) => b.notes.map((n) => `${b.id}/${n.image}`)))
     .size;
@@ -590,6 +599,7 @@ export function CollectionsView({
         pullsAgainst={r.conflict ? textOf(r.conflict.ruleId) : ''}
         isNew={r.createdAt >= since.current}
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
+        onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
       />
     </li>
   );
@@ -611,6 +621,7 @@ export function CollectionsView({
                 </p>
                 <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
                   <span>{count(live.length, 'rule')} ·</span>
+                  {questions > 0 && <span>{count(questions, 'question')} for you ·</span>}
                   <span className="flex items-center gap-1.5">
                     <Where className="size-3.5" aria-hidden />
                     {backend.kind === 'account' ? 'Kept in your account' : 'Kept in this browser'}
@@ -856,6 +867,7 @@ function RuleCard({
   pullsAgainst,
   isNew,
   onChange,
+  onAnswer,
 }: {
   rule: Rule;
   collection: Collection;
@@ -866,23 +878,35 @@ function RuleCard({
   isNew: boolean;
   /** A change to the rule; written at once with `now`, else a moment after typing stops. */
   onChange: (change: Partial<Rule>, now?: boolean) => void;
+  /** The author picks one of the answers to the rule's question (D90). */
+  onAnswer: (option: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const started = useRef('');
   const [open, setOpen] = useState(false);
   const [tag, setTag] = useState('');
   const notes = evidenceOf(c, r);
   const images = imagesOf(c, r);
   const id = `rule-${r.id}`;
   const origin = originOf(r);
+  const why = (r.principles ?? []).flatMap((p) => PRINCIPLES.find((x) => x.id === p) ?? []);
   const addTag = () => {
     const t = cleanTag(tag);
     if (t && !r.tags.includes(t)) onChange({ tags: [...r.tags, t] }, true);
     setTag('');
   };
+  const edit = () => {
+    started.current = r.text;
+    setEditing(true);
+  };
   const done = () => {
     addTag();
-    // An emptied rule goes back to Pinch's words; either way, what was typed is written now.
-    onChange(!r.text.trim() && r.drafted ? { text: r.drafted } : {}, true);
+    // An emptied rule goes back to Pinch's words. A rewritten one is the author's own: no longer
+    // Pinch's reading, nor waiting on its question (D90). Either way, what was typed is written now.
+    const back = !r.text.trim() && r.drafted ? { text: r.drafted } : {};
+    const rewritten = (back.text ?? r.text).trim() !== started.current.trim();
+    const ours = rewritten && (r.question || r.basis === 'interpreted');
+    onChange(ours ? ownWords(back) : back, true);
     setEditing(false);
   };
 
@@ -896,7 +920,7 @@ function RuleCard({
         aria-label={editing ? 'Done editing' : 'Edit rule'}
         title={editing ? 'Done' : 'Edit'}
         aria-pressed={editing}
-        onClick={() => (editing ? done() : setEditing(true))}
+        onClick={() => (editing ? done() : edit())}
         className={cn(
           hit,
           'absolute top-3 right-3 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
@@ -1019,11 +1043,20 @@ function RuleCard({
         </div>
       ) : (
         <div className="space-y-1.5 pr-10">
-          <p id={`${id}-text`} className="text-[15px] leading-snug text-foreground">
+          <p
+            id={`${id}-text`}
+            className={cn(
+              'text-[15px] leading-snug',
+              r.question ? 'text-muted-foreground' : 'text-foreground',
+            )}
+          >
             {r.text}
           </p>
           {r.context.trim() && (
             <p className="text-[13px] text-muted-foreground">Where: {r.context.trim()}</p>
+          )}
+          {r.basis === 'interpreted' && r.reading && !r.question && (
+            <p className="text-[13px] text-muted-foreground">Pinch’s reading: {r.reading}</p>
           )}
           {(r.topics.length > 0 || r.tags.length > 0) && (
             <ul className="flex list-none flex-wrap gap-1.5 p-0 pt-1">
@@ -1048,6 +1081,31 @@ function RuleCard({
             </ul>
           )}
         </div>
+      )}
+
+      {r.question && !editing && (
+        <fieldset className="min-w-0 space-y-2.5 rounded-lg border border-border bg-muted/50 px-3 py-3 text-[13px]">
+          <legend className="float-left w-full text-sm font-medium text-foreground">
+            {r.question.ask}
+          </legend>
+          <div className="clear-left flex flex-wrap gap-2">
+            {r.question.options.map((o, i) => (
+              <button
+                key={o.answer}
+                type="button"
+                title={o.rule}
+                onClick={() => onAnswer(i)}
+                className={cn(button, 'bg-background')}
+              >
+                {o.answer}
+              </button>
+            ))}
+            <button type="button" onClick={edit} className={small}>
+              Something else
+            </button>
+          </div>
+          <p className="text-muted-foreground">Your agent gets this rule once you answer.</p>
+        </fieldset>
       )}
 
       {r.conflict && (
@@ -1077,13 +1135,27 @@ function RuleCard({
           <span aria-hidden>{open ? '−' : '+'}</span>
         </button>
         {open && (
-          <ol id={`${id}-notes`} className="mt-2 list-none space-y-2 p-0">
-            {notes.map(({ batch, note }) => (
-              <li key={`${batch.id}/${note.ref}`}>
-                <Evidence note={note} crop={crops[`${batch.id}/${note.ref}`]} />
-              </li>
-            ))}
-          </ol>
+          <div id={`${id}-notes`} className="mt-2 space-y-2">
+            {why.length > 0 && (
+              <div className="space-y-1 text-[13px] text-muted-foreground">
+                <p>Pinch read your notes with these design principles; your notes make it your rule.</p>
+                <ul className="list-none space-y-1 p-0">
+                  {why.map((p) => (
+                    <li key={p.id}>
+                      <span className="font-medium text-foreground">{p.name}</span>: {p.holds}.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <ol className="list-none space-y-2 p-0">
+              {notes.map(({ batch, note }) => (
+                <li key={`${batch.id}/${note.ref}`}>
+                  <Evidence note={note} crop={crops[`${batch.id}/${note.ref}`]} />
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
       </div>
     </article>

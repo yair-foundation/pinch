@@ -1,3 +1,4 @@
+import { principleName } from './foundation';
 import { type SourceKind, sortTopics, sourceLabel, TOPICS, type Topic, topicLabel } from './model';
 
 /*
@@ -50,6 +51,9 @@ export type NoteRef = { batchId: string; note: string };
  */
 export type RuleStatus = 'proposed' | 'approved' | 'dismissed';
 
+/** A question Pinch asks the author about a rule, each answer with the rule it makes (D90). */
+export type RuleQuestion = { ask: string; options: { answer: string; rule: string }[] };
+
 export type Rule = {
   id: string;
   /** The rule, one sentence. Empty while it is locked. */
@@ -66,6 +70,19 @@ export type Rule = {
   drafted?: string;
   /** Another rule this one pulls against, and why both may hold. */
   conflict?: { ruleId: string; why: string };
+  /**
+   * `interpreted`: Pinch's reading of the author's vaguer words, not their own (D90), with how
+   * it read them in `reading`. Absent: stated, the notes' own words.
+   */
+  basis?: 'stated' | 'interpreted';
+  reading?: string;
+  /** A question the rule waits on: until the author answers, no agent gets it (D90). */
+  question?: RuleQuestion;
+  /**
+   * The ids of the foundation's principles that helped Pinch read it (D90): they explain the
+   * rule; its notes are what make it the author's.
+   */
+  principles?: string[];
   /** Notes added since the author last opened its evidence. */
   fresh?: number;
   /**
@@ -264,6 +281,10 @@ export type Reading = {
     notes: string[];
     conflictsWith?: string;
     conflict?: string;
+    basis?: 'stated' | 'interpreted';
+    reading?: string;
+    question?: RuleQuestion;
+    principles?: string[];
     locked?: boolean;
   }[];
 };
@@ -319,6 +340,10 @@ export function applyReading(
       ...(other && !p.locked
         ? { conflict: { ruleId: other.id, why: (p.conflict ?? '').trim() } }
         : {}),
+      ...(p.basis === 'interpreted' && !p.locked ? { basis: 'interpreted' as const } : {}),
+      ...(p.reading?.trim() && !p.locked ? { reading: p.reading.trim() } : {}),
+      ...(p.question && !p.locked ? { question: p.question } : {}),
+      ...(p.principles?.length && !p.locked ? { principles: p.principles } : {}),
       createdAt: now,
     });
   }
@@ -326,6 +351,29 @@ export function applyReading(
   for (const ref of notes.values()) read.add(noteKey(ref));
   return { ...c, updatedAt: now, rules, read: [...read] };
 }
+
+/**
+ * The author answers a rule's question: the rule becomes that answer's, as if they had said it
+ * (D90), and their agent gets it from now on.
+ */
+export function answerRule(c: Collection, id: string, option: number, now: string): Collection {
+  const o = c.rules.find((r) => r.id === id)?.question?.options[option];
+  if (!o) return c;
+  return withRule(c, id, ownWords({ text: o.rule, drafted: o.rule }), now);
+}
+
+/** A change that makes a rule the author's own words: no reading, no question, nothing explained. */
+export const ownWords = (change: Partial<Rule>): Partial<Rule> => ({
+  ...change,
+  basis: 'stated',
+  reading: undefined,
+  question: undefined,
+  principles: undefined,
+});
+
+/** The names of the principles that helped read a rule, for the author and their agent. */
+export const principlesOf = (r: Pick<Rule, 'principles'>) =>
+  (r.principles ?? []).flatMap((id) => principleName(id) ?? []);
 
 /**
  * Bought: the locked rules go, and their notes wait to be read again, now to be written in
@@ -397,7 +445,8 @@ export type ExportedNote = { batch: Batch; note: BatchNote; file: string };
 export type ExportedRule = { id: string; rule: Rule; notes: ExportedNote[] };
 
 /**
- * The rules an export carries: the ones the pick takes (never a dismissed or locked one), by topic, then oldest
+ * The rules an export carries: the ones the pick takes (never a dismissed or locked one, nor one
+ * waiting on its question), by topic, then oldest
  * first. Numbered R1, R2, … in that order; each note's close-up is `evidence/r01-1.jpg` and on.
  */
 export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
@@ -406,7 +455,10 @@ export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
     return i < 0 ? TOPICS.length : i;
   };
   const chosen = c.rules
-    .filter((r) => r.status === 'approved' && !r.locked && r.text.trim() && picked(r, pick))
+    .filter(
+      (r) =>
+        r.status === 'approved' && !r.locked && !r.question && r.text.trim() && picked(r, pick),
+    )
     .sort((a, b) => topicOrder(a) - topicOrder(b) || a.createdAt.localeCompare(b.createdAt));
   const width = chosen.length > 99 ? 3 : 2;
   return chosen.map((rule, i) => {
@@ -434,6 +486,8 @@ const said = (n: BatchNote) =>
 const HOW_TO_USE = [
   'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
   'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
+  'A rule with "Pinch\'s reading" is Pinch\'s interpretation of vaguer words, not the author\'s own: follow it, and lean on its notes where it doesn\'t fit the task.',
+  '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule lists the notes it comes from and their close-ups in `evidence/`. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
   "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.",
@@ -458,6 +512,9 @@ export function rulesMarkdown(c: Collection, rules: ExportedRule[], exportedAt: 
       const others = rule.topics.slice(1).map(topicLabel);
       lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
       if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
+      if (rule.basis === 'interpreted' && rule.reading?.trim())
+        lines.push('', `Pinch's reading: ${oneLine(rule.reading)}`);
+      if (principlesOf(rule).length) lines.push('', `Explained by: ${principlesOf(rule).join(', ')}.`);
       if (others.length || rule.tags.length)
         lines.push(
           '',
@@ -491,6 +548,11 @@ export function rulesManifest(c: Collection, rules: ExportedRule[], exportedAt: 
       topics: r.rule.topics,
       tags: r.rule.tags,
       origin: originOf(r.rule),
+      basis: r.rule.basis ?? 'stated',
+      ...(r.rule.basis === 'interpreted' && r.rule.reading?.trim()
+        ? { reading: oneLine(r.rule.reading) }
+        : {}),
+      ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
       notes: r.notes.map((n) => ({
         evidence: n.file,
         ref: n.note.ref,
@@ -518,6 +580,10 @@ export function rulesText(c: Collection, rules: ExportedRule[]): string {
       '',
       `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}`,
     );
+    if (r.rule.basis === 'interpreted' && r.rule.reading?.trim())
+      lines.push(`   Pinch's reading: ${oneLine(r.rule.reading)}`);
+    if (principlesOf(r.rule).length)
+      lines.push(`   Explained by: ${principlesOf(r.rule).join(', ')}.`);
     for (const n of r.notes) lines.push(`   - ${fromLine(n)}: ${said(n.note)}`);
   }
   return `${lines.join('\n')}\n`;

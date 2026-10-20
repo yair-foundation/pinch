@@ -8,11 +8,15 @@ import {
   learnPrompt,
   learnRequestSchema,
   learnSchema,
+  type CleanReading,
+  type LearnResult,
   learnSystem,
   PREVIEW_RULES,
   previewReading,
 } from '../learn';
+import { FOUNDATION_SOURCES, foundationText, PRINCIPLES, SHORTHAND } from '../foundation';
 import {
+  answerRule,
   applyReading,
   type Batch,
   byTopic,
@@ -28,6 +32,7 @@ import {
   noteFingerprint,
   noteKey,
   originOf,
+  ownWords,
   picked,
   rulesManifest,
   rulesMarkdown,
@@ -440,6 +445,78 @@ describe('the taste library', () => {
     );
   });
 
+  it('keeps a rule waiting on its question from agents until the author answers', () => {
+    const asking = applyReading(
+      collection(),
+      {
+        strengthen: [],
+        propose: [
+          {
+            rule: 'Keep headings short.',
+            context: '',
+            topics: ['copy'],
+            notes: ['n1'],
+            basis: 'interpreted',
+            question: {
+              ask: 'What do you like about this heading?',
+              options: [
+                { answer: 'Its short wording', rule: 'Keep headings short.' },
+                { answer: 'Its size', rule: 'Make headings clearly larger than body text.' },
+              ],
+            },
+          },
+          {
+            rule: 'Keep screens quiet: few elements competing for attention.',
+            context: '',
+            topics: ['visual'],
+            notes: ['n2'],
+            basis: 'interpreted',
+            reading: '“quiet” as few elements competing for attention',
+            principles: ['focus', 'colour'],
+          },
+        ],
+      },
+      sent(),
+      'now',
+      newId,
+    );
+    const [q, quiet] = asking.rules;
+    assert.equal(q.basis, 'interpreted');
+    assert.equal(q.question?.options.length, 2);
+    assert.deepEqual(
+      rulesOf(asking).map((r) => r.rule.text),
+      ['Keep screens quiet: few elements competing for attention.'],
+      'no agent gets a rule waiting on its question',
+    );
+    const md = rulesMarkdown(asking, rulesOf(asking), 'x');
+    assert.match(md, /^Pinch's reading: “quiet” as few elements competing for attention$/m);
+    assert.match(md, /is Pinch's interpretation of vaguer words/);
+    assert.match(md, /^Explained by: One focal point, Colour carries meaning\.$/m);
+    assert.match(md, /the author's notes are what make it their preference/);
+    assert.match(rulesText(asking, rulesOf(asking)), /^ {3}Explained by: One focal point/m);
+    assert.deepEqual(rulesManifest(asking, rulesOf(asking), 'x').rules[0].principles, [
+      'focus',
+      'colour',
+    ]);
+    assert.match(rulesText(asking, rulesOf(asking)), /^ {3}Pinch's reading: “quiet”/m);
+    assert.equal(rulesManifest(asking, rulesOf(asking), 'x').rules[0].basis, 'interpreted');
+
+    const answered = answerRule(asking, q.id, 1, 'later');
+    const a = answered.rules[0];
+    assert.equal(a.text, 'Make headings clearly larger than body text.');
+    assert.equal(a.basis, 'stated');
+    assert.equal(a.question, undefined);
+    assert.equal(originOf(a), 'ai', 'picked, not rewritten');
+    assert.equal(rulesOf(answered).length, 2, 'answered, the agent gets it');
+    assert.equal(answerRule(asking, q.id, 5, 'later'), asking, 'no such answer, no change');
+
+    const rewritten = withRule(asking, quiet.id, ownWords({ text: 'Keep it calm.' }), 'later');
+    assert.equal(rewritten.rules[1].basis, 'stated');
+    assert.equal(rewritten.rules[1].reading, undefined);
+    assert.equal(rewritten.rules[1].principles, undefined, 'their words, nothing explained');
+    assert.equal(rulesManifest(rewritten, rulesOf(rewritten), 'x').rules[0].basis, 'stated');
+  });
+
   it('slices by topic and by the author’s own tags', () => {
     let c = read();
     c = withRule(c, c.rules[1].id, { tags: ['Acme'] }, 'x');
@@ -565,6 +642,14 @@ describe('the taste library', () => {
   });
 });
 
+const stated = {
+  basis: 'stated' as const,
+  reading: '',
+  question: '',
+  options: [],
+  principles: [] as string[],
+};
+
 describe('reading notes into rules', () => {
   const request = () =>
     learnRequestSchema.parse({
@@ -616,6 +701,7 @@ describe('reading notes into rules', () => {
             notes: ['n1', 'zz'],
             conflictsWith: 'r1',
             conflict: 'r1 wants spacing; n1 wants density.',
+            ...stated,
           },
           {
             rule: 'No notes.',
@@ -624,6 +710,7 @@ describe('reading notes into rules', () => {
             notes: ['zz'],
             conflictsWith: '',
             conflict: '',
+            ...stated,
           },
           {
             rule: 'Unknown conflict.',
@@ -632,6 +719,8 @@ describe('reading notes into rules', () => {
             notes: ['n1'],
             conflictsWith: 'r7',
             conflict: 'x',
+            ...stated,
+            reading: 'A reading of a stated rule goes.',
           },
         ],
       },
@@ -647,9 +736,77 @@ describe('reading notes into rules', () => {
         notes: ['n1'],
         conflictsWith: 'r1',
         conflict: 'The other rule wants spacing; a note wants density.',
+        basis: 'stated',
       },
-      { rule: 'Unknown conflict.', context: '', topics: [], notes: ['n1'] },
+      { rule: 'Unknown conflict.', context: '', topics: [], notes: ['n1'], basis: 'stated' },
     ]);
+  });
+
+  it('keeps Pinch’s reading of vague words, and a question only with answers to pick', () => {
+    const vague = (extra: Partial<LearnResult['propose'][number]>) => ({
+      rule: 'Keep screens quiet.',
+      context: '',
+      topics: [],
+      notes: ['n1'],
+      conflictsWith: '',
+      conflict: '',
+      ...stated,
+      ...extra,
+    });
+    const clean = cleanReading(
+      {
+        strengthen: [],
+        propose: [
+          vague({
+            basis: 'interpreted',
+            reading: ' “quiet” as n1   says, few elements ',
+            principles: ['focus', 'made-up', 'focus', 'colour', 'grouping', 'density'],
+          }),
+          vague({
+            rule: 'Make headings large.',
+            basis: 'stated',
+            question: ' What do you like about this heading? ',
+            options: [
+              { answer: 'Its short wording', rule: 'Keep headings short.' },
+              { answer: 'its short wording', rule: 'A twin.' },
+              { answer: '', rule: 'No answer.' },
+              { answer: 'Its size', rule: 'Make headings large.' },
+              { answer: 'Its weight', rule: 'Set headings bold.' },
+              { answer: 'Its colour', rule: 'Colour headings.' },
+              { answer: 'Its place', rule: 'Place headings left.' },
+            ],
+          }),
+          vague({
+            question: 'Only one answer?',
+            options: [{ answer: 'Yes', rule: 'One.' }],
+          }),
+        ],
+      },
+      ['n1'],
+      [],
+    );
+    assert.deepEqual(clean.propose[0], {
+      rule: 'Keep screens quiet.',
+      context: '',
+      topics: [],
+      notes: ['n1'],
+      basis: 'interpreted',
+      reading: '“quiet” as a note says, few elements',
+      principles: ['focus', 'colour', 'grouping'],
+    });
+    assert.equal(clean.propose[1].rule, 'Keep headings short.', 'the rule waits as its first answer');
+    assert.equal(clean.propose[1].basis, 'interpreted');
+    assert.deepEqual(clean.propose[1].question, {
+      ask: 'What do you like about this heading?',
+      options: [
+        { answer: 'Its short wording', rule: 'Keep headings short.' },
+        { answer: 'Its size', rule: 'Make headings large.' },
+        { answer: 'Its weight', rule: 'Set headings bold.' },
+        { answer: 'Its colour', rule: 'Colour headings.' },
+      ],
+    });
+    assert.equal(clean.propose[2].question, undefined, 'one answer is no question');
+    assert.equal(clean.propose[2].basis, 'stated');
   });
 
   it('shows a visitor the first rules and hides the rest’s words', () => {
@@ -660,6 +817,7 @@ describe('reading notes into rules', () => {
         context: 'here',
         topics: ['copy' as const],
         notes: ['n1'],
+        basis: 'stated' as const,
       })),
     };
     const preview = previewReading(r, PREVIEW_RULES - 1);
@@ -676,5 +834,72 @@ describe('reading notes into rules', () => {
       previewReading(r, 0).propose.every((p) => 'locked' in p),
       true,
     );
+  });
+
+  it('shows a visitor the surest rules first, and nothing of a hidden one’s question', () => {
+    const asks: CleanReading['propose'][number] = {
+      rule: 'Keep headings short.',
+      context: '',
+      topics: ['copy'],
+      notes: ['n1', 'n2', 'n3'],
+      basis: 'interpreted',
+      reading: 'Its secret reading.',
+      question: { ask: 'Secret question?', options: [{ answer: 'Secret', rule: 'Secret rule.' }] },
+    };
+    const one = { rule: 'From one note.', context: '', topics: [], notes: ['n1'], basis: 'stated' as const };
+    const two = { ...one, rule: 'From two notes.', notes: ['n1', 'n2'] };
+    const preview = previewReading({ strengthen: [], propose: [asks, one, two] }, 2);
+    assert.deepEqual(
+      preview.propose.map((p) => p.rule),
+      ['', 'From one note.', 'From two notes.'],
+      'a rule waiting on a question is shown last; more notes first',
+    );
+    assert.equal(JSON.stringify(preview).includes('Secret'), false);
+  });
+});
+
+describe('the expert foundation', () => {
+  it('reads with the foundation, and never gives a rule a figure of its own', () => {
+    assert.match(learnSystem, /The design foundation/);
+    assert.match(learnSystem, /only the designer's notes establish what they prefer/);
+    assert.match(learnSystem, /“quiet”, “calm”, “breathes”: focus, colour, grouping/);
+    assert.match(learnSystem, /density, Density follows the job: .* Gives way: none in itself/);
+    assert.match(learnSystem, /When to ask/);
+    assert.ok(SHORTHAND.length > 5 && PRINCIPLES.length > 10);
+    assert.doesNotMatch(foundationText, /\d/, 'no sizes, ratios or counts to borrow');
+    assert.doesNotMatch(foundationText, /[→←↔⇄]/);
+  });
+
+  it('says for every principle where it applies, where it gives way and what justifies it', () => {
+    const ids = new Set(PRINCIPLES.map((p) => p.id));
+    assert.equal(ids.size, PRINCIPLES.length, 'ids are unique');
+    for (const p of PRINCIPLES) {
+      for (const field of ['name', 'holds', 'when', 'except', 'evidence'] as const)
+        assert.ok(p[field].trim(), `${p.id} has ${field}`);
+      assert.ok(p.sources.length, `${p.id} names its sources`);
+      for (const s of p.sources) assert.ok(FOUNDATION_SOURCES[s].licence, `${s} has a licence`);
+    }
+    for (const s of SHORTHAND) for (const id of s.principles) assert.ok(ids.has(id), id);
+  });
+
+  it('tells the reader which library rules are its readings and which wait on a question', () => {
+    const prompt = learnPrompt(
+      learnRequestSchema.parse({
+        notes: [{ id: 'n1', works: 'Quiet.' }],
+        rules: [
+          {
+            id: 'r1',
+            text: 'Keep headings short.',
+            context: '',
+            topics: [],
+            status: 'approved',
+            basis: 'interpreted',
+            question: 'What do you like about this heading?',
+          },
+        ],
+      }),
+    );
+    assert.match(prompt, /"basis": "interpreted"/);
+    assert.match(prompt, /"openQuestion": "What do you like about this heading\?"/);
   });
 });
