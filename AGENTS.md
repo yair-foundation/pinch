@@ -19,4 +19,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Privacy: images never leave the browser; only the text of notes is saved, anonymously, and only note text goes to Jev. Never log, store or send images, file names, links, "made by" or IP addresses on the server; the visitor key is a salted hash. Keep every AI step and the tagging off without their keys and behind their daily caps.
 - No secrets in the repository: `.env*` is ignored; `.env.example` lists every variable with no values.
 - Copy: no text arrows in UI strings; short labels; see [docs/design.md](docs/design.md).
-- New decisions go at the top of `docs/decisions.md`, numbered on from D67, with the reason.
+- New decisions go at the top of `docs/decisions.md`, numbered on from D71, with the reason.

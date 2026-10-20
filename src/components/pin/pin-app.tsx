@@ -55,6 +55,11 @@ import {
   type Source,
   type Suggestion,
   shapeKey,
+  sortTopics,
+  TOPICS,
+  type Topic,
+  toggleTopic,
+  topicLabel,
   verdictOf,
 } from '@/lib/pin/model';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
@@ -1698,7 +1703,7 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
   {
     group: 'In a field',
     rows: [
-      { combos: [['Tab']], what: 'Take the grey suggestion; the next Tab moves on' },
+      { combos: [['Tab']], what: 'Take the grey suggestion and its topics; the next Tab moves on' },
       { combos: [['Esc']], what: 'Dismiss the grey suggestion' },
       { combos: [['⌘', 'Enter']], what: 'Done with this note; focus returns to its pin' },
     ],
@@ -2858,6 +2863,7 @@ function Panel({
 
 function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen: () => void }) {
   const v = verdictOf(mark);
+  const topics = sortTopics(mark.topics ?? []);
   return (
     <button
       type="button"
@@ -2886,6 +2892,9 @@ function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen:
               )}
               {v === 'both' ? 'works and doesn’t' : v === 'good' ? 'works' : 'doesn’t work'}
             </>
+          )}
+          {topics.length > 0 && (
+            <span className="min-w-0 truncate">· {topics.map(topicLabel).join(', ')}</span>
           )}
         </span>
       </span>
@@ -2929,6 +2938,12 @@ function MarkEditor({
   }, []);
   const ghost = (field: SuggestedKey) =>
     dismissed(field) ? undefined : suggestion?.[field] || undefined;
+  // A suggestion's topics come with its words, unless the note already has topics of its own.
+  const ownTopics = mark.topics !== undefined;
+  const showsGhost = Boolean((!mark.good && ghost('works')) || (!mark.bad && ghost('doesNotWork')));
+  const suggestedTopics = !ownTopics && showsGhost ? suggestion?.topics : undefined;
+  const takeTopics = (accepted: boolean) =>
+    accepted && !ownTopics && suggestion?.topics?.length ? { topics: suggestion.topics } : {};
   const doneOnShortcut = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -2964,7 +2979,11 @@ function MarkEditor({
         suggesting={suggesting}
         example="One big number with nothing competing"
         onChange={(good, accepted) =>
-          onChange({ good, accepted: withAccepted(mark.accepted, 'good', good, accepted) })
+          onChange({
+            good,
+            accepted: withAccepted(mark.accepted, 'good', good, accepted),
+            ...takeTopics(accepted),
+          })
         }
         onDismiss={() => onDismiss('works')}
         onKeyDown={doneOnShortcut}
@@ -2978,10 +2997,19 @@ function MarkEditor({
         suggesting={suggesting}
         example="Six badges compete for attention"
         onChange={(bad, accepted) =>
-          onChange({ bad, accepted: withAccepted(mark.accepted, 'bad', bad, accepted) })
+          onChange({
+            bad,
+            accepted: withAccepted(mark.accepted, 'bad', bad, accepted),
+            ...takeTopics(accepted),
+          })
         }
         onDismiss={() => onDismiss('doesNotWork')}
         onKeyDown={doneOnShortcut}
+      />
+      <TopicPicker
+        topics={mark.topics}
+        suggested={suggestedTopics}
+        onChange={(topics) => onChange({ topics })}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <button
@@ -3001,6 +3029,54 @@ function MarkEditor({
         </span>
       </div>
     </section>
+  );
+}
+
+/**
+ * What a note is about: six toggle chips, any number on, none needed. While a grey suggestion
+ * shows and the note has no topics yet, the suggestion's topics have a dashed border: taking the
+ * suggestion turns them on. Pills 36px tall and 8px apart, so their 44px hit areas tile.
+ */
+function TopicPicker({
+  topics,
+  suggested,
+  onChange,
+}: {
+  topics?: Topic[];
+  suggested?: Topic[];
+  onChange: (topics: Topic[]) => void;
+}) {
+  return (
+    <fieldset className="m-0 min-w-0 border-0 p-0 text-[13px] text-muted-foreground">
+      <legend className="mb-1 p-0 text-[13px] leading-7 font-medium">About</legend>
+      <div className="flex flex-wrap gap-2">
+        {TOPICS.map((t) => {
+          const on = Boolean(topics?.includes(t.kind));
+          const hinted = !on && Boolean(suggested?.includes(t.kind));
+          return (
+            <button
+              key={t.kind}
+              type="button"
+              aria-pressed={on}
+              title={hinted ? `${t.hint}. Suggested: Tab takes it with the text` : t.hint}
+              onClick={() => onChange(toggleTopic(topics, t.kind))}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center rounded-full border px-3 text-[13px] leading-tight transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                on
+                  ? 'border-primary bg-primary font-medium text-primary-foreground'
+                  : hinted
+                    ? 'border-dashed border-foreground/50 text-foreground hover:bg-muted'
+                    : 'border-border hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {t.label}
+              {hinted && <span className="sr-only">, suggested</span>}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

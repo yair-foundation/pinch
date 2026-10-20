@@ -2,8 +2,10 @@ import {
   type Asset,
   type Mark,
   type Shape,
+  sortTopics,
   sourceLine,
   suggestionUse,
+  topicLabel,
   verdictOf,
 } from './model';
 
@@ -40,10 +42,15 @@ const aiTag = (m: Mark, field: 'good' | 'bad') => {
   return use === 'as-is' ? ' (AI suggestion)' : use === 'edited' ? ' (AI suggestion, edited)' : '';
 };
 
-/** One note as a line: `- 02.3 area x 31–68%, y 44–61% · headline · works: "…" · doesn't: "…"`. */
+/**
+ * One note as a line:
+ * `- 02.3 area x 31–68%, y 44–61% · headline · about: Copy, Layout · works: "…" · doesn't: "…"`.
+ */
 export function noteLine(m: Mark, number: string): string {
   const parts = [`${number} ${whereText(m.shape)}`];
   if (m.label.trim()) parts.push(oneLine(m.label));
+  const topics = sortTopics(m.topics ?? []);
+  if (topics.length) parts.push(`about: ${topics.map(topicLabel).join(', ')}`);
   if (m.good.trim()) parts.push(`works${aiTag(m, 'good')}: "${oneLine(m.good)}"`);
   if (m.bad.trim()) parts.push(`doesn't${aiTag(m, 'bad')}: "${oneLine(m.bad)}"`);
   const line = `- ${parts.join(' · ')}`;

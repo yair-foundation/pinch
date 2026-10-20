@@ -1,6 +1,6 @@
 # Pinch
 
-Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why, and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Free, no account; the images never leave the browser.
+Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, say why and what it's about (visual, layout, copy, interaction, flow, accessibility), and export it all as a folder an AI agent reads: `README.md`, `AGENTS.md`, `notes.json`, a contact sheet, every image with its marks drawn on and a close-up of every note. Free, no account; the images never leave the browser.
 
 Live at https://pinch-tool.vercel.app. Desktop only (under 768px wide it shows one message), up to 100 images a session.
 

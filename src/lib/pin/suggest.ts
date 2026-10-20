@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { type Shape, type SourceKind, sourceLabel } from './model';
+import {
+  type Shape,
+  type SourceKind,
+  sortTopics,
+  sourceLabel,
+  TOPIC_KINDS,
+  TOPICS,
+  topicGloss,
+} from './model';
 
 /*
  * Suggestions: when a note is empty, a small model looks at the screen and a
@@ -16,6 +24,9 @@ export const suggestSchema = z.object({
   doesNotWork: z
     .string()
     .describe("One short sentence on what doesn't work there and why. Empty if nothing."),
+  topics: z
+    .array(z.enum(TOPIC_KINDS))
+    .describe('What the two sentences are about: one or two topics. Empty when both are empty.'),
 });
 
 export type SuggestResult = z.infer<typeof suggestSchema>;
@@ -30,6 +41,7 @@ Rules:
 - Be concrete: hierarchy, spacing, type, colour, contrast, density, alignment, wording or affordance.
 - No verdict adjectives ("clean", "modern", "cluttered", "visually appealing", "sleek"); say what you see.
 - Vary the sentence shape; don't end every sentence with "so it…".
+- Also say what your sentences are about, one or two topics: ${TOPICS.map((t) => `${t.kind} (${topicGloss(t)})`).join('; ')}. Only the topics the sentences are about; "the headline is too small" is visual, "the headline says nothing" is copy.
 - Leave a field empty when there is nothing worth saying. Don't pad, and don't criticise for the sake of it.
 - The magenta ring, disc, box, arrow and leader line, the close-up and its cropping are an overlay: how you were shown the spot, not part of the design. Never describe the overlay, where it sits, what it covers or cuts into, or how it reads. Refer to what is underneath by its role ("the total", "the primary button"), never as "the marked point", "the dot" or "the spot".
 - If the spot is empty space with nothing to judge, leave both fields empty.
@@ -74,14 +86,20 @@ const OVERLAY_COVERS =
 export const aboutTheMarker = (s: string) =>
   OVERLAY_NAMED.test(s) || OVERLAY_SUBJECT.test(s) || OVERLAY_COVERS.test(s);
 
-/** Keep the model's answer to short, single-line fields, and drop one about the marker. */
+/**
+ * Keep the model's answer to short, single-line fields, and drop one about the marker. Topics
+ * keep their fixed order, three at most, and go when there are no sentences left to be about.
+ */
 export function cleanSuggestion(r: SuggestResult): SuggestResult {
   const clean = (s: string, max: number) => {
     const line = s.replace(/\s+/g, ' ').trim().slice(0, max);
     return aboutTheMarker(line) ? '' : line;
   };
+  const works = clean(r.works, 300);
+  const doesNotWork = clean(r.doesNotWork, 300);
   return {
-    works: clean(r.works, 300),
-    doesNotWork: clean(r.doesNotWork, 300),
+    works,
+    doesNotWork,
+    topics: works || doesNotWork ? sortTopics(r.topics ?? []).slice(0, 3) : [],
   };
 }
