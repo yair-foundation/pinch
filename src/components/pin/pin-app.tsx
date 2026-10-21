@@ -1547,7 +1547,6 @@ function Workspace() {
           inert={dialog !== null}
           offer={me?.paywall ? { ...OFFER, price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
-          onPrivacy={() => openDialog('privacy')}
         />
       ) : (
         <div inert={dialog !== null} className="flex min-h-0 flex-1">
@@ -1892,14 +1891,12 @@ function EmptyState({
   inert,
   offer,
   onChoose,
-  onPrivacy,
 }: {
   dragging: boolean;
   inert: boolean;
   /** The one offer and the free credits, once billing is on (D98). */
   offer?: Offer & { price: string };
   onChoose: () => void;
-  onPrivacy: () => void;
 }) {
   // Parallax: the painting drifts a little against the pointer, eased so it glides. Still under
   // reduced motion.
@@ -2028,16 +2025,8 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {offer
-                ? `Marking images is free. Start free with ${offer.free} credits; top up anytime. Images stay in this browser unless you sign in; your notes and the close-ups of your marks go to Anthropic to find your rules.`
-                : 'Free, no account. Images stay in this browser; your notes and the close-ups of your marks go to Anthropic for suggestions and rules.'}{' '}
-              <button
-                type="button"
-                data-privacy-trigger
-                onClick={onPrivacy}
-                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              >
-                How Pinch uses your data
-              </button>
+                ? `Marking images is free. Start free with ${offer.free} credits; top up anytime. Images stay in this browser unless you sign in.`
+                : 'Free, no account. Images stay in this browser.'}
             </span>
             <span className="mx-auto mt-1 block">
               <a
