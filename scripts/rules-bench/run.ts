@@ -15,6 +15,12 @@
 // questions, `builds` times each (default 1); a second judge scores the work against the
 // designer's whole taste (with `held-out`, only for the held-out cases). Results come per set of cases: those the foundation was tuned on and
 // those held out. Everything lands in out-dir as JSON. Costs a few dollars a run.
+//
+// Stage 2 also puts generic guidance to work, the same for every designer: impeccable's design
+// skill (`impeccable`), Pinch's own principles (`principles`), and impeccable with Pinch's rules
+// (`impeccable and foundation`), as an agent with both would have them. BENCH_GUIDANCE picks the
+// arms, e.g. BENCH_GUIDANCE="none,impeccable,principles,foundation,impeccable and foundation" with
+// BENCH_VARIANTS=foundation reads only what those arms need.
 import { mkdirSync, writeFileSync } from "node:fs"
 import Anthropic from "@anthropic-ai/sdk"
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod"
@@ -54,6 +60,70 @@ const VARIANTS = (process.env.BENCH_VARIANTS?.split(",") ?? [
   "current",
   "foundation",
 ]) as Variant[]
+
+/** Stage 2's arms: the guidance an agent builds with. */
+type Guidance =
+  | "none"
+  | "plain"
+  | "current"
+  | "foundation"
+  | "foundation, answered"
+  | "impeccable"
+  | "principles"
+  | "impeccable and foundation"
+const ARMS: Guidance[] = [
+  "none",
+  "plain",
+  "current",
+  "foundation",
+  "foundation, answered",
+  "impeccable",
+  "principles",
+  "impeccable and foundation",
+]
+// Split at commas, but not at the one in "foundation, answered".
+const GUIDANCE = (process.env.BENCH_GUIDANCE?.split(/,(?! )/) ??
+  ARMS) as Guidance[]
+/** The reading each arm hands over, if it hands one over. */
+const NEEDS: Partial<Record<Guidance, Variant>> = {
+  plain: "plain",
+  current: "current",
+  foundation: "foundation",
+  "foundation, answered": "foundation",
+  "impeccable and foundation": "foundation",
+}
+
+// impeccable (github.com/pbakaus/impeccable, Apache 2.0), fetched at a pinned commit and never
+// kept here: its skill's opening, "How to design" and "Modes", and its craft floor, which an agent
+// with the skill reads before building. The skill's setup, commands and tools act on a project,
+// not on one file, so they are left out.
+const IMPECCABLE =
+  "https://raw.githubusercontent.com/pbakaus/impeccable/dad8dbb3aac21ad1fa236c110315ef4abece23e8/.claude/skills/impeccable"
+
+async function impeccable() {
+  const get = async (path: string) => {
+    const r = await fetch(`${IMPECCABLE}/${path}`)
+    if (!r.ok) throw new Error(`impeccable ${path}: ${r.status}`)
+    return r.text()
+  }
+  const [skill, floor] = await Promise.all([
+    get("SKILL.md"),
+    get("reference/craft-floor.md"),
+  ])
+  const design = skill
+    .replace(/^---\n[\s\S]*?\n---\n/, "")
+    .split(/\n(?=## )/)
+    .filter((s) => !s.startsWith("## ") || /^## (How to design|Modes)\n/.test(s))
+    .join("\n")
+  return `${design.trim()}\n\n${floor.trim()}`
+}
+
+/** Pinch's own foundation as guidance: each principle, where it applies and where it gives way. */
+const principlesText = () =>
+  PRINCIPLES.map(
+    (p) =>
+      `- ${p.name}: ${p.holds}. Applies to ${p.when}. Gives way in ${p.except}.`,
+  ).join("\n")
 
 /** At most `n` calls at once. */
 async function pool<T>(jobs: (() => Promise<T>)[], n = 4): Promise<T[]> {
@@ -376,8 +446,11 @@ async function answered(c: Case, col: Collection) {
   return { col: { ...col, rules }, clicks, written }
 }
 
-/** The agent at work on the case's task, with some guidance or none. */
-async function build(c: Case, guidance: string) {
+/** The agent at work on the case's task, with general guidance, the designer's, both or none. */
+async function build(
+  c: Case,
+  guidance: { general?: string; designer?: string },
+) {
   const r = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 20000,
@@ -387,9 +460,15 @@ async function build(c: Case, guidance: string) {
     messages: [
       {
         role: "user",
-        content: guidance
-          ? `${c.task}\n\nDesign guidance from the designer you are working for:\n\n${guidance}`
-          : c.task,
+        content: [
+          c.task,
+          guidance.general &&
+            `General design guidance:\n\n${guidance.general}`,
+          guidance.designer &&
+            `Design guidance from the designer you are working for:\n\n${guidance.designer}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       },
     ],
   })
@@ -440,6 +519,27 @@ async function judgeWork(c: Case, html: string) {
 const LABELS = ["K", "Q", "W"]
 
 async function main() {
+  // Check the arms and fetch impeccable before spending anything.
+  const unknown = GUIDANCE.filter((g) => !ARMS.includes(g))
+  if (unknown.length)
+    throw new Error(`Unknown BENCH_GUIDANCE: ${unknown.join(", ")}`)
+  const unread = builds
+    ? GUIDANCE.flatMap((g) => NEEDS[g] ?? []).filter(
+        (v) => !VARIANTS.includes(v),
+      )
+    : []
+  if (unread.length)
+    throw new Error(
+      `BENCH_GUIDANCE needs these in BENCH_VARIANTS: ${[...new Set(unread)].join(", ")}`,
+    )
+  const general = {
+    impeccable:
+      builds && GUIDANCE.some((g) => g.startsWith("impeccable"))
+        ? await impeccable()
+        : "",
+    principles: principlesText(),
+  }
+
   // Stage 1: read, then judge blind.
   type Read = {
     caseId: string
@@ -479,7 +579,9 @@ async function main() {
   // Stage 2: the first run's guidance at work on a fresh task.
   type Work = {
     caseId: string
-    guidance: string
+    guidance: Guidance
+    /** General guidance given with the designer's, if any. */
+    general?: keyof typeof general
     text: string
     clicks?: number
     written?: number
@@ -496,29 +598,42 @@ async function main() {
       const col = collectionOf(c, first(v).reading as Reading)
       return rulesText(col, rulesOf(col))
     }
-    const after = await answered(
-      c,
-      collectionOf(c, first("foundation").reading as Reading),
-    )
-    works.push(
-      { caseId: c.id, guidance: "none", text: "" },
-      { caseId: c.id, guidance: "plain", text: first("plain").set },
-      { caseId: c.id, guidance: "current", text: asGiven("current") },
-      { caseId: c.id, guidance: "foundation", text: asGiven("foundation") },
-      {
-        caseId: c.id,
-        guidance: "foundation, answered",
-        text: rulesText(after.col, rulesOf(after.col)),
-        clicks: after.clicks,
-        written: after.written,
-      },
-    )
+    for (const guidance of GUIDANCE) {
+      const w = { caseId: c.id, guidance }
+      if (guidance === "foundation, answered") {
+        const after = await answered(
+          c,
+          collectionOf(c, first("foundation").reading as Reading),
+        )
+        works.push({
+          ...w,
+          text: rulesText(after.col, rulesOf(after.col)),
+          clicks: after.clicks,
+          written: after.written,
+        })
+      } else if (guidance === "plain")
+        works.push({ ...w, text: first("plain").set })
+      else if (guidance === "current" || guidance === "foundation")
+        works.push({ ...w, text: asGiven(guidance) })
+      else if (guidance === "impeccable" || guidance === "principles")
+        works.push({ ...w, general: guidance, text: "" })
+      else if (guidance === "impeccable and foundation")
+        works.push({
+          ...w,
+          general: "impeccable",
+          text: asGiven("foundation"),
+        })
+      else works.push({ ...w, text: "" })
+    }
   }
   const built = await pool(
     works.flatMap((w) =>
       Array.from({ length: builds }, (_, run) => async () => {
         const c = CASES.find((x) => x.id === w.caseId) as Case
-        const html = await build(c, w.text)
+        const html = await build(c, {
+          general: w.general && general[w.general],
+          designer: w.text,
+        })
         return { ...w, run, html, judgement: await judgeWork(c, html) }
       }),
     ),
@@ -602,13 +717,7 @@ async function main() {
     console.log(
       "guidance | taste followed | violated | changes asked per build",
     )
-    for (const g of [
-      "none",
-      "plain",
-      "current",
-      "foundation",
-      "foundation, answered",
-    ]) {
+    for (const g of GUIDANCE) {
       const js = work.filter((b) => b.guidance === g).map((b) => b.judgement)
       const count = (v: string) =>
         sum(js.map((j) => j.taste.filter((t) => t.verdict === v).length))
@@ -624,9 +733,10 @@ async function main() {
     const asked = works.filter(
       (w) => setOf(w.caseId) === set && w.guidance === "foundation, answered",
     )
-    console.log(
-      `Questions answered by one click: ${sum(asked.map((b) => b.clicks ?? 0))}; needing the designer's own words: ${sum(asked.map((b) => b.written ?? 0))}`,
-    )
+    if (asked.length)
+      console.log(
+        `Questions answered by one click: ${sum(asked.map((b) => b.clicks ?? 0))}; needing the designer's own words: ${sum(asked.map((b) => b.written ?? 0))}`,
+      )
   }
   console.log(`Cost: $${spent.toFixed(2)}`)
 }

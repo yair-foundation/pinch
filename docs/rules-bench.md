@@ -24,13 +24,14 @@ All three run on `claude-opus-5-5`; Pinch's at medium effort, as in the product.
 - **One-click answers**: questions where one of the answers is what the designer meant.
 - **Vague notes right**: vague notes asked about with the right answer among the options, read correctly, or stated correctly.
 
-**Stage 2: the work.** An agent builds each case's fresh task as one HTML file with Tailwind, under five kinds of guidance:
+**Stage 2: the work.** An agent builds each case's fresh task as one HTML file with Tailwind, under these kinds of guidance:
 
 - **None.**
 - **The plain prompt's rules**, as text.
 - **Current Pinch's rules**, as the product hands them over (`rulesText`).
 - **Pinch with the foundation, as handed over**: rules waiting on a question are held back.
 - **The same, after the designer answers.** A model playing the designer picks the matching answer, or none. Rules with no matching answer are left out, since the designer would write those in their own words.
+- **Generic guidance**, the same for every designer (since round 4): **impeccable**, the open design skill for agents ([github.com/pbakaus/impeccable](https://github.com/pbakaus/impeccable), Apache 2.0), as its opening, "How to design", "Modes" and craft floor, fetched at a pinned commit; **Pinch's principles**, the foundation's sixteen principles with where each applies and gives way; and **impeccable with Pinch's rules**, as an agent with both would have them. Generic guidance goes in as "General design guidance", the designer's rules as "Design guidance from the designer you are working for".
 
 A second judge, with the designer's whole taste, reads the HTML and counts taste followed and violated, and the changes they would ask for.
 
@@ -166,10 +167,38 @@ Each close-up is the window Pinch's own `cropRect` gives for the mark, with the 
 
 **Limits.** Three screens and twelve notes, written by hand with their keys; simple rendered screens, not real products; the mark is drawn plainly, without Pinch's numbered disc; one model as reader and judge.
 
+### Round 4: generic guidance against the designer's rules
+
+Does a designer's own rules beat free generic guidance, which an agent can have without Pinch? Stage 2 only, with one foundation reading per case: `BENCH_VARIANTS=foundation`, `BENCH_GUIDANCE="none,impeccable,principles,foundation,impeccable and foundation"`, two builds per cell, all five cases. impeccable at commit `dad8dbb` (4.7.0). On 2026-10-21: $17.32.
+
+| Stage 2: taste followed (violated) | Tuning cases | Held-out case |
+| --- | --- | --- |
+| No guidance | 26/66 (40) | 14/20 (6) |
+| impeccable | 28/68 (40) | 13/18 (5) |
+| Pinch's principles | 32/68 (36) | 15/19 (4) |
+| Pinch's rules, as handed over | 52/68 (16) | 14/18 (4) |
+| impeccable with Pinch's rules | 55/68 (13) | 14/18 (4) |
+
+Per tuning case, taste followed with no guidance, impeccable, Pinch's principles, Pinch's rules, and both:
+
+| Case | None | impeccable | Principles | Rules | Both |
+| --- | --- | --- | --- | --- | --- |
+| B2B analytics | 8/16 | 10/16 | 12/16 | 13/16 | 14/16 |
+| Food delivery | 9/18 | 9/18 | 9/18 | 14/18 | 17/18 |
+| Developer docs | 5/14 | 5/14 | 6/14 | 12/14 | 10/14 |
+| Marketing | 4/18 | 4/20 | 5/20 | 13/20 | 14/20 |
+
+- **Generic guidance barely moves the agent toward a designer's taste.** impeccable followed 28 of 68 tastes against 26 with none; Pinch's own principles, 32. The designer's rules followed 52.
+- **The two add up.** impeccable with the designer's rules followed the most (55 of 68) and asked for the fewest changes (3.0 a build), but by a margin within noise of the rules alone (52, 3.1).
+- **The held-out finance case tells little again**: with no guidance the agent already followed 14 of 20, and every arm landed within one or two of that.
+
+**Limits.** The judge scores the work only against one designer's taste, so generic guidance can't win by construction on tastes it can't know; this doesn't measure overall craft, which is impeccable's aim. impeccable here is its text only, not its detectors, browser checks or interview, which act on a project. The tuning cases are the ones the reading was tuned on. Two builds a cell.
+
 ## What it shows
 
 - **The rules got better, as the designer counts.** Across the tuning cases the foundation needed the fewest corrections every round. In round 3 that was 3.0 a reading, against 4.9 for current Pinch and 5.6 for the plain prompt. It handled vague notes far better than current Pinch (15 of 24 against 4), and kept unsupported assumptions near current Pinch's low (1.8 against 1.5; the plain prompt made 6.8). It kept context apart every time.
 - **On fresh cases the gain is smaller.** On the two held-out cases it beat or tied current Pinch on corrections (5.0 against 7.0, then 4.5 and 4.5) and on vague notes. Against the plain prompt it was mixed: fewer unsupported assumptions, but the plain prompt's guesses were right more often. Some of the gain on the tuning cases is tuning.
+- **A designer's rules do what generic guidance can't.** In round 4, impeccable's design skill and Pinch's own principles moved the agent little toward a designer's taste (28 and 32 of 68 tastes, against 26 with none); the designer's rules took it to 52, and to 55 alongside impeccable. So starter rules from design wisdom alone wouldn't stand in for a designer's own.
 - **Rules help agents; better rules don't yet show.** Any rule set lifts an agent's work well above none on most tasks (25 to 39 of 48 tastes in round 2). Between the three rule sets the differences stay within noise. The tastes every set misses are the ones only the designer can give: a meaning split across two answers, one no option names, or a conflict left open.
 
 So the foundation makes Pinch's rules more faithful and its uncertainty visible, at twice the cost of a reading. It doesn't yet make an agent's work better than a plain prompt's rules. That claim needs the designer in the loop, and real designers.
