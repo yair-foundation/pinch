@@ -611,6 +611,32 @@ export function cropImage(
   );
 }
 
+/** A kept close-up's longest side when it goes with a reading (D98). */
+const READING_EDGE = 800;
+
+/**
+ * A note's kept close-up, its mark already drawn, made small enough to go with a reading of its
+ * words (D98): 800px at most on its longest side, as JPEG in base64.
+ */
+export async function closeUpForReading(jpeg: Uint8Array): Promise<string> {
+  const bitmap = await createImageBitmap(new Blob([jpeg as BlobPart], { type: 'image/jpeg' }));
+  const scale = Math.min(1, READING_EDGE / Math.max(bitmap.width, bitmap.height));
+  const { canvas, ctx } = canvasOf(
+    Math.max(1, Math.round(bitmap.width * scale)),
+    Math.max(1, Math.round(bitmap.height * scale)),
+  );
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await toBlob(canvas, 'image/jpeg', 0.75);
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Could not read a close-up.'));
+    reader.readAsDataURL(blob);
+  });
+  return url.slice(url.indexOf(',') + 1);
+}
+
 /** The same close-up for a suggestion: 1024px at most, as JPEG. */
 export function cropForAi(
   bitmap: ImageBitmap,

@@ -6,8 +6,11 @@ import { assetsOf, batchNotes, readExport } from '../import';
 import {
   cleanReading,
   cleanTitles,
+  CLOSE_UPS,
+  learnContent,
   learnPrompt,
   learnRequestSchema,
+  MAX_CROP_CHARS,
   learnSchema,
   type LearnResult,
   type LibraryRule,
@@ -980,6 +983,43 @@ describe('the expert foundation', () => {
       learnPrompt({ notes: [{ id: 'n1', works: 'Quiet.', doesNotWork: '', topics: [] }], rules: [] })
         .split('\n\n')[0],
       'The library is empty so far.',
+    );
+  });
+});
+
+describe('close-ups in the reading (D98)', () => {
+  const req = learnRequestSchema.parse({
+    notes: [
+      { id: 'n1', works: 'I like this heading.', crop: '/9j/AAAA' },
+      { id: 'n2', works: 'Too much here.' },
+    ],
+  });
+
+  it('reads the words alone when no close-up came', () => {
+    assert.equal(learnContent(req, []), learnPrompt(req));
+  });
+
+  it('puts each close-up after its note’s id, and says how to read them', () => {
+    const content = learnContent(req, [{ id: 'n1', jpeg: '/9j/AAAA' }]);
+    assert.ok(Array.isArray(content));
+    const [text, id, image] = content;
+    assert.equal(text.type, 'text');
+    assert.ok(text.type === 'text' && text.text.startsWith(learnPrompt(req)));
+    assert.ok(text.type === 'text' && text.text.endsWith(CLOSE_UPS));
+    assert.deepEqual(id, { type: 'text', text: 'n1:' });
+    assert.deepEqual(image, {
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/AAAA' },
+    });
+    assert.equal(content.length, 3, 'a note without a close-up goes with its words alone');
+    assert.doesNotMatch(learnPrompt(req), /9j/, 'the close-up never goes in the words');
+  });
+
+  it('refuses a close-up larger than a close-up', () => {
+    const big = 'A'.repeat(MAX_CROP_CHARS + 1);
+    assert.equal(
+      learnRequestSchema.safeParse({ notes: [{ id: 'n1', works: 'x', crop: big }] }).success,
+      false,
     );
   });
 });

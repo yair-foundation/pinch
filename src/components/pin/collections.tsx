@@ -56,6 +56,7 @@ import { cn } from '@/lib/utils';
 import type { CollectionsBackend } from './collections-backend';
 import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
+import { closeUpForReading } from './render';
 import { RuleSkeleton, ShimmerText } from './shimmer';
 import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
@@ -73,6 +74,9 @@ import { TOPIC_TONES, tagHit } from './topic-style';
  * over MCP, or copied as a prompt. Kept in this browser, or in the account
  * once signed in (D81, D98), where this browser's move on their own.
  */
+
+/** Set once the author has read what an update sends to the AI (D98). */
+const CLOSE_UPS_KEY = 'pinch-close-ups';
 
 export type Notice = {
   tone: 'info' | 'error';
@@ -169,6 +173,8 @@ export function CollectionsView({
   const [connecting, setConnecting] = useState(false);
   // The rule the author asked to remove, waiting on "are you sure".
   const [removing, setRemoving] = useState<string | null>(null);
+  // Before the first update in this browser, what goes to the AI is said (D98).
+  const [asking, setAsking] = useState(false);
   const [movable, setMovable] = useState<Collection[]>([]);
   const [slice, setSlice] = useState<Slice>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -448,17 +454,24 @@ export function CollectionsView({
           .filter((r) => !r.locked && r.text.trim())
           .slice(-MAX_LEARN_RULES);
         const notes = new Map<string, NoteRef>();
-        const sent = todo.map(({ batch, note }, i) => {
-          notes.set(`n${i + 1}`, { batchId: batch.id, note: note.ref });
-          return {
-            id: `n${i + 1}`,
-            works: note.works,
-            doesNotWork: note.doesNotWork,
-            ...(note.label ? { label: note.label } : {}),
-            topics: note.topics,
-            source: note.source,
-          };
-        });
+        // Each note goes with its kept close-up, made small (D98); one that can't be read goes
+        // with its words alone.
+        const sent = await Promise.all(
+          todo.map(async ({ batch, note }, i) => {
+            notes.set(`n${i + 1}`, { batchId: batch.id, note: note.ref });
+            const jpeg = (await filesOf(batch.id))?.get(batch.root + note.crop);
+            const crop = jpeg ? await closeUpForReading(jpeg).catch(() => undefined) : undefined;
+            return {
+              id: `n${i + 1}`,
+              works: note.works,
+              doesNotWork: note.doesNotWork,
+              ...(note.label ? { label: note.label } : {}),
+              topics: note.topics,
+              source: note.source,
+              ...(crop ? { crop } : {}),
+            };
+          }),
+        );
         const ruleIds = library.map((r) => r.id);
         const res = await fetch('/api/pin/learn', {
           method: 'POST',
@@ -524,7 +537,7 @@ export function CollectionsView({
       }).catch(() => undefined);
       onCredits();
     }
-  }, [change, onStatus, onPay, onCredits]);
+  }, [change, onStatus, onPay, onCredits, filesOf]);
 
   // Rules without a title (older ones, rewritten ones) are named by the AI once the reading is
   // done (D95). Each rule is asked about once per visit, so a failure doesn't loop.
@@ -563,6 +576,18 @@ export function CollectionsView({
   const unread = c ? unreadNotes(c).length : 0;
   const price = unread ? offer.update + offer.note * unread : 0;
   const short = credits !== null && (credits.closed || price > credits.balance);
+  const update = () => {
+    if (short) return onPay();
+    let told = false;
+    try {
+      told = localStorage.getItem(CLOSE_UPS_KEY) === 'ok';
+    } catch {
+      // Storage blocked: ask each time.
+    }
+    if (told) return readAll();
+    opener.current = document.activeElement as HTMLElement | null;
+    setAsking(true);
+  };
 
   /** Every rule the agent gets, as a prompt for one chat. */
   const copyRules = async () => {
@@ -659,7 +684,9 @@ export function CollectionsView({
 
   return (
     <>
-      <main inert={inert || connecting || removing !== null} className="min-h-0 flex-1 overflow-y-auto">
+      <main
+        inert={inert || connecting || removing !== null || asking}
+        className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-7 px-6 py-8">
           <header className="space-y-3">
             <div className="flex flex-wrap items-start gap-3">
@@ -709,7 +736,7 @@ export function CollectionsView({
                 </p>
                 <button
                   type="button"
-                  onClick={() => (short ? onPay() : readAll())}
+                  onClick={update}
                   className={primary}
                 >
                   <RefreshCw className="size-4" aria-hidden />
@@ -826,6 +853,41 @@ export function CollectionsView({
             >
               <Trash2 className="size-4" aria-hidden />
               Remove
+            </button>
+          </div>
+        </Dialog>
+      )}
+      {asking && (
+        <Dialog
+          id="close-ups-title"
+          title="Before Pinch reads your notes"
+          opener={opener.current}
+          onClose={() => setAsking(false)}
+        >
+          <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
+            Pinch sends each note’s words and the close-up of its mark to Anthropic, the AI that
+            reads them into rules. Pinch keeps neither on the way; close-ups are kept only in
+            your account, once you sign in.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => setAsking(false)} className={button}>
+              Not now
+            </button>
+            <button
+              type="button"
+              data-autofocus
+              onClick={() => {
+                try {
+                  localStorage.setItem(CLOSE_UPS_KEY, 'ok');
+                } catch {
+                  // Storage blocked: asked again next time.
+                }
+                setAsking(false);
+                readAll();
+              }}
+              className={primary}
+            >
+              Read my notes
             </button>
           </div>
         </Dialog>

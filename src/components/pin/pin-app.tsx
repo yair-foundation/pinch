@@ -1571,7 +1571,7 @@ function Workspace() {
             <p>
               {me.credits?.closed && !me.user
                 ? 'Your credits moved into your account when you signed in here. Sign in to use them.'
-                : `Each update takes ${(me.offer ?? OFFER).update} credits and ${(me.offer ?? OFFER).note} a note. ${(me.offer ?? OFFER).credits.toLocaleString('en')} credits are ${me.price}, and never run out. Marking images, your rules and your agent stay free.`}
+                : `${(me.offer ?? OFFER).credits.toLocaleString('en')} credits are ${me.price}, and never run out. An update takes ${(me.offer ?? OFFER).update} credits and ${(me.offer ?? OFFER).note} a note: one note is ${updateCost(me.offer ?? OFFER, 1)} credits, five are ${updateCost(me.offer ?? OFFER, 5)}, thirty are ${updateCost(me.offer ?? OFFER, 30)}. Marking images, your rules and your agent stay free.`}
             </p>
             <div className="flex flex-col items-start gap-2">
               <AccessGate
@@ -1669,7 +1669,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <ul className="m-0 list-none space-y-2.5 p-0 text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Images',
-          'stay in this browser. Only AI suggestions send a crop to Anthropic, never stored; once you sign in, your rules keep theirs in your account.',
+          'stay in this browser. The close-up of each mark goes to Anthropic with a suggestion, and with its note when you update your rules, never stored on the way; once you sign in, your rules keep theirs in your account.',
         )}
         {item(
           'Notes',
@@ -1830,6 +1830,9 @@ const PARALLAX_SCALE = 1.1;
 /** The landing card's main button and the hint under it. */
 const LANDING_BUTTON =
   'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
+/** What an update of `notes` notes takes under the offer (D98). */
+const updateCost = (o: Offer, notes: number) => o.update + o.note * notes;
+
 const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
 
 function EmptyState({
@@ -1973,8 +1976,8 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {offer
-                ? `Marking images is free, and your first ${offer.free} credits read up to ${Math.floor((offer.free - offer.update) / offer.note)} notes into rules; then ${offer.credits.toLocaleString('en')} credits for ${offer.price}. Images stay in this browser unless you sign in; the words of your notes go to Anthropic to find your rules.`
-                : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
+                ? `Marking images is free. Start free with ${offer.free} credits; top up anytime. Images stay in this browser unless you sign in; your notes and the close-ups of your marks go to Anthropic to find your rules.`
+                : 'Free, no account. Images stay in this browser; your notes and the close-ups of your marks go to Anthropic for suggestions and rules.'}{' '}
               <button
                 type="button"
                 data-privacy-trigger

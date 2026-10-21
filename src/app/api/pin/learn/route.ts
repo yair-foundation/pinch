@@ -3,12 +3,13 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { accessOf } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { costUsd, visitorKey } from '@/lib/budget';
+import { sniffImage } from '@/lib/image';
 import { type BillingConfig, billingConfig } from '@/lib/billing';
 import { beginUpdate, noteRead } from '@/lib/credits';
 import { reserveLearning, settleLearning } from '@/lib/pin/ai-budget';
 import {
   cleanReading,
-  learnPrompt,
+  learnContent,
   learnRequestSchema,
   learnSchema,
   learnSystem,
@@ -17,9 +18,9 @@ import { clientIp } from '@/lib/pin/visitor';
 
 /*
  * Reading notes into rules (D87): POST JSON { notes: [{ id, works,
- * doesNotWork, label?, topics, source? }], rules: [{ id, text, context,
- * topics, status }], update: { id, notes } }, the library's new notes and its
- * rules, only their words. Get back { strengthen: [{ rule, notes }], propose:
+ * doesNotWork, label?, topics, source?, crop? }], rules: [{ id, text, context,
+ * topics, status }], update: { id, notes } }, the library's new notes, each
+ * with its close-up (D98), and its rules' words. Get back { strengthen: [{ rule, notes }], propose:
  * [{ rule, context, topics, notes, conflictsWith?, conflict? }] }.
  *
  * Once Pinch is paid, a call belongs to an update, the author's click on
@@ -27,7 +28,8 @@ import { clientIp } from '@/lib/pin/visitor';
  * 3 a note) and holds it, each call that reads adds its notes, and what isn't
  * read comes back when the update finishes (`/api/pin/credits`). Buyers of the
  * original offer spend no credits. Every call stays under the reading's daily
- * fair-use caps. Nothing is stored here, and no note text is logged. Off with
+ * fair-use caps. Nothing is stored here, and no note text or close-up is
+ * logged. Off with
  * PIN_LEARN=0, PIN_AI=0, or without an API key.
  */
 
@@ -37,7 +39,9 @@ export const maxDuration = 120;
 const MODEL = process.env.PIN_LEARN_MODEL ?? 'claude-opus-5-5';
 /** Models the server-side refusal fallback takes; any other declines with no rule. */
 const FALLBACK_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'];
-const MAX_BODY = 200_000;
+/** Thirty notes with their close-ups, under what a function takes. */
+const MAX_BODY = 4_000_000;
+const MAX_CROP_BYTES = 150_000;
 const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' };
 
 const available = () =>
@@ -66,6 +70,15 @@ export async function POST(request: Request) {
   if (!parsed.success) return fail(400, 'Send a few notes.');
   const notes = parsed.data.notes.filter((n) => n.works.trim() || n.doesNotWork.trim());
   const rules = parsed.data.rules.filter((r) => r.text.trim());
+  // A close-up goes with its note only if it is a JPEG of a close-up's size (D98); else the
+  // note is read from its words.
+  const crops = notes.flatMap((n) => {
+    if (!n.crop) return [];
+    const bytes = Buffer.from(n.crop, 'base64');
+    return bytes.length <= MAX_CROP_BYTES && sniffImage(bytes) === 'image/jpeg'
+      ? [{ id: n.id, jpeg: n.crop }]
+      : [];
+  });
   if (!notes.length) return Response.json({ strengthen: [], propose: [] }, { headers });
 
   const { paywall, session, browser, credits } = await accessOf(request);
@@ -101,7 +114,7 @@ export async function POST(request: Request) {
       output_config: { effort: 'medium', format: betaZodOutputFormat(learnSchema) },
       // The instructions are the same for every author, so they stay cached while anyone reads (D97).
       system: [{ type: 'text', text: learnSystem, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: learnPrompt({ notes, rules }) }],
+      messages: [{ role: 'user', content: learnContent({ notes, rules }, crops) }],
     });
     spent = costUsd(response.model, response.usage);
     console.log(`[pin] learn ${response.model} $${spent.toFixed(5)} ${response.stop_reason}`);

@@ -21,15 +21,18 @@ import {
  * It reads with an expert foundation (D90, `foundation.ts`): it says which rules are
  * its reading of vague words rather than the designer's own, and asks a short
  * question where the words could mean designs that differ. What it writes is
- * guidance at once; the designer can edit it (D88). Only words
- * go: the notes' what works, what doesn't, short name, topics and whose
- * design it is, and the rules' own words. Never an image or a file name. This
- * file is the pure part: what the page sends, the prompt, the answer's schema
- * and its tidying.
+ * guidance at once; the designer can edit it (D88). What goes: the notes'
+ * what works, what doesn't, short name, topics and whose design it is, each
+ * note's close-up with its mark (D98: a word like "this heading" means
+ * nothing without the spot), and the rules' own words. Never a whole image
+ * or a file name. This file is the pure part: what the page sends, the
+ * prompt, the answer's schema and its tidying.
  */
 
 /** New notes per request: more are read a few dozen at a time. */
 export const MAX_LEARN_NOTES = 30;
+/** A note's close-up as the page sends it, in base64: about 150 KB of JPEG at most (D98). */
+export const MAX_CROP_CHARS = 200_000;
 /** Rules sent along for the model to strengthen; the newest are kept when there are more. */
 export const MAX_LEARN_RULES = 200;
 
@@ -49,6 +52,8 @@ export const learnRequestSchema = z.object({
           .enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]])
           .nullable()
           .optional(),
+        /** The note's close-up with its mark drawn on, a JPEG in base64 (D98). */
+        crop: z.string().max(MAX_CROP_CHARS).optional(),
       }),
     )
     .min(1)
@@ -222,6 +227,34 @@ export function learnPrompt(req: Pick<LearnRequest, 'notes' | 'rules'>): string 
     ...(n.doesNotWork.trim() ? { whatDoesnt: n.doesNotWork.trim() } : {}),
   }));
   return `${library}\n\nThe new notes:\n\n${JSON.stringify(notes)}`;
+}
+
+/** How the close-ups are to be read, said once after the notes (D98). */
+export const CLOSE_UPS =
+  "Each note's close-up follows, after its id: the part of the screen the note is about, with its spot marked as Pinch draws it (a ring for a point, a box for an area, an arrow from one place to another). Use it to see what the note's words point at. Take from it only what the note judges: never a size, colour or detail the note doesn't speak to, and when the close-up still leaves the meaning open, ask as you would without it.";
+
+export type LearnBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg'; data: string } };
+
+/**
+ * The notes as the model reads them, with their close-ups when the page sent them (D98): the
+ * library and the notes' words as `learnPrompt` writes them, then each close-up after its note's
+ * id. Without close-ups, the words alone, as before.
+ */
+export function learnContent(
+  req: Pick<LearnRequest, 'notes' | 'rules'>,
+  crops: { id: string; jpeg: string }[],
+): string | LearnBlock[] {
+  const text = learnPrompt(req);
+  if (!crops.length) return text;
+  return [
+    { type: 'text', text: `${text}\n\n${CLOSE_UPS}` },
+    ...crops.flatMap((c): LearnBlock[] => [
+      { type: 'text', text: `${c.id}:` },
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: c.jpeg } },
+    ]),
+  ];
 }
 
 /** Ids are for the model; the designer reads "the other rule". */
