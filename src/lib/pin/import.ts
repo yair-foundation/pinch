@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { sniffImage } from '@/lib/image';
 import type { BatchNote } from './learnings';
-import { type Asset, type Mark, SOURCES, type SourceKind, sortTopics } from './model';
+import { type Asset, cleanScreenTag, type Mark, SOURCES, type SourceKind, sortTopics } from './model';
 
 /*
  * Reading a Pinch export back: its `notes.json` (version 2) says which image
@@ -39,6 +39,7 @@ const assetSchema = z.object({
     .object({ kind: z.enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]]) })
     .nullable()
     .optional(),
+  tag: z.string().max(200).optional().catch(undefined),
   notes: z.array(noteSchema).max(500),
 });
 export const exportSchema = z.object({
@@ -122,6 +123,7 @@ export function assetsOf(
       note: a.note ?? '',
       marks: a.notes.map((n) => markOf(n, newId())),
       ...(a.source ? { source: { kind: a.source.kind } } : {}),
+      ...(cleanScreenTag(a.tag) ? { screenTag: cleanScreenTag(a.tag) } : {}),
     };
     assets.push({ asset, image: new Blob([bytes as BlobPart], { type }) });
   }
@@ -139,6 +141,7 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       works: n.works.trim(),
       doesNotWork: n.doesNotWork.trim(),
       ...(n.label?.trim() ? { label: n.label.trim() } : {}),
+      ...(cleanScreenTag(a.tag) ? { screenTag: cleanScreenTag(a.tag) } : {}),
       crop: n.crop,
     })),
   );

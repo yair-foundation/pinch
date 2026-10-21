@@ -42,6 +42,8 @@ import {
   originOf,
   ownWords,
   picked,
+  screenOf,
+  screenTagsIn,
   RULES_NAME,
   type Reading,
   type Rule,
@@ -54,6 +56,7 @@ import {
   upgradeCollection,
   waiting,
   withBatch,
+  withScreenTags,
   withRule,
   withTitles,
 } from '@/lib/pin/learnings';
@@ -116,8 +119,16 @@ const field =
 const chip =
   'flex h-7 items-center gap-1 rounded-md border px-2 text-[13px] leading-none whitespace-nowrap transition-colors duration-150 motion-reduce:transition-none';
 
-/** What the page slices rules by: a topic, one of the author's tags, a principle, or nothing. */
-type Slice = { topic: Topic | null } | { tag: string | null } | { principle: string } | null;
+/**
+ * What the page slices rules by: a topic, one of the author's tags, a principle, a screenshot's
+ * tag (D100), or nothing.
+ */
+type Slice =
+  | { topic: Topic | null }
+  | { tag: string | null }
+  | { principle: string }
+  | { screen: string }
+  | null;
 const sliceKey = (s: Slice) =>
   !s
     ? 'all'
@@ -125,7 +136,9 @@ const sliceKey = (s: Slice) =>
       ? `topic:${s.topic ?? ''}`
       : 'tag' in s
         ? `tag:${s.tag ?? ''}`
-        : `principle:${s.principle}`;
+        : 'screen' in s
+          ? `screen:${s.screen.toLowerCase()}`
+          : `principle:${s.principle}`;
 const pickOf = (s: Slice): RulePick =>
   !s
     ? {}
@@ -133,13 +146,16 @@ const pickOf = (s: Slice): RulePick =>
       ? { topics: [s.topic] }
       : 'tag' in s
         ? { tags: [s.tag] }
-        : { principles: [s.principle] };
+        : 'screen' in s
+          ? { screen: [s.screen] }
+          : { principles: [s.principle] };
 
 export function CollectionsView({
   inert,
   backend,
   moveFrom,
   openPrints,
+  openScreens,
   batchZip,
   account,
   credits,
@@ -155,6 +171,8 @@ export function CollectionsView({
   moveFrom?: CollectionsBackend;
   /** The open images' notes, by `noteFingerprint`, to tell whether any are new here. */
   openPrints: string[];
+  /** The open images' notes' screen tags, by the same fingerprint (D100). */
+  openScreens: ReadonlyMap<string, string | undefined>;
   /** The open images as an export, or null when they have no notes. */
   batchZip: () => Promise<{ blob: Blob; name: string } | null>;
   /** Signed in, can sign in, or neither: what connecting an agent needs first. */
@@ -429,6 +447,12 @@ export function CollectionsView({
     if (openPrints.some((p) => !known.has(p))) addOpen();
   }, [c, openPrints, addOpen]);
 
+  // Screen tags typed on the open images reach the notes already kept from them (D100).
+  useEffect(() => {
+    if (!c || withScreenTags(c, openScreens, '') === c) return;
+    change((x) => withScreenTags(x, openScreens, nowIso()), true);
+  }, [c, openScreens, change]);
+
   // Rules a visitor's preview found before credits (D87, D98) never showed their words: their
   // notes wait to be read again, in full, with the next update.
   useEffect(() => {
@@ -662,7 +686,7 @@ export function CollectionsView({
       </main>
     );
   const live = c.rules.filter((r) => !r.locked && r.status !== 'dismissed');
-  const shown = live.filter((r) => picked(r, pickOf(slice)));
+  const shown = live.filter((r) => picked(r, pickOf(slice), c));
   const waits = live.filter(waiting).length;
   const textOf = (id: string) => c.rules.find((r) => r.id === id)?.text ?? '';
   // Removed, a rule is kept as dismissed: out of sight and the agent's reach, never written again.
@@ -951,6 +975,7 @@ function SliceBar({
     label: p.area,
     n: live.filter((r) => r.principles?.includes(p.id)).length,
   })).filter((o) => o.n);
+  const screens = screenTagsIn(c, live);
   const chipOf = (o: { slice: Slice; label: string; n: number; topic?: Topic }) => {
     const on = sliceKey(o.slice) === sliceKey(slice);
     return (
@@ -988,6 +1013,18 @@ function SliceBar({
             By principle
           </legend>
           <div className="flex flex-wrap gap-2">{areas.map(chipOf)}</div>
+        </fieldset>
+      )}
+      {screens.length > 0 && (
+        <fieldset className="min-w-0 border-0 p-0">
+          <legend
+            className="float-left flex h-7 items-center pr-2 text-[13px] text-muted-foreground"
+          >
+            By screen tag
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            {screens.map((v) => chipOf({ slice: { screen: v.value }, label: v.value, n: v.n }))}
+          </div>
         </fieldset>
       )}
     </div>
@@ -1030,6 +1067,7 @@ function RuleCard({
   const [open, setOpen] = useState(false);
   const notes = evidenceOf(c, r);
   const images = imagesOf(c, r);
+  const shows = screenOf(c, r);
   const id = `rule-${r.id}`;
   const origin = originOf(r);
   const why = (r.principles ?? []).flatMap((p) => PRINCIPLES.find((x) => x.id === p) ?? []);
@@ -1158,13 +1196,14 @@ function RuleCard({
       ) : (
         (r.basis === 'interpreted' && r.reading && !r.question) ||
         r.topics.length > 0 ||
-        r.tags.length > 0
+        r.tags.length > 0 ||
+        shows.length > 0
       ) ? (
         <div className="space-y-2">
           {r.basis === 'interpreted' && r.reading && !r.question && (
             <p className="text-[13px] text-muted-foreground">Pinch’s reading: {r.reading}</p>
           )}
-          {(r.topics.length > 0 || r.tags.length > 0) && (
+          {(r.topics.length > 0 || r.tags.length > 0 || shows.length > 0) && (
             <ul className="flex list-none flex-wrap gap-1.5 p-0">
               {r.topics.map((t) => (
                 <li
@@ -1182,6 +1221,16 @@ function RuleCard({
               {r.tags.map((t) => (
                 <li key={t} className={cn(chip, 'border-border text-foreground')}>
                   #{t}
+                </li>
+              ))}
+              {shows.map((s) => (
+                <li
+                  key={s}
+                  title="A tag of its screenshots"
+                  className={cn(chip, 'border-border text-muted-foreground')}
+                >
+                  <span className="sr-only">Screen tag: </span>
+                  {s}
                 </li>
               ))}
             </ul>
@@ -1348,6 +1397,7 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
         <p className="truncate">
           <span className="font-mono">{note.ref}</span> · {note.image}
           {note.source ? ` · ${sourceLabel(note.source)}` : ''}
+          {note.screenTag ? ` · ${note.screenTag}` : ''}
         </p>
         {/* What it says, each side behind its thumb in a small box, with room under the title line. */}
         <div className="mt-2.5 space-y-2">

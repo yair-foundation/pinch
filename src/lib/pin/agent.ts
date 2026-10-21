@@ -2,9 +2,11 @@ import { jpegSize } from '@/lib/image';
 import {
   type Collection,
   type ExportedNote,
+  noteAbout,
   type RulePick,
   rulesOf,
   rulesText,
+  screenTagsIn,
   tagsOf,
   waiting,
 } from './learnings';
@@ -12,7 +14,6 @@ import {
   itemsLine,
   type Shape,
   shapePixels,
-  sourceLabel,
   TOPIC_KINDS,
   TOPICS,
   type Topic,
@@ -35,14 +36,14 @@ import {
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS =
-  'Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough.';
+  'Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough.';
 
 export const TOOLS = [
   {
     name: 'get_design_rules',
     title: 'Get design rules',
     description:
-      'The design rules this person keeps in Pinch: their taste, drawn from notes they wrote on screenshots, to follow in design and front-end work. Pick the topics the task touches; leave them out for every rule. Give their own tags (a project, a client) when the task belongs to one, to get those rules along with their general ones. Each rule says where it holds and lists the notes it comes from.',
+      'The design rules this person keeps in Pinch: their taste, drawn from notes they wrote on screenshots, to follow in design and front-end work. Pick the topics the task touches; leave them out for every rule. Give their own tags (a project, a client) when the task belongs to one, to get those rules along with their general ones. Each rule says where it holds and lists the notes it comes from, with the tag of each note’s screenshot (a product, a feature, a domain). To keep only the rules drawn from screenshots with a tag, give it in screenTags: a narrower list, not a different taste, so leave it out unless the task is about that one.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -55,6 +56,12 @@ export const TOOLS = [
           type: 'array',
           items: { type: 'string' },
           description: 'The person’s own tags the task belongs to, as list_rule_topics names them.',
+        },
+        screenTags: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Only rules drawn from screenshots with one of these tags (a product, a feature, a domain), as list_rule_topics names them.',
         },
       },
       additionalProperties: false,
@@ -234,7 +241,7 @@ function noteContent(
     note.doesNotWork ? `doesn't: "${itemsLine(note.doesNotWork)}"` : '',
   ].filter(Boolean);
   const lines = [
-    `Note ${note.ref} on ${note.image}${note.source ? ` (${sourceLabel(note.source)})` : ''}: ${said.join('; ')}`,
+    `Note ${note.ref} on ${note.image}${noteAbout(note)}: ${said.join('; ')}`,
   ];
   if (place) {
     const px: Record<string, number> = Object.fromEntries(
@@ -415,16 +422,24 @@ export async function evidenceContent(
 
 /** The pick a call asks for: known topics only; tags with the general rules (no tag) too. */
 export function pickOf(args: unknown): RulePick {
-  const a = (args && typeof args === 'object' ? args : {}) as { topics?: unknown; tags?: unknown };
+  const a = (args && typeof args === 'object' ? args : {}) as {
+    topics?: unknown;
+    tags?: unknown;
+    screenTags?: unknown;
+  };
   const topics = Array.isArray(a.topics)
     ? a.topics.filter((t): t is Topic => (TOPIC_KINDS as readonly string[]).includes(t))
     : [];
   const tags = Array.isArray(a.tags)
     ? a.tags.filter((t): t is string => typeof t === 'string' && t.trim() !== '')
     : [];
+  const screen = (Array.isArray(a.screenTags) ? a.screenTags : [a.screenTags]).filter(
+    (x): x is string => typeof x === 'string' && x.trim() !== '',
+  );
   return {
     ...(topics.length ? { topics: [...topics, null] } : {}),
     ...(tags.length ? { tags: [...tags, null] } : {}),
+    ...(screen.length ? { screen } : {}),
   };
 }
 
@@ -443,6 +458,11 @@ export function topicsText(c: Collection | null): string {
   if (tags.length) {
     lines.push('Their own tags:');
     for (const t of tags) lines.push(`- ${t}: ${live.filter((r) => r.tags.includes(t)).length}`);
+  }
+  const screens = c ? screenTagsIn(c, live) : [];
+  if (screens.length) {
+    lines.push('Screen tags, the tags of the screenshots rules are drawn from (screenTags):');
+    for (const v of screens) lines.push(`- ${v.value}: ${v.n}`);
   }
   return lines.join('\n');
 }

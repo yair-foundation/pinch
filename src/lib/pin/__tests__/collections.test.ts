@@ -25,7 +25,6 @@ import {
   byTopic,
   type Collection,
   cleanTag,
-  collectionSlug,
   confirmRule,
   imagesOf,
   knownNotes,
@@ -38,8 +37,6 @@ import {
   originOf,
   ownWords,
   picked,
-  rulesManifest,
-  rulesMarkdown,
   rulesOf,
   rulesText,
   tagsOf,
@@ -503,15 +500,9 @@ describe('the taste library', () => {
       ['Keep screens quiet: few elements competing for attention.'],
       'confirmed, the agent gets it',
     );
-    const md = rulesMarkdown(confirmed, rulesOf(confirmed), 'x');
-    assert.match(md, /^Explained by: One focal point, Colour carries meaning\.$/m);
-    assert.match(md, /the author's notes are what make it their preference/);
-    assert.doesNotMatch(md, /Pinch's reading/);
-    assert.match(rulesText(confirmed, rulesOf(confirmed)), /^ {3}Explained by: One focal point/m);
-    assert.deepEqual(rulesManifest(confirmed, rulesOf(confirmed), 'x').rules[0].principles, [
-      'focus',
-      'colour',
-    ]);
+    const text = rulesText(confirmed, rulesOf(confirmed));
+    assert.match(text, /^ {3}Explained by: One focal point, Colour carries meaning\.$/m);
+    assert.doesNotMatch(text, /Pinch's reading/);
 
     const answered = answerRule(confirmed, q.id, 1, 'later');
     const a = answered.rules[0];
@@ -575,35 +566,27 @@ describe('the taste library', () => {
     return c;
   }
 
-  it('exports rules as soon as they are written, numbered, each with every note it draws on', () => {
+  it('gives an agent rules as soon as they are written, numbered, each with every note', () => {
     const old = withRule(read(), read().rules[0].id, { status: 'dismissed' }, 'x');
     assert.equal(rulesOf(old).length, 1, 'a rule dismissed before D88 stays out');
     const c = approved();
     const rules = rulesOf(c);
     assert.deepEqual(
-      rules.map((r) => [r.id, r.notes.map((n) => n.file)]),
+      rules.map((r) => [r.id, r.notes.length]),
       [
-        ['R1', ['evidence/r01-1.jpg', 'evidence/r01-2.jpg']],
-        ['R2', ['evidence/r02-1.jpg']],
+        ['R1', 2],
+        ['R2', 1],
       ],
     );
-    const md = rulesMarkdown(c, rules, '2026-10-20T12:00:00Z');
-    assert.match(md, /^# Design rules: Acme$/m);
-    assert.match(md, /2 rules\./);
-    assert.match(md, /^\*\*R1\.\*\* Lead with a short headline that states the price\.$/m);
-    assert.match(md, /^Where: on pricing cards\.$/m);
-    assert.match(md, /^From 2 notes:$/m);
+    assert.equal(originOf(rules[1].rule), 'ai-edited');
+    const text = rulesText(c, rules);
+    assert.match(text, /^Design rules from Acme \(Pinch\), 2 rules\./);
     assert.match(
-      md,
-      /^- `evidence\/r01-1\.jpg`, note 01\.1 on Pricing\.png \(Competitor\): works: "Short headline\."$/m,
+      text,
+      /^R1\. Lead with a short headline that states the price\. \(where: on pricing cards\)/m,
     );
-    assert.match(md, /Tags: Acme\./);
-    const data = rulesManifest(c, rules, 'x');
-    assert.equal(data.version, 2);
-    assert.equal(data.rules[0].where, 'on pricing cards');
-    assert.equal(data.rules[1].origin, 'ai-edited');
-    assert.equal(data.rules[0].notes[1].source, 'ours');
-    assert.equal(collectionSlug('Acme Dashboard, v2'), 'acme-dashboard-v2');
+    assert.match(text, /^ {3}- note 01\.1 on Pricing\.png \(Competitor\): works: "Short headline\."$/m);
+    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\]$/m);
   });
 
   it('picks the rules a task needs, and copies them as text', () => {
