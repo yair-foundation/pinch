@@ -11,11 +11,13 @@ import {
   Lightbulb,
   Loader2,
   MapPin,
+  Monitor,
   MousePointerClick,
   MoveUpRight,
   Plus,
   RotateCcw,
   SquareDashed,
+  StickyNote,
   Swords,
   Tag,
   ThumbsDown,
@@ -43,9 +45,11 @@ import {
   type Asset,
   areaFrom,
   arrowFrom,
+  cleanScreenTag,
   currentSuggestion,
   exportName,
   isTinyArea,
+  itemsOf,
   isTinyArrow,
   type Mark,
   moveArrow,
@@ -806,6 +810,8 @@ function Workspace() {
       // New images take the open image's source: a batch is usually from one place.
       const open = assetsRef.current[indexRef.current]?.source;
       const source: Source | undefined = open ? { kind: open.kind } : undefined;
+      // And its tag (D100), for the same reason.
+      const screenTag = cleanScreenTag(assetsRef.current[indexRef.current]?.screenTag);
       for (const file of images) {
         const name = file.name || 'Pasted image.png';
         if (isSvg(file)) {
@@ -842,6 +848,7 @@ function Workspace() {
           note: '',
           marks: [],
           ...(source ? { source } : {}),
+          ...(screenTag ? { screenTag } : {}),
         });
       }
       setUrls((u) => ({ ...u, ...addedUrls }));
@@ -989,6 +996,19 @@ function Workspace() {
     },
     [asset, update],
   );
+  /** The image's tag as typed (D100); typing joins the step before it. Tidied when exported. */
+  const setScreenTag = (value: string) => {
+    if (!asset) return;
+    update(asset.id, (a) => ({ ...a, screenTag: value.slice(0, 40) }), {
+      coalesce: { key: `screen:${asset.id}`, within: TYPING_PAUSE },
+    });
+  };
+  const setScreenTagForAll = () => {
+    const tag = cleanScreenTag(asset?.screenTag);
+    if (!tag) return;
+    commit((list) => list.map((a) => ({ ...a, screenTag: tag })));
+    setStatus({ tone: 'info', text: `Tagged ${count(assets.length, 'image')} “${tag}”.` });
+  };
   const setSourceForAll = () => {
     const source = asset?.source;
     if (!source) return;
@@ -1278,6 +1298,37 @@ function Workspace() {
     balanceAtPay.current = me?.credits?.balance ?? 0;
     openDialog('pay');
   };
+  // Every tag typed on an open image, each once, to suggest on the others.
+  const screenTags = useMemo(() => {
+    const out: string[] = [];
+    for (const a of assets) {
+      const v = cleanScreenTag(a.screenTag);
+      if (v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+    }
+    return out;
+  }, [assets]);
+  // Each open note's screen tags by its fingerprint as kept, so tags typed later reach the rules.
+  const openScreens = useMemo(
+    () =>
+      new Map<string, string | undefined>(
+        assets.flatMap((a) =>
+          a.marks
+            .filter((m) => verdictOf(m) !== 'empty')
+            .map(
+              (m) =>
+                [
+                  noteFingerprint(
+                    exportName(a),
+                    itemsOf(m.good).join('\n'),
+                    itemsOf(m.bad).join('\n'),
+                  ),
+                  cleanScreenTag(a.screenTag) || undefined,
+                ] as const,
+            ),
+        ),
+      ),
+    [assets],
+  );
   // The open notes as the rules know them, to tell whether coming to the rules brings new ones.
   const openPrints = useMemo(
     () =>
@@ -1481,6 +1532,7 @@ function Workspace() {
           backend={backend}
           moveFrom={cloudKey ? browserBackend : undefined}
           openPrints={openPrints}
+          openScreens={openScreens}
           batchZip={batchZip}
           account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
           credits={credits}
@@ -1533,6 +1585,9 @@ function Workspace() {
             suggesting={suggesting}
             onSource={setSource}
             onSourceForAll={setSourceForAll}
+            screenTags={screenTags}
+            onScreenTag={setScreenTag}
+            onScreenTagForAll={setScreenTagForAll}
             onSelect={(id) => {
               if (id !== selected) deselect();
               setSelected(id);
@@ -2766,6 +2821,9 @@ function Panel({
   suggesting,
   onSource,
   onSourceForAll,
+  screenTags,
+  onScreenTag,
+  onScreenTagForAll,
   onSelect,
   onChangeMark,
   onRemoveMark,
@@ -2784,6 +2842,10 @@ function Panel({
   suggesting: string | null;
   onSource: (source: Source | undefined) => void;
   onSourceForAll: () => void;
+  /** The tags typed on any image, to suggest. */
+  screenTags: string[];
+  onScreenTag: (value: string) => void;
+  onScreenTagForAll: () => void;
   onSelect: (id: string) => void;
   onChangeMark: (id: string, change: Partial<Mark>) => void;
   onRemoveMark: (id: string) => void;
@@ -2829,6 +2891,15 @@ function Panel({
           onChange={onSource}
           onForAll={onSourceForAll}
         />
+        <ScreenTagField
+          value={asset.screenTag ?? ''}
+          suggestions={screenTags}
+          total={total}
+          onChange={onScreenTag}
+          onForAll={onScreenTagForAll}
+        />
+        {/* What the whole image is above, its notes below: an edge-to-edge line between. */}
+        <hr className="-mx-4 border-border" />
         {mark ? (
           <MarkEditor
             key={mark.id}
@@ -2846,7 +2917,12 @@ function Panel({
           />
         ) : (
           <section>
-            <h2 className="m-0 mb-2 text-[13px] font-medium text-muted-foreground">Notes</h2>
+            <h2 className="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-medium">
+              <IconBox>
+                <StickyNote />
+              </IconBox>
+              Notes
+            </h2>
             {asset.marks.length === 0 ? (
               <p className="m-0 flex items-start gap-2 rounded-lg bg-muted px-3 py-2.5 text-[13px] leading-snug text-foreground">
                 <MousePointerClick
@@ -3527,6 +3603,72 @@ function SuggestionHint({ id, ghost }: { id: string; ghost: string }) {
  * Whose design the image is: four radio rows, optional (S cycles back to none). New images
  * take the open one's. Arrow keys move and choose, as in any radio group.
  */
+/**
+ * The screenshot's own tag (D100): a product, a feature, a domain, typed once for the image
+ * and carried by every note on it to the rules. It suggests the tags of the other images.
+ */
+function ScreenTagField({
+  value,
+  suggestions,
+  total,
+  onChange,
+  onForAll,
+}: {
+  value: string;
+  suggestions: string[];
+  total: number;
+  onChange: (value: string) => void;
+  onForAll: () => void;
+}) {
+  const others = suggestions.filter((v) => v.toLowerCase() !== value.trim().toLowerCase());
+  return (
+    <section>
+      <div className="mb-2.5 flex items-center gap-1">
+        <h2 className="m-0 text-[13px] font-medium">
+          <label htmlFor="screen-tag" className="flex items-center gap-2">
+            <IconBox>
+              <Monitor />
+            </IconBox>
+            Screen tag
+            <span className="font-normal text-muted-foreground">Optional</span>
+          </label>
+        </h2>
+        {value.trim() && total > 1 && (
+          <button
+            type="button"
+            onClick={onForAll}
+            className={cn(
+              hit,
+              'ml-auto min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+            )}
+          >
+            Set for all {total}
+          </button>
+        )}
+      </div>
+      <input
+        id="screen-tag"
+        type="text"
+        value={value}
+        maxLength={40}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="A product, feature or domain"
+        list={others.length ? 'screen-tag-list' : undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-9 w-full min-w-0 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-150 placeholder:text-[#737373] focus:border-foreground/25 motion-reduce:transition-none dark:placeholder:text-[#7a7a7a]"
+      />
+      {others.length > 0 && (
+        <datalist id="screen-tag-list">
+          {others.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      )}
+    </section>
+  );
+}
+
 /** One icon per source: our own product, a rival, the wider world, an idea. */
 const SOURCE_ICONS = { ours: House, competitor: Swords, other: Globe, concept: Lightbulb };
 

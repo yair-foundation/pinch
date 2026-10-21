@@ -1,6 +1,7 @@
 import { principleName } from './foundation';
 import {
   itemsLine,
+  cleanScreenTag,
   type SourceKind,
   sortTopics,
   sourceLabel,
@@ -33,6 +34,8 @@ export type BatchNote = {
   works: string;
   doesNotWork: string;
   label?: string;
+  /** Its screenshot's tag (D100), as the author typed it: a product, a feature, a domain. */
+  screenTag?: string;
   /** The close-up's path inside the export's folder: "crops/02-pricing-note-3.jpg". */
   crop: string;
 };
@@ -280,6 +283,63 @@ export function noteAt(c: Collection, ref: NoteRef): { batch: Batch; note: Batch
 export const evidenceOf = (c: Collection, r: Rule) =>
   r.evidence.map((e) => noteAt(c, e)).filter((x) => x !== undefined);
 
+/** A screen tag compared as the same whatever its case or spacing: "linear" is "Linear ". */
+const screenKey = (v: string) => cleanScreenTag(v).toLowerCase();
+
+/**
+ * The tags of a rule's screenshots (D100): every one its notes' screenshots carry, each once,
+ * spelled as first met. Read from the notes, so it stays current.
+ */
+export function screenOf(c: Collection, r: Rule): string[] {
+  const out: string[] = [];
+  for (const { note } of evidenceOf(c, r)) {
+    const v = note.screenTag;
+    if (v && !out.some((x) => screenKey(x) === screenKey(v))) out.push(v);
+  }
+  return out;
+}
+
+/** The screen tags across some rules, with how many rules carry each, most first. */
+export function screenTagsIn(c: Collection, rules: Rule[]): { value: string; n: number }[] {
+  const out: { value: string; n: number }[] = [];
+  for (const r of rules)
+    for (const v of screenOf(c, r)) {
+      const have = out.find((x) => screenKey(x.value) === screenKey(v));
+      if (have) have.n++;
+      else out.push({ value: v, n: 1 });
+    }
+  return out.sort((a, b) => b.n - a.n);
+}
+
+/**
+ * The collection with its notes' screen tags brought up to date from the open images (D100),
+ * by each note's fingerprint, so a tag typed after a note was kept still reaches its rules. The
+ * same collection back when nothing changed.
+ */
+export function withScreenTags(
+  c: Collection,
+  byPrint: ReadonlyMap<string, string | undefined>,
+  now: string,
+): Collection {
+  let changed = false;
+  const batches = c.batches.map((b) => {
+    let touched = false;
+    const notes = b.notes.map((n) => {
+      const print = fingerprintOf(n);
+      if (!byPrint.has(print)) return n;
+      const tag = cleanScreenTag(byPrint.get(print));
+      if (tag === (n.screenTag ?? '')) return n;
+      touched = true;
+      const { screenTag: _, ...rest } = n;
+      return tag ? { ...rest, screenTag: tag } : rest;
+    });
+    if (!touched) return b;
+    changed = true;
+    return { ...b, notes };
+  });
+  return changed ? { ...c, updatedAt: now, batches } : c;
+}
+
 /** How many images a rule's notes are on. */
 export const imagesOf = (c: Collection, r: Rule) =>
   new Set(evidenceOf(c, r).map(({ batch, note }) => `${batch.id}/${note.image}`)).size;
@@ -476,9 +536,21 @@ export type RulePick = {
   topics?: readonly (Topic | null)[];
   tags?: readonly (string | null)[];
   principles?: readonly string[];
+  /**
+   * By its screenshots' tags (D100): a rule is taken when one of its notes' screenshots carries
+   * one of these, whatever their case. Needs the collection.
+   */
+  screen?: readonly string[];
 };
 
-export const picked = (r: Rule, pick: RulePick) =>
+/** Whether a rule's screenshots carry a tag a pick asks for; true when it asks for none. */
+const screenPicked = (c: Collection | undefined, r: Rule, want: RulePick['screen']) =>
+  !want?.length ||
+  (c !== undefined &&
+    screenOf(c, r).some((v) => want.some((w) => screenKey(w) === screenKey(v))));
+
+export const picked = (r: Rule, pick: RulePick, c?: Collection) =>
+  screenPicked(c, r, pick.screen) &&
   (!pick.topics ||
     (r.topics.length
       ? r.topics.some((t) => pick.topics?.includes(t))
@@ -489,16 +561,15 @@ export const picked = (r: Rule, pick: RulePick) =>
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
-/** One note of an exported rule, with its close-up's name in `evidence/`. */
-export type ExportedNote = { batch: Batch; note: BatchNote; file: string };
+/** One note of an exported rule, with its batch. */
+export type ExportedNote = { batch: Batch; note: BatchNote };
 
 /** A rule as it is exported: its number, the rule, and its notes. */
 export type ExportedRule = { id: string; rule: Rule; notes: ExportedNote[] };
 
 /**
- * The rules an export carries: the ones the pick takes (never a dismissed or locked one, nor one
- * waiting for its author), by topic, then oldest
- * first. Numbered R1, R2, … in that order; each note's close-up is `evidence/r01-1.jpg` and on.
+ * The rules an agent gets: the ones the pick takes (never a dismissed or locked one, nor one
+ * waiting for its author), by topic, then oldest first. Numbered R1, R2, … in that order.
  */
 export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
   const topicOrder = (r: Rule) => {
@@ -508,23 +579,25 @@ export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
   const chosen = c.rules
     .filter(
       (r) =>
-        r.status === 'approved' && !r.locked && !waiting(r) && r.text.trim() && picked(r, pick),
+        r.status === 'approved' &&
+        !r.locked &&
+        !waiting(r) &&
+        r.text.trim() &&
+        picked(r, pick, c),
     )
     .sort((a, b) => topicOrder(a) - topicOrder(b) || a.createdAt.localeCompare(b.createdAt));
-  const width = chosen.length > 99 ? 3 : 2;
-  return chosen.map((rule, i) => {
-    const n = String(i + 1).padStart(width, '0');
-    return {
-      id: `R${i + 1}`,
-      rule,
-      notes: evidenceOf(c, rule).map((e, j) => ({ ...e, file: `evidence/r${n}-${j + 1}.jpg` })),
-    };
-  });
+  return chosen.map((rule, i) => ({ id: `R${i + 1}`, rule, notes: evidenceOf(c, rule) }));
 }
 
 /** Where a note came from, in one line: "note 02.3 on pricing.png (Competitor)". */
-const fromLine = (n: ExportedNote) =>
-  `note ${n.note.ref} on ${n.note.image}${n.note.source ? ` (${sourceLabel(n.note.source)})` : ''}`;
+const fromLine = (n: ExportedNote) => `note ${n.note.ref} on ${n.note.image}${noteAbout(n.note)}`;
+
+/** Whose design a note's screenshot is and its tag (D100), as " (Competitor; tag Linear)". */
+export function noteAbout(n: Pick<BatchNote, 'source' | 'screenTag'>): string {
+  const about = [n.source ? sourceLabel(n.source) : '', n.screenTag ? `tag ${n.screenTag}` : ''];
+  const parts = about.filter(Boolean);
+  return parts.length ? ` (${parts.join('; ')})` : '';
+}
 
 const said = (n: BatchNote) =>
   [
@@ -534,85 +607,9 @@ const said = (n: BatchNote) =>
     .filter(Boolean)
     .join('; ');
 
-const HOW_TO_USE = [
-  'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
-  'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
-  '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
-  'Refer to rules by number ("R4"), so the author can find them.',
-  'Each rule lists the notes it comes from and their close-ups in `evidence/`. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
-  "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.",
-  "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its notes and close-ups first.",
-];
-
-/** The rules file an agent reads: `design-rules.md`. */
-export function rulesMarkdown(c: Collection, rules: ExportedRule[], exportedAt: string): string {
-  const lines = [
-    `# Design rules: ${oneLine(c.name)}`,
-    '',
-    `Exported from Pinch on ${exportedAt.slice(0, 10)}: ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}.`,
-    '',
-    '## How to use these',
-    '',
-    ...HOW_TO_USE.map((l) => `- ${l}`),
-  ];
-  for (const group of byTopic(rules.map((r) => r.rule))) {
-    lines.push('', `## ${group.label}`);
-    for (const rule of group.rules) {
-      const r = rules.find((x) => x.rule === rule) as ExportedRule;
-      const others = rule.topics.slice(1).map(topicLabel);
-      lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
-      if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
-      if (principlesOf(rule).length) lines.push('', `Explained by: ${principlesOf(rule).join(', ')}.`);
-      if (others.length || rule.tags.length)
-        lines.push(
-          '',
-          [
-            others.length ? `Also about: ${others.join(', ')}.` : '',
-            rule.tags.length ? `Tags: ${rule.tags.join(', ')}.` : '',
-          ]
-            .filter(Boolean)
-            .join(' '),
-        );
-      lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
-      for (const n of r.notes) lines.push(`- \`${n.file}\`, ${fromLine(n)}: ${said(n.note)}`);
-    }
-  }
-  return `${lines.join('\n')}\n`;
-}
-
-/** `rules.json`: the same rules as data. */
-export function rulesManifest(c: Collection, rules: ExportedRule[], exportedAt: string) {
-  return {
-    tool: 'Pinch',
-    kind: 'rules',
-    version: 2,
-    collection: c.name,
-    exportedAt,
-    guide: 'design-rules.md',
-    rules: rules.map((r) => ({
-      id: r.id,
-      text: oneLine(r.rule.text),
-      ...(r.rule.context.trim() ? { where: oneLine(r.rule.context) } : {}),
-      topics: r.rule.topics,
-      tags: r.rule.tags,
-      origin: originOf(r.rule),
-      ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
-      notes: r.notes.map((n) => ({
-        evidence: n.file,
-        ref: n.note.ref,
-        batch: n.batch.name,
-        image: n.note.image,
-        source: n.note.source,
-        ...(n.note.works.trim() ? { works: n.note.works.trim() } : {}),
-        ...(n.note.doesNotWork.trim() ? { doesNotWork: n.note.doesNotWork.trim() } : {}),
-      })),
-    })),
-  };
-}
-
 /**
- * The rules as text to paste into a chat with an agent for one task: the same rules and
- * notes as `design-rules.md`, without the close-ups.
+ * The rules as text for an agent: what Copy as text puts on the clipboard and get_design_rules
+ * answers. Each rule with where it holds, what it is about, and the notes it draws on.
  */
 export function rulesText(c: Collection, rules: ExportedRule[]): string {
   const lines = [
@@ -630,13 +627,3 @@ export function rulesText(c: Collection, rules: ExportedRule[]): string {
   }
   return `${lines.join('\n')}\n`;
 }
-
-/** A file-safe name for a collection: "Acme dashboard" → "acme-dashboard". */
-export const collectionSlug = (name: string) =>
-  name
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40) || 'collection';

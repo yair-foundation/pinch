@@ -138,6 +138,10 @@ export type Source = {
   link?: string;
 };
 
+/** A screenshot's tag as typed, tidied (D100): one line, 40 characters at most. */
+export const cleanScreenTag = (s: string | undefined) =>
+  (s ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+
 export type Asset = {
   id: string;
   name: string;
@@ -146,6 +150,8 @@ export type Asset = {
   height: number;
   /** Free text about the whole image; the AI can turn it into marks. */
   note: string;
+  /** The author's own tag for it (D100): a product, a feature, a domain. Unset until typed. */
+  screenTag?: string;
   /** The note as it was when the AI last placed it, so an unchanged note isn't placed twice. */
   locatedNote?: string;
   /** Parts of the note the AI found no place for (about the whole image). */
@@ -552,6 +558,7 @@ const FILES = [
   `About says what a note is about, as the author tagged it: ${TOPIC_LEGEND}. Read a note through its topics: one about Copy is about the words, not how the text looks; one about Visual is about how it looks, not what it says; one with several is about each. A note with no About line was not tagged: go by its words.`,
   'A field marked "AI suggestion" was written by an AI and accepted by the author: as is, or edited. Treat it as the author\'s view.',
   "Source says whose design an image is: Ours (the author's own product: keep what works, fix what doesn't), Competitor (a product in the same space), Other product (a real product outside it), Concept (a mockup, never shipped or tested with users). Source: not set means the author did not say; don't assume it is Ours, and ask before changing it. Never copy an outside design; take its principle.",
+  "Tag is the author's own tag for an image, as they typed it: the product, feature or domain it shows. It says what the screen is, not what to do; an image with no Tag line has none.",
   '`notes.json` has all of this as data.',
 ];
 
@@ -648,6 +655,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
         height: a.height,
         ...(a.note.trim() ? { note: a.note.trim() } : {}),
         source: a.source ? sourceData(a.source) : null,
+        ...(cleanScreenTag(a.screenTag) ? { tag: cleanScreenTag(a.screenTag) } : {}),
         notes: a.marks
           .filter((m) => verdictOf(m) !== 'empty')
           .map((m, j) => ({
@@ -710,6 +718,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
       `Image: \`${files.image}\` (${a.width}×${a.height}) · With markers: \`${files.marked}\``,
     );
     lines.push(a.source ? sourceLine(a.source) : 'Source: not set');
+    if (cleanScreenTag(a.screenTag)) lines.push(`Tag: ${cleanScreenTag(a.screenTag)}`);
     if (a.note.trim()) lines.push('', `Overall: ${oneLine(a.note)}`);
     written(a).forEach((m, j) => {
       const v = verdictOf(m);
