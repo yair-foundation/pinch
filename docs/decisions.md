@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D98.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D99.
 
 ## Open (need the user)
 
@@ -12,6 +12,12 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-10-21 — D99 The agent can ask for a rule's whole screenshots, marked (the user: "add the whole-screenshot option to get_rule_evidence").** A close-up shows the spot, not how it sits on the screen, and rules about layout, hierarchy or spacing are about exactly that; the agent got the spot's box in the screenshot's pixels with no screenshot to put it on.
+  - **On request, not by default.** `get_rule_evidence` takes `whole: true`; without it the answer is as before. A screenshot costs an agent far more context than a few close-ups, and most rules read from their words and crops, so the tool and the server's instructions say to look at the close-ups first and ask for the whole screen for rules about the screen as a whole.
+  - **The marked copy, once per screenshot.** Each screenshot the shown notes are on comes once, after the notes: the export's `marked/` JPEG, every marker drawn in, so the agent sees which spots the notes are about, at most 1800px on its longest side. Its size is given, with the scale from the screenshot's pixels (fractions need none). Not scaled again on the server: that would take an image library for little, and models scale large images themselves.
+  - **Close-ups first in the budget.** The screenshots take what the crops leave of the answer's 3 MB; one that doesn't fit is named and left out, as a crop is.
+  - **Only the needed bytes, still:** the marked copies' paths come from the batch's `notes.json`, read with the crops, then the copies by the same ranged read (D94). An export without them says no screenshot is kept.
+  - **Privacy:** the person's own screenshots, kept in their account, to their own agent with their key, as D94; the privacy dialog now says the agent can get the screenshots when it asks.
 - **2026-10-21 — D98 One offer: 2,000 credits for $19.99; an update costs 20 credits and 3 a note, close-ups included (user decisions, after the cost and crop benchmarks). Built on 2026-10-21; the owner approved the terms the same day ([status.md](status.md)).** A reading costs a fixed part for each update plus a little for each note ([cost-bench.md](cost-bench.md)), so a price per note can't follow it; credits priced the same two ways can. Amends D96: credits replace note readings, and the reading sees close-ups.
   - **One offer.** A pack of 2,000 credits for $19.99 that never expires, bought again for more. No tiers, plans, subscriptions or other pack sizes.
   - **What an update costs:** 20 credits, plus 3 for each new or changed note, its close-up included. An update is the author's click on Update rules, however many calls it takes behind it. The button shows the price ("Update rules · 12 notes · 56 credits") and that is what it takes: retries, caching and the calls behind it are Pinch's to absorb. An update that reads nothing (its reading failed or was refused, or it never started) takes nothing, its 20 included. One that stops partway takes the 20 once and 3 for each note it read; the rest comes back when the page finishes it, or after an hour if the page never does.

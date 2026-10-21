@@ -27,14 +27,15 @@ import {
  * rules costs no AI: the agent does the reading, on its own allowance. A
  * rule's notes come with their close-ups on request (D94): each crop as an
  * image, with the note's marker drawn in, and where the spot is as a box in
- * the crop's pixels and in the screenshot's.
+ * the crop's pixels and in the screenshot's. Asked for `whole`, the answer
+ * also carries each screenshot once, its marked copy (D99).
  */
 
 /** The protocol versions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS =
-  'Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from.';
+  'Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough.';
 
 export const TOOLS = [
   {
@@ -64,13 +65,18 @@ export const TOOLS = [
     name: 'get_rule_evidence',
     title: 'Get a rule’s close-ups',
     description:
-      'The notes one rule comes from, each with its close-up: a crop of the screenshot with the note’s marker drawn in (a ring on a dot, a box around an area, an arrow), and where the spot is as numbers, in the crop’s pixels and in the whole screenshot’s. Use it when a rule is unclear or you need to see what the person marked. Give the rule’s number as get_design_rules shows it (R3).',
+      'The notes one rule comes from, each with its close-up: a crop of the screenshot with the note’s marker drawn in (a ring on a dot, a box around an area, an arrow), and where the spot is as numbers, in the crop’s pixels and in the whole screenshot’s. Use it when a rule is unclear or you need to see what the person marked. Give the rule’s number as get_design_rules shows it (R3). With whole: true it also returns each screenshot the notes are on, once, with every marker drawn in: for rules about the screen as a whole (layout, hierarchy, spacing). It costs far more context, so look at the close-ups first.',
     inputSchema: {
       type: 'object',
       properties: {
         rule: {
           type: 'string',
           description: 'The rule’s number, as get_design_rules shows it: R3.',
+        },
+        whole: {
+          type: 'boolean',
+          description:
+            'Also return the whole screenshots, with the markers drawn in. Leave it out for the close-ups alone.',
         },
       },
       required: ['rule'],
@@ -271,14 +277,64 @@ function noteContent(
   return content;
 }
 
+/**
+ * A screenshot's marked copy, read from its batch's `notes.json`: the path inside the zip's
+ * folder ("marked/02-pricing.jpg") and the screenshot's own size. Null when it isn't there.
+ */
+export function markedOf(
+  manifest: unknown,
+  assetNumber: string,
+): { path: string; width: number; height: number } | null {
+  const assets = (manifest as { assets?: unknown })?.assets;
+  if (!Array.isArray(assets)) return null;
+  const a = assets.find((x) => x?.number === assetNumber) as
+    | { marked?: unknown; width?: unknown; height?: unknown }
+    | undefined;
+  const width = num(a?.width);
+  const height = num(a?.height);
+  if (typeof a?.marked !== 'string' || !a.marked || !width || !height) return null;
+  return { path: a.marked, width, height };
+}
+
+/** One screenshot's part of the answer: which notes are on it, its size and scale, and the image. */
+function screenshotContent(
+  notes: ExportedNote[],
+  files: Map<string, Uint8Array>,
+  manifest: unknown,
+  budget: { left: number },
+): Content[] {
+  const { batch, note } = notes[0];
+  const refs = notes.map((x) => x.note.ref).join(', ');
+  const marked = markedOf(manifest, note.ref.split('.')[0]);
+  const bytes = marked ? files.get(batch.root + marked.path) : undefined;
+  const size = bytes ? jpegSize(bytes) : null;
+  const head = `Screenshot ${note.image}, with ${notes.length === 1 ? 'note' : 'notes'} ${refs}`;
+  if (!marked || !bytes || !size) return [{ type: 'text', text: `${head}: no screenshot kept.` }];
+  if (bytes.length > budget.left)
+    return [{ type: 'text', text: `${head}: left out to keep this answer small.` }];
+  budget.left -= bytes.length;
+  const scale = round4(size.width / marked.width);
+  return [
+    {
+      type: 'text',
+      text: `${head}: the whole screen with every marker drawn in, ${size.width}×${size.height} pixels${scale === 1 ? '' : `, the screenshot scaled by ${scale} (multiply a note’s screenshot box by it)`}.`,
+    },
+    { type: 'image', data: Buffer.from(bytes).toString('base64'), mimeType: 'image/jpeg' },
+  ];
+}
+
 const EVIDENCE_GUIDE =
   'Each close-up is a crop of the screenshot with the note’s marker drawn in: a ring on a dot, a box around an area, an arrow from its tail to its head, with the note’s number on a disc beside it (the spot is the ring, box or arrow, never the disc). Boxes are in pixels from the top-left corner, x across and y down: a dot is {x, y}, an area {x, y, w, h}, an arrow {x, y} at its tail to {x2, y2} at its head. `closeUp` is in the crop’s own pixels, `screenshot` in the whole screenshot’s (`fraction`: the same as fractions of it, 0 to 1). Screenshot pixels are not CSS pixels: a screenshot from a high-density screen is two or three times larger.';
 
-/** A rule's close-ups, as tool content: the rule, how to read the boxes, then each note. */
+/**
+ * A rule's close-ups, as tool content: the rule, how to read the boxes, then each note; with
+ * `whole`, then each screenshot the notes are on, once, in what the close-ups leave of the budget.
+ */
 export async function evidenceContent(
   c: Collection,
   ruleArg: unknown,
   files: BatchFiles,
+  whole = false,
 ): Promise<{ content: Content[]; isError?: boolean }> {
   const all = rulesOf(c);
   const n = typeof ruleArg === 'string' ? Number(ruleArg.trim().replace(/^r/i, '')) : NaN;
@@ -327,6 +383,32 @@ export async function evidenceContent(
   for (const x of shown) {
     const got = read.get(x.batch.id);
     content.push(...noteContent(x, got?.files ?? new Map(), got?.manifest ?? null, budget));
+  }
+  if (!whole) return { content };
+  const screens = new Map<string, ExportedNote[]>();
+  for (const x of shown) {
+    const key = `${x.batch.id}/${x.note.ref.split('.')[0]}`;
+    screens.set(key, [...(screens.get(key) ?? []), x]);
+  }
+  await Promise.all(
+    [...byBatch.entries()].map(async ([id, notes]) => {
+      const got = read.get(id);
+      if (!got?.manifest) return;
+      const paths = new Set<string>();
+      for (const x of notes) {
+        const marked = markedOf(got.manifest, x.note.ref.split('.')[0]);
+        if (marked) paths.add(notes[0].batch.root + marked.path);
+      }
+      if (!paths.size) return;
+      const more = await files(id, [...paths]).catch(() => new Map<string, Uint8Array>());
+      for (const [k, v] of more) got.files.set(k, v);
+    }),
+  );
+  for (const notes of screens.values()) {
+    const got = read.get(notes[0].batch.id);
+    content.push(
+      ...screenshotContent(notes, got?.files ?? new Map(), got?.manifest ?? null, budget),
+    );
   }
   return { content };
 }
@@ -406,8 +488,8 @@ export async function answer(
         const c = await rules();
         if (!c || !files)
           return reply(id, text(c ? 'Close-ups aren’t available here.' : 'No rules yet.', true));
-        const args = (params.arguments ?? {}) as { rule?: unknown };
-        return reply(id, await evidenceContent(c, args.rule, files));
+        const args = (params.arguments ?? {}) as { rule?: unknown; whole?: unknown };
+        return reply(id, await evidenceContent(c, args.rule, files, args.whole === true));
       }
       if (params.name !== 'get_design_rules')
         return failure(id, -32602, `Unknown tool: ${String(params.name)}`);
