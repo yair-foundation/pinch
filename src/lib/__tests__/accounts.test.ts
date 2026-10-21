@@ -403,6 +403,29 @@ describe('credits in the store (D98)', () => {
     assert.equal(begin({ updates: [], mergedInto: 'e-x' }, grants, 'u2', 1, 1, now).ok, false);
   });
 
+  it('gives back the whole price, its 20 included, when an update reads nothing', async () => {
+    const browser = 'f'.repeat(24);
+    const c = await creditsOf(null, browser, config, now);
+    assert.equal((await beginUpdate(c, config, 'failed', 30, 30, now)).ok, true);
+    // The reading failed or was refused: no call counted a note, and the page finishes it.
+    await finishUpdate(c.owner, 'failed');
+    assert.equal((await creditsOf(null, browser, config, now)).balance, 200);
+    // Left unfinished, the same comes back after an hour.
+    assert.equal((await beginUpdate(c, config, 'left', 30, 30, now)).ok, true);
+    const later = now + 61 * 60 * 1000;
+    assert.equal((await creditsOf(null, browser, config, later)).balance, 200);
+  });
+
+  it('charges the 20 once and 3 for each note read when an update stops partway', async () => {
+    const browser = 'p'.repeat(24);
+    const c = await creditsOf(null, browser, config, now);
+    assert.equal((await beginUpdate(c, config, 'part', 50, 30, now)).ok, true);
+    await noteRead(c.owner, 'part', 30);
+    // The second call failed: the page finishes the update with 30 of its 50 read.
+    await finishUpdate(c.owner, 'part');
+    assert.equal((await creditsOf(null, browser, config, now)).balance, 200 - (20 + 3 * 30));
+  });
+
   it('charges updates, gives back what they did not read, and moves a browser into the account', async () => {
     const browser = 'b'.repeat(24);
     let c = await creditsOf(null, browser, config, now);
