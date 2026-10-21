@@ -36,7 +36,22 @@ AI placement ("Find in image") and the free-text box were removed on 2026-10-20 
 
 Built and live: the landing with the painting (dusk and a dark card in dark mode, night and a light card in light, crossfading on a theme change), parallax and liquid-glass bezel; a Pin / Area / Arrow toolbar; sources as four radio buttons; topic chips on each note; opening an export; Your rules, read from notes into a taste library, sliced by topic, with Connect agent (MCP or a prompt); Google sign-in, Lemon Squeezy and collections in the account (off until configured); the terms page; suggestions with Tab to accept and Esc to dismiss; undo and redo; keyboard shortcuts; anonymous saving of note text with Jev area tags and the owner's JSON read; desktop only; 100 images a session.
 
-## Not built
+## Launching credits (D98)
+
+Checked on a production build in local paid mode, with the store in memory: the walkthrough in light and dark; a failed update giving back its whole price; and the order lifecycle through the real routes with signed webhooks. In that lifecycle, a pack added 2,000 credits once, however often its webhook came; a forged webhook was refused; a one-note update took 23, from the free credits first; a refund took back the pack's untouched 2,000 and no more; a late "paid" report didn't undo the refund; a second pack added 2,000.
+
+Not checked here, so to check on the live store before telling anyone: a real Lemon Squeezy checkout and its webhook, "Paid already?" against Lemon Squeezy's API, and the Blob store's compare-and-swap and size listing behind the credits and the storage caps.
+
+In this order, at once (README, Deploying, has the details):
+
+1. Read and approve the terms (`src/app/terms/page.tsx`), and set `PINCH_SUPPORT_EMAIL`: the terms send refunds there, and without it they point at the maker's site.
+2. In Lemon Squeezy, create the credits product: 2,000 credits, $19.99, single payment, can be bought again, confirmation back to the site.
+3. In Vercel, set `LEMONSQUEEZY_CREDITS_PRODUCT_ID` and point `PINCH_BUY_URL` at the new checkout. Keep `LEMONSQUEEZY_PRODUCT_ID` on the original product. Until the credits product is set, the code keeps billing off, so a deploy that runs ahead of its settings sells nothing.
+4. Unpublish the original product. Refund the owner's test order if that account should run on credits.
+5. Merge and deploy.
+6. Count the original product's paid orders again: each buyer keeps the original offer.
+7. On the live site, in test mode: buy a pack, see 2,000 credits, update rules, refund, see what is left taken back; upload a batch to see the storage limit read.
+
 
 - **Free credits and one pack (D96, D98, decided).** Today marking is free, the first two rules show and $19 opens the rest. Decided instead: 200 free credits with every rule and the agent connection, then one offer, 2,000 credits for $19.99 that never expire; an update costs 20 credits and 3 a note, shown on Update rules before it runs, and each note goes to the reading with its close-up. Not built. Earlier buyers would keep what they bought; so far the only order was the owner's test.
 - **Agent connection extras**: the agent connects with a pasted key (MCP over HTTP, D89; setup for seven kinds of agent, D92); OAuth sign-in for the connection, usage limits per key and a rules export as an agent skill file are not built.
