@@ -1,4 +1,4 @@
-import { gate } from '@/lib/access';
+import { accountGate } from '@/lib/access';
 import { listCollections } from '@/lib/cloud';
 import { sessionOf } from '@/lib/session';
 
@@ -11,7 +11,7 @@ const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollo
 export async function GET(request: Request) {
   const session = sessionOf(request);
   if (!session) return Response.json({ error: 'Sign in first.' }, { status: 401, headers });
-  const blocked = await gate(request);
+  const blocked = accountGate(request);
   if (blocked) return blocked;
   return Response.json({ collections: await listCollections(session.user) }, { headers });
 }

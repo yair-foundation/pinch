@@ -2,14 +2,19 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 /*
- * Paying for Pinch (D81): $19 once, through Lemon Squeezy, the merchant of
- * record (it takes the payment and the tax, and sends the receipt). The
- * checkout link carries the signed-in email and account; Lemon Squeezy then
- * calls the webhook, signed with its secret, when an order is paid or
- * refunded, and the purchase is kept under the buyer's email. With an API
- * key, a buyer whose webhook went astray can restore the purchase by email.
- * Everything here is off until the store, product, link and webhook secret
- * are set, and then the tool is paid.
+ * Paying for Pinch (D81, D98): one offer, 2,000 credits for $19.99, through
+ * Lemon Squeezy, the merchant of record (it takes the payment and the tax, and
+ * sends the receipt). The checkout link carries the signed-in email and
+ * account; Lemon Squeezy then calls the webhook, signed with its secret, when
+ * an order is paid or refunded, and the order is kept under the buyer's email
+ * with its product. With an API key, a buyer whose webhook went astray can
+ * restore their orders by email. Everything here is off until the store,
+ * product, link and webhook secret are set, and then the tool is paid.
+ *
+ * LEMONSQUEEZY_PRODUCT_ID is the credits pack. LEMONSQUEEZY_ORIGINAL_PRODUCT_ID,
+ * set only if customers bought the original offer (D81's $19 once) before
+ * credits went on sale, names that product, so its buyers keep what they
+ * bought (D98).
  */
 
 export type BillingConfig = {
@@ -19,6 +24,8 @@ export type BillingConfig = {
   webhookSecret: string;
   apiKey?: string;
   price: string;
+  /** The original offer's product, when customers bought it before credits went on sale. */
+  originalProductId?: string;
 };
 
 export function billingConfig(
@@ -35,7 +42,8 @@ export function billingConfig(
     buyUrl,
     webhookSecret,
     apiKey: env.LEMONSQUEEZY_API_KEY?.trim() || undefined,
-    price: env.PINCH_PRICE?.trim() || '$19',
+    price: env.PINCH_PRICE?.trim() || '$19.99',
+    originalProductId: env.LEMONSQUEEZY_ORIGINAL_PRODUCT_ID?.trim() || undefined,
   };
 }
 
@@ -79,20 +87,27 @@ export type WebhookOutcome =
   | {
       kind: 'paid' | 'refunded';
       order: string;
+      /** The product bought, when the order says. */
+      product?: string;
       email: string;
       user?: string;
       at: string;
     }
   | { kind: 'ignore'; reason: string };
 
-/** What an order webhook means for Pinch: a paid or refunded order of our product, or nothing. */
+/** The products Pinch sells: the credits pack, and the original offer while its buyers count. */
+const productsOf = (config: BillingConfig) =>
+  [config.productId, config.originalProductId].filter(Boolean) as string[];
+
+/** What an order webhook means for Pinch: a paid or refunded order of its products, or nothing. */
 export function webhookOutcome(body: unknown, config: BillingConfig): WebhookOutcome {
   const parsed = webhookSchema.safeParse(body);
   if (!parsed.success) return { kind: 'ignore', reason: 'not an order' };
   const { meta, data } = parsed.data;
   const a = data.attributes;
   if (a.store_id !== config.storeId) return { kind: 'ignore', reason: 'another store' };
-  if (a.first_order_item && a.first_order_item.product_id !== config.productId)
+  const product = a.first_order_item?.product_id;
+  if (product && !productsOf(config).includes(product))
     return { kind: 'ignore', reason: 'another product' };
   const refunded = meta.event_name === 'order_refunded' || a.refunded || a.status === 'refunded';
   const paid = meta.event_name === 'order_created' && a.status === 'paid';
@@ -100,6 +115,7 @@ export function webhookOutcome(body: unknown, config: BillingConfig): WebhookOut
   return {
     kind: refunded ? 'refunded' : 'paid',
     order: data.id,
+    ...(product ? { product } : {}),
     email: a.user_email.trim().toLowerCase(),
     ...(meta.custom_data?.user ? { user: meta.custom_data.user } : {}),
     at: a.updated_at ?? a.created_at ?? new Date().toISOString(),
@@ -120,13 +136,13 @@ const ordersSchema = z.object({
   ),
 });
 
-/** A paid order of our product for this email, asked of Lemon Squeezy's API; null when none. */
-export async function paidOrderFor(
+/** Every paid order of Pinch's products for this email, asked of Lemon Squeezy's API. */
+export async function paidOrdersFor(
   email: string,
   config: BillingConfig,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ order: string; at: string } | null> {
-  if (!config.apiKey) return null;
+): Promise<{ order: string; at: string; product?: string }[]> {
+  if (!config.apiKey) return [];
   const url = new URL('https://api.lemonsqueezy.com/v1/orders');
   url.searchParams.set('filter[store_id]', config.storeId);
   url.searchParams.set('filter[user_email]', email.trim().toLowerCase());
@@ -139,15 +155,20 @@ export async function paidOrderFor(
   });
   if (!res.ok) throw new Error('Lemon Squeezy didn’t answer. Try again in a minute.');
   const parsed = ordersSchema.safeParse(await res.json());
-  if (!parsed.success) return null;
-  const found = parsed.data.data.find(
-    (o) =>
-      o.attributes.status === 'paid' &&
-      !o.attributes.refunded &&
-      (!o.attributes.first_order_item ||
-        o.attributes.first_order_item.product_id === config.productId),
-  );
-  return found
-    ? { order: found.id, at: found.attributes.updated_at ?? new Date().toISOString() }
-    : null;
+  if (!parsed.success) return [];
+  return parsed.data.data
+    .filter(
+      (o) =>
+        o.attributes.status === 'paid' &&
+        !o.attributes.refunded &&
+        (!o.attributes.first_order_item ||
+          productsOf(config).includes(o.attributes.first_order_item.product_id)),
+    )
+    .map((o) => ({
+      order: o.id,
+      at: o.attributes.updated_at ?? new Date().toISOString(),
+      ...(o.attributes.first_order_item
+        ? { product: o.attributes.first_order_item.product_id }
+        : {}),
+    }));
 }

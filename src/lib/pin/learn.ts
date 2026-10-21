@@ -32,8 +32,6 @@ import {
 export const MAX_LEARN_NOTES = 30;
 /** Rules sent along for the model to strengthen; the newest are kept when there are more. */
 export const MAX_LEARN_RULES = 200;
-/** Rules Pinch shows in full before it is bought (D87); the rest are found but stay hidden. */
-export const PREVIEW_RULES = 2;
 
 const id = z.string().min(1).max(40);
 const topics = z.array(z.enum(TOPIC_KINDS)).max(TOPIC_KINDS.length).default([]);
@@ -70,8 +68,22 @@ export const learnRequestSchema = z.object({
     )
     .max(MAX_LEARN_RULES)
     .default([]),
-  /** Rules the page already shows in full, so a preview knows how many more it may show. */
+  /** Pages from before D98 still send it; nothing reads it. */
   shown: z.number().int().min(0).max(10_000).default(0),
+  /**
+   * The author's click on Update rules this call belongs to (D98): its id and how many notes it
+   * reads in all, priced before it starts. Needed once credits are on.
+   */
+  update: z
+    .object({
+      id: z
+        .string()
+        .min(8)
+        .max(40)
+        .regex(/^[A-Za-z0-9_-]+$/),
+      notes: z.number().int().min(1).max(10_000),
+    })
+    .optional(),
 });
 
 export type LearnRequest = z.infer<typeof learnRequestSchema>;
@@ -358,38 +370,5 @@ export function cleanReading(
   return {
     strengthen: [...strengthen].map(([rule, notes]) => ({ rule, notes: [...notes] })),
     propose,
-  };
-}
-
-/**
- * The reading as a visitor who hasn't bought Pinch gets it (D87): `reveal` new rules in full,
- * the rest as placeholders (their topics and notes, never their words, readings or questions),
- * so the page can say how many more Pinch found. The rules shown are the surest ones: the notes'
- * own words first, then readings, then questions, each drawn from the most notes (D90, D91).
- */
-export function previewReading(r: CleanReading, reveal: number) {
-  const surest = r.propose
-    .map((p, i) => ({
-      i,
-      open: p.question ? 2 : p.basis === 'interpreted' ? 1 : 0,
-      notes: p.notes.length,
-    }))
-    .sort((a, b) => a.open - b.open || b.notes - a.notes || a.i - b.i)
-    .slice(0, Math.max(0, reveal))
-    .map((x) => x.i);
-  return {
-    strengthen: r.strengthen,
-    propose: r.propose.map((p, i) =>
-      surest.includes(i)
-        ? p
-        : {
-            rule: '',
-            context: '',
-            topics: p.topics,
-            notes: p.notes,
-            basis: 'stated' as const,
-            locked: true as const,
-          },
-    ),
   };
 }

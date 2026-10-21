@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { accessOf, gate, paywallOn } from '../access';
+import { accessOf, accountGate, gate, paywallOn } from '../access';
 import {
   applyOrder,
   deleteAccount,
@@ -19,12 +19,24 @@ import {
   type BillingConfig,
   billingConfig,
   checkoutUrl,
-  paidOrderFor,
+  paidOrdersFor,
   signatureOk,
   webhookOutcome,
 } from '../billing';
 import { listDocuments, putDocument } from '../blob-doc';
+import {
+  begin,
+  beginUpdate,
+  creditsOf,
+  finishUpdate,
+  grantsOf,
+  keepsOriginal,
+  type Ledger,
+  mergeBrowser,
+  noteRead,
+} from '../credits';
 import { authUrl, claimsOf, pictureOf, pkcePair } from '../google';
+import { FREE_GRANT, PACK_CREDITS, updatePrice } from '../pin/credits';
 import { cookieOf, readSession, SESSION_COOKIE, signSession } from '../session';
 
 const SECRET = 'test-secret';
@@ -154,7 +166,12 @@ describe('billing', () => {
       PINCH_BUY_URL: 'https://x.co/buy',
       LEMONSQUEEZY_WEBHOOK_SECRET: 's',
     };
-    assert.equal(billingConfig(env)?.price, '$19');
+    assert.equal(billingConfig(env)?.price, '$19.99');
+    assert.equal(billingConfig(env)?.originalProductId, undefined);
+    assert.equal(
+      billingConfig({ ...env, LEMONSQUEEZY_ORIGINAL_PRODUCT_ID: '21' })?.originalProductId,
+      '21',
+    );
     assert.equal(billingConfig({ ...env, LEMONSQUEEZY_WEBHOOK_SECRET: '' }), null);
   });
 
@@ -177,6 +194,7 @@ describe('billing', () => {
     assert.deepEqual(webhookOutcome(order({ user: 'g1' }), config), {
       kind: 'paid',
       order: '900',
+      product: '22',
       email: 'buyer@example.com',
       user: 'g1',
       at: '2026-10-20T10:00:01.000000Z',
@@ -187,6 +205,12 @@ describe('billing', () => {
     );
     assert.equal(webhookOutcome(order({ store: 12 }), config).kind, 'ignore');
     assert.equal(webhookOutcome(order({ product: 23 }), config).kind, 'ignore');
+    // The original offer's product counts only while its buyers do (D98).
+    assert.equal(webhookOutcome(order({ product: 21 }), config).kind, 'ignore');
+    assert.equal(
+      webhookOutcome(order({ product: 21 }), { ...config, originalProductId: '21' }).kind,
+      'paid',
+    );
     assert.equal(webhookOutcome(order({ status: 'pending' }), config).kind, 'ignore');
     assert.equal(webhookOutcome({ meta: {} }, config).kind, 'ignore');
   });
@@ -212,11 +236,10 @@ describe('billing', () => {
         ],
       });
     }) as unknown as typeof fetch;
-    assert.equal(await paidOrderFor('a@x.co', config, fake), null, 'no key, no call');
-    assert.deepEqual(await paidOrderFor('A@x.co', { ...config, apiKey: 'k' }, fake), {
-      order: '2',
-      at: 't',
-    });
+    assert.deepEqual(await paidOrdersFor('a@x.co', config, fake), [], 'no key, no call');
+    assert.deepEqual(await paidOrdersFor('A@x.co', { ...config, apiKey: 'k' }, fake), [
+      { order: '2', at: 't', product: '22' },
+    ]);
     assert.match(asked, /filter%5Buser_email%5D=a%40x\.co/);
   });
 });
@@ -239,6 +262,24 @@ describe('accounts and purchases', () => {
     p = applyOrder(p, '2', 'paid', '2026-10-22T10:00');
     assert.ok(isPaid(p), 'a second order counts');
     assert.equal(isPaid(null), false);
+  });
+
+  it('keeps the product of an order and when it was first paid, whatever comes later (D98)', () => {
+    let p = applyOrder({ orders: {} }, '1', 'paid', '2026-10-22T10:00', '22');
+    p = applyOrder(p, '1', 'paid', '2026-10-22T09:00');
+    assert.deepEqual(p.orders['1'], {
+      status: 'paid',
+      at: '2026-10-22T10:00',
+      product: '22',
+      paidAt: '2026-10-22T09:00',
+    });
+    p = applyOrder(p, '1', 'refunded', '2026-10-23T10:00');
+    assert.deepEqual(p.orders['1'], {
+      status: 'refunded',
+      at: '2026-10-23T10:00',
+      product: '22',
+      paidAt: '2026-10-22T09:00',
+    });
   });
 
   it('records orders and deletes an account with its folder, not its purchase', async () => {
@@ -284,15 +325,97 @@ describe('the paywall', () => {
     assert.equal(await gate(request()), null);
   });
 
-  it('then asks to sign in, then to buy, then lets the buyer in', async () => {
+  it('opens an account to its rules and agent key for anyone signed in (D98)', async () => {
+    await withEnv(env, async () => {
+      assert.equal(accountGate(request())?.status, 401);
+      const token = signSession({ user: 'g8', email: 'free@x.co', name: 'F' }, SECRET);
+      assert.equal(accountGate(request(token)), null);
+    });
+  });
+
+  it('opens suggestions to buyers: sign in, then buy, then in', async () => {
     await withEnv(env, async () => {
       assert.ok(paywallOn());
       assert.equal((await gate(request()))?.status, 401);
       const token = signSession({ user: 'g9', email: 'new@x.co', name: 'N' }, SECRET);
       assert.equal((await gate(request(token)))?.status, 402);
       await recordOrder('new@x.co', 'o9', 'paid', '2026-10-20');
-      assert.equal((await accessOf(request(token), true)).allowed, true);
+      assert.equal((await accessOf(request(token))).allowed, true);
       assert.equal(await gate(request(token)), null);
     });
+  });
+});
+
+describe('credits in the store (D98)', () => {
+  const at = (day: number) => `2026-10-${String(day).padStart(2, '0')}T10:00:00Z`;
+  const now = Date.parse(at(25));
+
+  it('turns paid orders of the credits pack into grants, and older orders into none', () => {
+    const grants = grantsOf(
+      {
+        a: { status: 'paid', at: at(20), product: '22', paidAt: at(20) },
+        b: { status: 'refunded', at: at(22), product: '22', paidAt: at(21) },
+        old: { status: 'paid', at: at(19) },
+        other: { status: 'paid', at: at(20), product: '23', paidAt: at(20) },
+      },
+      config,
+    );
+    assert.deepEqual(grants, [
+      { id: 'a', credits: PACK_CREDITS, at: at(20) },
+      { id: 'b', credits: PACK_CREDITS, at: at(21), refundedAt: at(22) },
+    ]);
+  });
+
+  it('keeps the original offer only when its product is named', () => {
+    const orders = { old: { status: 'paid' as const, at: at(19) } };
+    assert.equal(keepsOriginal(orders, config), false, 'the owner’s test order counts for nothing');
+    assert.equal(keepsOriginal(orders, { ...config, originalProductId: '21' }), true);
+    const refunded = { old: { status: 'refunded' as const, at: at(19) } };
+    assert.equal(keepsOriginal(refunded, { ...config, originalProductId: '21' }), false);
+  });
+
+  it('starts an update only with its whole price, and reads no more than it was priced for', () => {
+    const grants = [{ id: FREE_GRANT, credits: 200, at: '' }];
+    const ledger: Ledger = { updates: [] };
+    assert.deepEqual(begin(ledger, grants, 'u1', 61, 30, now), {
+      ok: false,
+      status: 402,
+      error: 'Not enough credits for this update.',
+    });
+    assert.deepEqual(begin(ledger, grants, 'u1', 50, 30, now), { ok: true });
+    assert.equal(ledger.updates.length, 1);
+    assert.deepEqual(begin(ledger, grants, 'u1', 50, 20, now), { ok: true }, 'the next call');
+    ledger.updates[0].read = 40;
+    assert.equal(begin(ledger, grants, 'u1', 50, 20, now).ok, false, '60 of 50');
+    ledger.updates[0].done = true;
+    assert.equal(begin(ledger, grants, 'u1', 50, 1, now).ok, false, 'finished');
+    assert.equal(begin({ updates: [], mergedInto: 'e-x' }, grants, 'u2', 1, 1, now).ok, false);
+  });
+
+  it('charges updates, gives back what they did not read, and moves a browser into the account', async () => {
+    const browser = 'b'.repeat(24);
+    let c = await creditsOf(null, browser, config, now);
+    assert.equal(c.balance, 200);
+    assert.equal((await beginUpdate(c, config, 'u1', 10, 10, now)).ok, true);
+    c = await creditsOf(null, browser, config, now);
+    assert.equal(c.balance, 200 - updatePrice(10), 'held while it runs');
+    await noteRead(c.owner, 'u1', 4);
+    await finishUpdate(c.owner, 'u1');
+    c = await creditsOf(null, browser, config, now);
+    assert.equal(c.balance, 200 - updatePrice(4), 'the notes it did not read come back');
+
+    const session = { user: 'g7', email: 'merge@x.co', name: 'M', exp: now + 1e6 };
+    await mergeBrowser(browser, session.email);
+    assert.equal((await creditsOf(null, browser, config, now)).balance, 0, 'the browser closes');
+    assert.equal((await creditsOf(null, browser, config, now)).closed, true);
+    const account = await creditsOf(session, browser, config, now);
+    assert.equal(account.balance, 200 - updatePrice(4), 'one free 200, however it was spent');
+    await mergeBrowser(browser, session.email);
+    assert.equal((await creditsOf(session, browser, config, now)).balance, 200 - updatePrice(4));
+
+    await recordOrder(session.email, 'p1', 'paid', at(24), '22');
+    const bought = await creditsOf(session, browser, config, now);
+    assert.equal(bought.balance, PACK_CREDITS + 200 - updatePrice(4));
+    assert.equal(bought.bought, true);
   });
 });

@@ -104,20 +104,3 @@ const learnLedger = dailyLedger(
 );
 export const reserveLearning = learnLedger.reserve;
 export const settleLearning = learnLedger.settle;
-
-/**
- * The same reading for visitors who haven't bought Pinch, to show them the first rules (D87):
- * its own, smaller ledger, so previews never spend what buyers' rules need.
- */
-export const PREVIEW_CAPS: PinCaps = {
-  usd: Number(process.env.PIN_LEARN_PREVIEW_DAILY_USD ?? 3),
-  perVisitor: Number(process.env.PIN_LEARN_PREVIEW_PER_VISITOR ?? 4),
-  requests: Number(process.env.PIN_LEARN_PREVIEW_CALLS_PER_DAY ?? 200),
-};
-const previewLedger = dailyLedger(
-  (day) => `pin-notes/learn-preview/${day}.json`,
-  LEARN_RESERVE_USD,
-  PREVIEW_CAPS,
-);
-export const reservePreview = previewLedger.reserve;
-export const settlePreview = previewLedger.settle;

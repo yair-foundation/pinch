@@ -1,5 +1,5 @@
 import { type HandleUploadPresignedBody, handleUploadPresigned } from '@vercel/blob/client';
-import { gate } from '@/lib/access';
+import { accountGate } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { hasBlob } from '@/lib/blob-doc';
 import { ownBatchPath, uploadToken } from '@/lib/cloud';
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return fail(403, 'Forbidden');
   const session = sessionOf(request);
   if (!session) return fail(401, 'Sign in first.');
-  const blocked = await gate(request);
+  const blocked = accountGate(request);
   if (blocked) return blocked;
   let body: HandleUploadPresignedBody;
   try {

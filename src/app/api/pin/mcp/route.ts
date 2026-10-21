@@ -1,5 +1,3 @@
-import { paidEmail, paywallOn } from '@/lib/access';
-import { readAccount } from '@/lib/account';
 import { userOfAgentKey } from '@/lib/agent-keys';
 import { batchFiles, listCollections } from '@/lib/cloud';
 import { answer, type RpcMessage } from '@/lib/pin/agent';
@@ -8,8 +6,8 @@ import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/l
 /*
  * Pinch for agents (D89): an MCP server on the Streamable HTTP transport, one
  * JSON-RPC message (or a batch) per POST, answered as JSON. The agent sends
- * the account's key as `Authorization: Bearer pk_…`; the account must have
- * bought Pinch. Its tools hand over the account's rules, read from the store
+ * the account's key as `Authorization: Bearer pk_…`; any account, bought or
+ * free, at any balance (D98). Its tools hand over the account's rules, read from the store
  * at each call, so the agent always has the current ones, and a rule's
  * close-ups from the account's own batch zips (D94). No AI runs here, and
  * nothing about the call is logged but its method.
@@ -37,11 +35,6 @@ export async function POST(request: Request) {
   const user = key ? await userOfAgentKey(key) : null;
   if (!user)
     return rpcError(401, -32001, 'Connect with your Pinch key: Account, then Connect your agent.');
-  if (paywallOn()) {
-    const account = await readAccount(user);
-    if (!account || !(await paidEmail(account.email)))
-      return rpcError(402, -32002, 'This Pinch account hasn’t bought Pinch.');
-  }
   const body = await request.text().catch(() => '');
   if (!body || body.length > MAX_BODY) return rpcError(400, -32700, 'Parse error');
   let parsed: unknown;

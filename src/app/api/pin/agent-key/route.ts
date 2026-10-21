@@ -1,4 +1,4 @@
-import { gate } from '@/lib/access';
+import { accountGate } from '@/lib/access';
 import { agentKeyOf, dropAgentKey, makeAgentKey } from '@/lib/agent-keys';
 import { isSameOriginWrite } from '@/lib/auth';
 import { sessionOf } from '@/lib/session';
@@ -19,7 +19,7 @@ async function owner(request: Request, write: boolean) {
     return { error: fail(403, 'Forbidden') };
   const session = sessionOf(request);
   if (!session) return { error: fail(401, 'Sign in first.') };
-  const blocked = await gate(request);
+  const blocked = accountGate(request);
   if (blocked) return { error: blocked };
   return { user: session.user };
 }

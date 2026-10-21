@@ -9,12 +9,9 @@ import {
   learnPrompt,
   learnRequestSchema,
   learnSchema,
-  type CleanReading,
   type LearnResult,
   type LibraryRule,
   learnSystem,
-  PREVIEW_RULES,
-  previewReading,
   titlesPrompt,
 } from '../learn';
 import { FOUNDATION_SOURCES, foundationText, PRINCIPLES, SHORTHAND } from '../foundation';
@@ -896,59 +893,6 @@ describe('reading notes into rules', () => {
     });
     assert.equal(clean.propose[2].question, undefined, 'one answer is no question');
     assert.equal(clean.propose[2].basis, 'stated');
-  });
-
-  it('shows a visitor the first rules and hides the rest’s words', () => {
-    const r = {
-      strengthen: [{ rule: 'r1', notes: ['n1'] }],
-      propose: [1, 2, 3].map((i) => ({
-        rule: `Rule ${i}.`,
-        context: 'here',
-        topics: ['copy' as const],
-        notes: ['n1'],
-        basis: 'stated' as const,
-      })),
-    };
-    const preview = previewReading(r, PREVIEW_RULES - 1);
-    assert.deepEqual(
-      preview.propose.map((p) => [p.rule, 'locked' in p]),
-      [
-        ['Rule 1.', false],
-        ['', true],
-        ['', true],
-      ],
-    );
-    assert.equal(JSON.stringify(preview).includes('Rule 2'), false, 'hidden words never go out');
-    assert.equal(
-      previewReading(r, 0).propose.every((p) => 'locked' in p),
-      true,
-    );
-  });
-
-  it('shows a visitor the surest rules first, and nothing of a hidden one’s question', () => {
-    const asks: CleanReading['propose'][number] = {
-      rule: 'Keep headings short.',
-      context: '',
-      topics: ['copy'],
-      notes: ['n1', 'n2', 'n3'],
-      basis: 'interpreted',
-      reading: 'Its secret reading.',
-      question: { ask: 'Secret question?', options: [{ answer: 'Secret', rule: 'Secret rule.' }] },
-    };
-    const one = { rule: 'From one note.', context: '', topics: [], notes: ['n1'], basis: 'stated' as const };
-    const two = { ...one, rule: 'From two notes.', notes: ['n1', 'n2'] };
-    const read = { ...one, rule: 'Read from three notes.', notes: ['n1', 'n2', 'n3'], basis: 'interpreted' as const };
-    const preview = previewReading({ strengthen: [], propose: [asks, one, two, read] }, 2);
-    assert.deepEqual(
-      preview.propose.map((p) => p.rule),
-      ['', 'From one note.', 'From two notes.', ''],
-      'the notes’ own words first, then readings, then questions; more notes first',
-    );
-    assert.deepEqual(
-      previewReading({ strengthen: [], propose: [asks, read] }, 1).propose.map((p) => p.rule),
-      ['', 'Read from three notes.'],
-    );
-    assert.equal(JSON.stringify(preview).includes('Secret'), false);
   });
 });
 

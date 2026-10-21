@@ -1,5 +1,5 @@
 import { get } from '@vercel/blob';
-import { gate } from '@/lib/access';
+import { accountGate } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { hasBlob } from '@/lib/blob-doc';
 import {
@@ -32,7 +32,7 @@ async function owner(request: Request, write: boolean) {
     return { error: fail(403, 'Forbidden') };
   const session = sessionOf(request);
   if (!session) return { error: fail(401, 'Sign in first.') };
-  const blocked = await gate(request);
+  const blocked = accountGate(request);
   if (blocked) return { error: blocked };
   return { user: session.user };
 }

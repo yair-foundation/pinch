@@ -1,6 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { accessOf } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { costUsd, visitorKey } from '@/lib/budget';
 import { reserveLearning, settleLearning } from '@/lib/pin/ai-budget';
@@ -15,9 +14,9 @@ import { clientIp } from '@/lib/pin/visitor';
 
 /*
  * Titles for rules that have none (D95): POST JSON { rules: [{ id, text }] },
- * only the rules' words, and get back { titles: [{ id, title }] }. For those
- * Pinch is open to (bought, or not for sale here); a small model, on the
- * reading's daily ledger. Nothing is stored, and no rule text is logged. Off
+ * only the rules' words, and get back { titles: [{ id, title }] }. For anyone:
+ * since D98 every rule is shown, so every rule gets a title. A small model, on
+ * the reading's daily ledger, taking no credits. Nothing is stored, and no rule text is logged. Off
  * whenever reading is off.
  */
 
@@ -38,8 +37,6 @@ export async function POST(request: Request) {
   if (!available()) return fail(503, 'Titles are off right now.');
   if (!isSameOriginWrite(request.headers, new URL(request.url).origin))
     return fail(403, 'Forbidden');
-  const { allowed } = await accessOf(request);
-  if (!allowed) return fail(402, 'Titles are part of Pinch.');
 
   const body = await request.text().catch(() => '');
   if (!body || body.length > MAX_BODY) return fail(400, 'Send a few rules.');

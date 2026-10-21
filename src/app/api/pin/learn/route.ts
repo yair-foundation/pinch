@@ -3,33 +3,32 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { accessOf } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { costUsd, visitorKey } from '@/lib/budget';
-import {
-  reserveLearning,
-  reservePreview,
-  settleLearning,
-  settlePreview,
-} from '@/lib/pin/ai-budget';
+import { type BillingConfig, billingConfig } from '@/lib/billing';
+import { beginUpdate, noteRead } from '@/lib/credits';
+import { reserveLearning, settleLearning } from '@/lib/pin/ai-budget';
 import {
   cleanReading,
   learnPrompt,
   learnRequestSchema,
   learnSchema,
   learnSystem,
-  PREVIEW_RULES,
-  previewReading,
 } from '@/lib/pin/learn';
 import { clientIp } from '@/lib/pin/visitor';
 
 /*
  * Reading notes into rules (D87): POST JSON { notes: [{ id, works,
  * doesNotWork, label?, topics, source? }], rules: [{ id, text, context,
- * topics, status }], shown }, the library's new notes and its rules, only
- * their words. Get back { strengthen: [{ rule, notes }], propose: [{ rule,
- * context, topics, notes, conflictsWith?, conflict?, locked? }], preview }.
- * Anyone may ask: a visitor who hasn't bought Pinch gets a preview, the first
- * rules in full and the rest without their words, on a smaller daily cap.
- * Nothing is stored, and no note text is logged. Off with PIN_LEARN=0,
- * PIN_AI=0, or without an API key.
+ * topics, status }], update: { id, notes } }, the library's new notes and its
+ * rules, only their words. Get back { strengthen: [{ rule, notes }], propose:
+ * [{ rule, context, topics, notes, conflictsWith?, conflict? }] }.
+ *
+ * Once Pinch is paid, a call belongs to an update, the author's click on
+ * Update rules (D98): the first call prices the whole update (20 credits and
+ * 3 a note) and holds it, each call that reads adds its notes, and what isn't
+ * read comes back when the update finishes (`/api/pin/credits`). Buyers of the
+ * original offer spend no credits. Every call stays under the reading's daily
+ * fair-use caps. Nothing is stored here, and no note text is logged. Off with
+ * PIN_LEARN=0, PIN_AI=0, or without an API key.
  */
 
 export const dynamic = 'force-dynamic';
@@ -69,17 +68,26 @@ export async function POST(request: Request) {
   const rules = parsed.data.rules.filter((r) => r.text.trim());
   if (!notes.length) return Response.json({ strengthen: [], propose: [] }, { headers });
 
-  const { paywall, allowed } = await accessOf(request);
-  const preview = paywall && !allowed;
-  const visitor = await visitorKey(clientIp(request.headers));
-  const reservation = await (preview ? reservePreview : reserveLearning)(visitor);
-  if (!reservation.ok)
-    return fail(
-      429,
-      preview
-        ? 'That’s all the rules Pinch reads for a visitor today. Get Pinch to read the rest.'
-        : 'Pinch has read all it can for today. The rest are read tomorrow.',
+  const { paywall, session, browser, credits } = await accessOf(request);
+  const update = parsed.data.update;
+  const charged = paywall && credits && !credits.original ? credits : null;
+  if (charged) {
+    if (!update) return fail(400, 'Update rules to read them.');
+    // A visitor's credits live with this browser's id: without it, every call would start afresh.
+    if (!session && browser.setCookie) return fail(400, 'Reload Pinch and try again.');
+    const begun = await beginUpdate(
+      charged,
+      billingConfig() as BillingConfig,
+      update.id,
+      update.notes,
+      notes.length,
     );
+    if (!begun.ok) return fail(begun.status, begun.error);
+  }
+  const visitor = await visitorKey(clientIp(request.headers));
+  const reservation = await reserveLearning(visitor);
+  if (!reservation.ok)
+    return fail(429, 'Pinch has read all it can for today. The rest are read tomorrow.');
 
   let spent = 0;
   try {
@@ -96,9 +104,7 @@ export async function POST(request: Request) {
       messages: [{ role: 'user', content: learnPrompt({ notes, rules }) }],
     });
     spent = costUsd(response.model, response.usage);
-    console.log(
-      `[pin] learn ${preview ? 'preview ' : ''}${response.model} $${spent.toFixed(5)} ${response.stop_reason}`,
-    );
+    console.log(`[pin] learn ${response.model} $${spent.toFixed(5)} ${response.stop_reason}`);
     if (response.stop_reason === 'refusal') return fail(422, 'No rules from these notes.');
     if (!response.parsed_output) return fail(502, 'No rules this time. Try again.');
     const reading = cleanReading(
@@ -106,22 +112,14 @@ export async function POST(request: Request) {
       notes.map((n) => n.id),
       rules.map((r) => r.id),
     );
-    return Response.json(
-      preview
-        ? {
-            ...previewReading(reading, Math.max(0, PREVIEW_RULES - parsed.data.shown)),
-            preview: true,
-          }
-        : { ...reading, preview: false },
-      { headers },
-    );
+    // A reading that came back counts its notes as read; one that failed or was refused doesn't.
+    if (charged && update) await noteRead(charged.owner, update.id, notes.length);
+    return Response.json(reading, { headers });
   } catch (error) {
     console.error('[pin] learn', error);
     if (error instanceof Anthropic.RateLimitError) return fail(429, 'Busy. Try again in a minute.');
     return fail(502, 'No rules this time. Try again.');
   } finally {
-    await (preview ? settlePreview : settleLearning)(reservation, spent).catch((e) =>
-      console.error('[pin] settle', e),
-    );
+    await settleLearning(reservation, spent).catch((e) => console.error('[pin] settle', e));
   }
 }
