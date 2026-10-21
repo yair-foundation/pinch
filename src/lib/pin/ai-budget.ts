@@ -104,3 +104,21 @@ const learnLedger = dailyLedger(
 );
 export const reserveLearning = learnLedger.reserve;
 export const settleLearning = learnLedger.settle;
+
+/**
+ * The same reading for those who haven't bought (D98): free credits, any browser. Its own,
+ * smaller ledger, so fresh browsers can never spend what buyers' updates need. The names are
+ * the old preview's (D87), kept so settings already made still hold.
+ */
+export const FREE_CAPS: PinCaps = {
+  usd: Number(process.env.PIN_LEARN_PREVIEW_DAILY_USD ?? 3),
+  perVisitor: Number(process.env.PIN_LEARN_PREVIEW_PER_VISITOR ?? 20),
+  requests: Number(process.env.PIN_LEARN_PREVIEW_CALLS_PER_DAY ?? 300),
+};
+const freeLedger = dailyLedger(
+  (day) => `pin-notes/learn-preview/${day}.json`,
+  LEARN_RESERVE_USD,
+  FREE_CAPS,
+);
+export const reserveFree = freeLedger.reserve;
+export const settleFree = freeLedger.settle;

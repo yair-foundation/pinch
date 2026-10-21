@@ -25,10 +25,13 @@ export type Access = {
   allowed: boolean;
 };
 
-export async function accessOf(request: Request): Promise<Access> {
+/** Who is asking and what they may use; `browser` once worked out, so a new id is made once. */
+export async function accessOf(
+  request: Request,
+  browser = browserOf(request),
+): Promise<Access> {
   const paywall = paywallOn();
   const session = sessionOf(request);
-  const browser = browserOf(request);
   if (!paywall) return { paywall, session, browser, credits: null, allowed: true };
   const credits = await creditsOf(session, browser.id, billingConfig() as BillingConfig);
   const allowed =
@@ -38,11 +41,25 @@ export async function accessOf(request: Request): Promise<Access> {
 
 const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' };
 
+/**
+ * An email known to be allowed the buyers' extras stays so this long on one instance, to spare
+ * two reads a suggestion. Only yes is kept: a purchase opens them at once, and a refund or an
+ * empty balance closes them within a minute.
+ */
+const CACHE_MS = 60_000;
+const allowedUntil = new Map<string, number>();
+
 /** A buyers' extra (suggestions): null when the request may go on; else sign in first, or buy. */
 export async function gate(request: Request): Promise<Response | null> {
-  const a = await accessOf(request);
-  if (a.allowed) return null;
-  return a.session
+  const session = paywallOn() ? sessionOf(request) : null;
+  if (session && (allowedUntil.get(session.email) ?? 0) > Date.now()) return null;
+  const { allowed } = await accessOf(request);
+  if (allowed && session) {
+    if (allowedUntil.size > 5000) allowedUntil.clear();
+    allowedUntil.set(session.email, Date.now() + CACHE_MS);
+  }
+  if (allowed) return null;
+  return session
     ? Response.json({ error: 'Get Pinch to use this.' }, { status: 402, headers })
     : Response.json({ error: 'Sign in to use Pinch.' }, { status: 401, headers });
 }

@@ -4,12 +4,13 @@ import type { BillingConfig } from './billing';
 import { readDocument, updateDocument } from './blob-doc';
 import {
   balanceOf,
+  canUpdate,
   FREE_CREDITS,
   FREE_GRANT,
   type Grant,
   PACK_CREDITS,
+  STALE_MS,
   type Update,
-  updatePrice,
 } from './pin/credits';
 import { cookie, cookieOf, type Session } from './session';
 
@@ -35,6 +36,9 @@ const hash = (s: string) => createHash('sha256').update(s).digest('base64url').s
 const ledgerKey = (owner: string) => `pinch-credits/${owner}.json`;
 const emailOwner = (email: string) => `e-${emailKeyOf(email)}`;
 const browserOwner = (id: string) => `b-${hash(`browser:${id}`)}`;
+/** Whose ledger pays: the signed-in email's, else this browser's. */
+export const ownerOf = (session: Session | null, browser: string) =>
+  session ? emailOwner(session.email) : browserOwner(browser);
 
 /** This browser's id from its cookie, or a new one with the cookie that keeps it. */
 export function browserOf(request: Request): { id: string; setCookie?: string } {
@@ -45,13 +49,14 @@ export function browserOf(request: Request): { id: string; setCookie?: string } 
 }
 
 /**
- * What an order bought: the credits pack, the original offer, or neither. Orders kept before
- * D98 carry no product and no paid time: the original offer was all there was then.
+ * What an order bought: the credits pack, the original offer, or neither. An order kept
+ * without a product is the original offer's: those were kept before D98, when it was all there
+ * was, and Lemon Squeezy names the product on every order since.
  */
 export function boughtWith(o: Order, config: BillingConfig): 'credits' | 'original' | null {
+  if (!o.product) return 'original';
   if (o.product === config.creditsProductId) return 'credits';
-  if (o.product) return o.product === config.originalProductId ? 'original' : null;
-  return o.paidAt ? null : 'original';
+  return o.product === config.originalProductId ? 'original' : null;
 }
 
 /** The packs an email's orders gave: paid orders of the credits product, with their refunds. */
@@ -100,7 +105,7 @@ export async function creditsOf(
   config: BillingConfig,
   now = Date.now(),
 ): Promise<Credits> {
-  const owner = session ? emailOwner(session.email) : browserOwner(browser);
+  const owner = ownerOf(session, browser);
   const [{ doc }, purchases] = await Promise.all([
     readDocument<Ledger>(ledgerKey(owner), EMPTY),
     session ? purchasesOf(session.email) : null,
@@ -121,8 +126,10 @@ export type Begun = { ok: true } | { ok: false; status: 400 | 402; error: string
 
 /**
  * Starts an update of `notes` notes, or goes on with one already started, for
- * a call reading `chunk` of them. A new update needs its whole price; a call
- * can't read more notes than its update was priced for. Pure, for tests.
+ * a call reading `chunk` of them, and claims them. A new update needs its
+ * whole price; calls can't take on more notes than the update was priced
+ * for, even at once; an update that has stopped (an hour on) takes no more.
+ * Pure, for tests.
  */
 export function begin(
   ledger: Ledger,
@@ -137,15 +144,26 @@ export function begin(
   const known = ledger.updates.find((u) => u.id === id);
   if (known) {
     if (known.done) return { ok: false, status: 400, error: 'That update has finished.' };
-    if (known.read + chunk > known.notes)
+    if (now - Date.parse(known.at) >= STALE_MS)
+      return { ok: false, status: 400, error: 'That update has stopped. Update rules again.' };
+    const claimed = known.claimed ?? known.read;
+    if (claimed + chunk > known.notes)
       return { ok: false, status: 400, error: 'More notes than the update was priced for.' };
+    known.claimed = claimed + chunk;
     return { ok: true };
   }
   if (chunk > notes)
     return { ok: false, status: 400, error: 'More notes than the update was priced for.' };
-  if (updatePrice(notes) > balanceOf(grants, ledger.updates, now))
+  if (!canUpdate(grants, ledger.updates, notes, now))
     return { ok: false, status: 402, error: 'Not enough credits for this update.' };
-  ledger.updates.push({ id, at: new Date(now).toISOString(), notes, read: 0, done: false });
+  ledger.updates.push({
+    id,
+    at: new Date(now).toISOString(),
+    notes,
+    read: 0,
+    claimed: chunk,
+    done: false,
+  });
   return { ok: true };
 }
 
@@ -170,6 +188,15 @@ export async function noteRead(owner: string, id: string, count: number) {
     if (!u || u.done) return;
     u.read = Math.min(u.notes, u.read + count);
     u.done = u.read >= u.notes;
+  });
+}
+
+/** A call of the update read nothing (it failed or was refused): its notes can be read again. */
+export async function release(owner: string, id: string, count: number) {
+  await updateDocument<Ledger, void>(ledgerKey(owner), EMPTY, (doc) => {
+    const u = doc.updates.find((x) => x.id === id);
+    if (!u || u.done) return;
+    u.claimed = Math.max(u.read, (u.claimed ?? u.read) - count);
   });
 }
 

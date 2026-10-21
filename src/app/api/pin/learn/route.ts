@@ -5,8 +5,8 @@ import { isSameOriginWrite } from '@/lib/auth';
 import { costUsd, visitorKey } from '@/lib/budget';
 import { sniffImage } from '@/lib/image';
 import { type BillingConfig, billingConfig } from '@/lib/billing';
-import { beginUpdate, noteRead } from '@/lib/credits';
-import { reserveLearning, settleLearning } from '@/lib/pin/ai-budget';
+import { beginUpdate, noteRead, release } from '@/lib/credits';
+import { reserveFree, reserveLearning, settleFree, settleLearning } from '@/lib/pin/ai-budget';
 import {
   cleanReading,
   learnContent,
@@ -39,7 +39,7 @@ export const maxDuration = 120;
 const MODEL = process.env.PIN_LEARN_MODEL ?? 'claude-opus-5-5';
 /** Models the server-side refusal fallback takes; any other declines with no rule. */
 const FALLBACK_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'];
-/** Thirty notes with their close-ups, under what a function takes. */
+/** A call's notes with their close-ups, as the page sizes them, and the rules (D98). */
 const MAX_BODY = 4_000_000;
 const MAX_CROP_BYTES = 150_000;
 const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' };
@@ -97,12 +97,18 @@ export async function POST(request: Request) {
     );
     if (!begun.ok) return fail(begun.status, begun.error);
   }
+  // Free credits read on their own, smaller ledger, so fresh browsers can't spend what buyers'
+  // updates need (D98).
+  const free = Boolean(credits && !credits.original && !credits.bought);
   const visitor = await visitorKey(clientIp(request.headers));
-  const reservation = await reserveLearning(visitor);
-  if (!reservation.ok)
+  const reservation = await (free ? reserveFree : reserveLearning)(visitor);
+  if (!reservation.ok) {
+    if (charged && update) await release(charged.owner, update.id, notes.length);
     return fail(429, 'Pinch has read all it can for today. The rest are read tomorrow.');
+  }
 
   let spent = 0;
+  let read = false;
   try {
     const client = new Anthropic();
     const response = await client.beta.messages.parse({
@@ -125,14 +131,22 @@ export async function POST(request: Request) {
       notes.map((n) => n.id),
       rules.map((r) => r.id),
     );
-    // A reading that came back counts its notes as read; one that failed or was refused doesn't.
+    // A reading that came back counts its notes as read; one that failed or was refused gives
+    // them back, to be read again.
     if (charged && update) await noteRead(charged.owner, update.id, notes.length);
+    read = true;
     return Response.json(reading, { headers });
   } catch (error) {
     console.error('[pin] learn', error);
     if (error instanceof Anthropic.RateLimitError) return fail(429, 'Busy. Try again in a minute.');
     return fail(502, 'No rules this time. Try again.');
   } finally {
-    await settleLearning(reservation, spent).catch((e) => console.error('[pin] settle', e));
+    if (charged && update && !read)
+      await release(charged.owner, update.id, notes.length).catch((e) =>
+        console.error('[pin] release', (e as Error).message),
+      );
+    await (free ? settleFree : settleLearning)(reservation, spent).catch((e) =>
+      console.error('[pin] settle', e),
+    );
   }
 }

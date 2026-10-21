@@ -33,6 +33,8 @@ import {
 export const MAX_LEARN_NOTES = 30;
 /** A note's close-up as the page sends it, in base64: about 150 KB of JPEG at most (D98). */
 export const MAX_CROP_CHARS = 200_000;
+/** What one call's notes and close-ups may come to, under what a function takes (D98). */
+export const MAX_LEARN_CHARS = 3_500_000;
 /** Rules sent along for the model to strengthen; the newest are kept when there are more. */
 export const MAX_LEARN_RULES = 200;
 
@@ -52,8 +54,11 @@ export const learnRequestSchema = z.object({
           .enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]])
           .nullable()
           .optional(),
-        /** The note's close-up with its mark drawn on, a JPEG in base64 (D98). */
-        crop: z.string().max(MAX_CROP_CHARS).optional(),
+        /**
+         * The note's close-up with its mark drawn on, a JPEG in base64 (D98). One too large is
+         * dropped, not the request: the note is read from its words.
+         */
+        crop: z.string().max(MAX_CROP_CHARS).optional().catch(undefined),
       }),
     )
     .min(1)

@@ -65,6 +65,7 @@ import { noteFingerprint } from '@/lib/pin/learnings';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import type { SuggestResult } from '@/lib/pin/suggest';
 import { unzip } from '@/lib/pin/unzip';
+import { updatePrice } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
 import {
@@ -1483,7 +1484,6 @@ function Workspace() {
           batchZip={batchZip}
           account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
           credits={credits}
-          offer={me?.offer ?? OFFER}
           onPay={openPay}
           onCredits={refreshMe}
           onBack={() => setView('batch')}
@@ -1493,7 +1493,7 @@ function Workspace() {
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
-          offer={me?.paywall ? { ...(me.offer ?? OFFER), price: me.price } : undefined}
+          offer={me?.paywall ? { ...OFFER, price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
           onPrivacy={() => openDialog('privacy')}
         />
@@ -1571,7 +1571,7 @@ function Workspace() {
             <p>
               {me.credits?.closed && !me.user
                 ? 'Your credits moved into your account when you signed in here. Sign in to use them.'
-                : `${(me.offer ?? OFFER).credits.toLocaleString('en')} credits are ${me.price}, and never run out. An update takes ${(me.offer ?? OFFER).update} credits and ${(me.offer ?? OFFER).note} a note: one note is ${updateCost(me.offer ?? OFFER, 1)} credits, five are ${updateCost(me.offer ?? OFFER, 5)}, thirty are ${updateCost(me.offer ?? OFFER, 30)}. Marking images, your rules and your agent stay free.`}
+                : `${OFFER.credits.toLocaleString('en')} credits are ${me.price}, and never run out. An update takes ${OFFER.update} credits and ${OFFER.note} a note: one note is ${updatePrice(1)} credits, five are ${updatePrice(5)}, thirty are ${updatePrice(30)}. Marking images, your rules and your agent stay free.`}
             </p>
             <div className="flex flex-col items-start gap-2">
               <AccessGate
@@ -1830,9 +1830,6 @@ const PARALLAX_SCALE = 1.1;
 /** The landing card's main button and the hint under it. */
 const LANDING_BUTTON =
   'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
-/** What an update of `notes` notes takes under the offer (D98). */
-const updateCost = (o: Offer, notes: number) => o.update + o.note * notes;
-
 const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
 
 function EmptyState({

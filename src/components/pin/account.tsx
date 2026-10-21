@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FREE_CREDITS, NOTE_CREDITS, PACK_CREDITS, UPDATE_CREDITS } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
 import { Dialog, hit } from './dialog';
 
@@ -24,7 +25,12 @@ import { Dialog, hit } from './dialog';
 
 /** The one offer (D98): credits in a pack, the free ones, and what an update takes. */
 export type Offer = { credits: number; free: number; update: number; note: number };
-export const OFFER: Offer = { credits: 2000, free: 200, update: 20, note: 3 };
+export const OFFER: Offer = {
+  credits: PACK_CREDITS,
+  free: FREE_CREDITS,
+  update: UPDATE_CREDITS,
+  note: NOTE_CREDITS,
+};
 
 export type Me = {
   paywall: boolean;
@@ -124,6 +130,7 @@ export function AccessGate({
   const offer = me.offer ?? OFFER;
   const check = async () => {
     const before = me.credits?.balance ?? 0;
+    const wasOriginal = Boolean(me.credits?.original);
     setChecking(true);
     try {
       if (me.restore) {
@@ -132,7 +139,10 @@ export function AccessGate({
         if (!res.ok) onMessage('error', body.error ?? 'That didn’t work. Try again.');
       }
       const next = await onRefresh();
-      if (next && (next.credits?.balance ?? 0) <= before)
+      // Found: a pack's credits came, or an order of the original offer (D98).
+      const found =
+        (next?.credits?.balance ?? 0) > before || (!wasOriginal && Boolean(next?.credits?.original));
+      if (next && !found)
         onMessage(
           'info',
           `No new purchase found for ${me.user?.email} yet. It can take a minute after paying; buy with this email, or check again.`,

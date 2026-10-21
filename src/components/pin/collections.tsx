@@ -16,7 +16,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
-import { MAX_LEARN_NOTES, MAX_LEARN_RULES, MAX_TITLES } from '@/lib/pin/learn';
+import { updatePrice } from '@/lib/pin/credits';
+import {
+  MAX_CROP_CHARS,
+  MAX_LEARN_CHARS,
+  MAX_LEARN_NOTES,
+  MAX_LEARN_RULES,
+  MAX_TITLES,
+} from '@/lib/pin/learn';
 import {
   answerRule,
   applyReading,
@@ -136,7 +143,6 @@ export function CollectionsView({
   batchZip,
   account,
   credits,
-  offer,
   onPay,
   onCredits,
   onBack,
@@ -155,8 +161,6 @@ export function CollectionsView({
   account: 'in' | 'out' | 'none';
   /** Credits left, and whether this browser's moved into an account; null when none are counted. */
   credits: { balance: number; closed: boolean } | null;
-  /** What an update costs: credits for the update and for each note (D98). */
-  offer: { update: number; note: number };
   /** Ask for credits: this update needs more, or they are in the account. */
   onPay: () => void;
   /** An update took credits: read them again. */
@@ -453,25 +457,36 @@ export function CollectionsView({
         const library = ref.current.rules
           .filter((r) => !r.locked && r.text.trim())
           .slice(-MAX_LEARN_RULES);
-        const notes = new Map<string, NoteRef>();
         // Each note goes with its kept close-up, made small (D98); one that can't be read goes
-        // with its words alone.
-        const sent = await Promise.all(
-          todo.map(async ({ batch, note }, i) => {
-            notes.set(`n${i + 1}`, { batchId: batch.id, note: note.ref });
+        // with its words alone. A call takes as many as fit what a function takes; the rest
+        // go in the next call of the same update.
+        const withCrops = await Promise.all(
+          todo.map(async ({ batch, note }) => {
             const jpeg = (await filesOf(batch.id))?.get(batch.root + note.crop);
-            const crop = jpeg ? await closeUpForReading(jpeg).catch(() => undefined) : undefined;
-            return {
-              id: `n${i + 1}`,
-              works: note.works,
-              doesNotWork: note.doesNotWork,
-              ...(note.label ? { label: note.label } : {}),
-              topics: note.topics,
-              source: note.source,
-              ...(crop ? { crop } : {}),
-            };
+            return jpeg
+              ? await closeUpForReading(jpeg, MAX_CROP_CHARS).catch(() => undefined)
+              : undefined;
           }),
         );
+        let room = MAX_LEARN_CHARS;
+        const fits = todo.filter((_, i) => {
+          room -= (withCrops[i]?.length ?? 0) + 2_000;
+          return i === 0 || room >= 0;
+        });
+        const notes = new Map<string, NoteRef>();
+        const sent = fits.map(({ batch, note }, i) => {
+          notes.set(`n${i + 1}`, { batchId: batch.id, note: note.ref });
+          const crop = withCrops[i];
+          return {
+            id: `n${i + 1}`,
+            works: note.works,
+            doesNotWork: note.doesNotWork,
+            ...(note.label ? { label: note.label } : {}),
+            topics: note.topics,
+            source: note.source,
+            ...(crop ? { crop } : {}),
+          };
+        });
         const ruleIds = library.map((r) => r.id);
         const res = await fetch('/api/pin/learn', {
           method: 'POST',
@@ -510,7 +525,7 @@ export function CollectionsView({
         conflicts += reading.propose.filter((p) => p.conflictsWith).length;
         asked += reading.propose.filter(waiting).length;
         change((x) => applyReading(x, reading, notes, nowIso(), newId), true);
-        done += todo.length;
+        done += sent.length;
         setReading({ done: Math.min(done, total), total });
       }
       const said = [
@@ -574,7 +589,7 @@ export function CollectionsView({
 
   // New and changed notes wait for Update rules, its price shown before it runs (D98).
   const unread = c ? unreadNotes(c).length : 0;
-  const price = unread ? offer.update + offer.note * unread : 0;
+  const price = updatePrice(unread);
   const short = credits !== null && (credits.closed || price > credits.balance);
   const update = () => {
     if (short) return onPay();

@@ -1015,11 +1015,11 @@ describe('close-ups in the reading (D98)', () => {
     assert.doesNotMatch(learnPrompt(req), /9j/, 'the close-up never goes in the words');
   });
 
-  it('refuses a close-up larger than a close-up', () => {
+  it('drops a close-up larger than a close-up, and reads its note from its words', () => {
     const big = 'A'.repeat(MAX_CROP_CHARS + 1);
-    assert.equal(
-      learnRequestSchema.safeParse({ notes: [{ id: 'n1', works: 'x', crop: big }] }).success,
-      false,
-    );
+    const parsed = learnRequestSchema.safeParse({ notes: [{ id: 'n1', works: 'x', crop: big }] });
+    assert.equal(parsed.success, true, 'the request still goes');
+    assert.equal(parsed.data?.notes[0].crop, undefined);
+    assert.equal(parsed.data?.notes[0].works, 'x');
   });
 });

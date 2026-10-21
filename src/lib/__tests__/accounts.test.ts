@@ -34,6 +34,7 @@ import {
   type Ledger,
   mergeBrowser,
   noteRead,
+  release,
 } from '../credits';
 import { authUrl, claimsOf, pictureOf, pkcePair } from '../google';
 import { FREE_GRANT, PACK_CREDITS, updatePrice } from '../pin/credits';
@@ -401,6 +402,32 @@ describe('credits in the store (D98)', () => {
     ledger.updates[0].done = true;
     assert.equal(begin(ledger, grants, 'u1', 50, 1, now).ok, false, 'finished');
     assert.equal(begin({ updates: [], mergedInto: 'e-x' }, grants, 'u2', 1, 1, now).ok, false);
+  });
+
+  it('lets no more calls take on notes than the update was priced for, even at once', () => {
+    const grants = [{ id: FREE_GRANT, credits: 200, at: '' }];
+    const ledger: Ledger = { updates: [] };
+    assert.equal(begin(ledger, grants, 'one', 1, 1, now).ok, true);
+    // A second call before the first is read: the note is already claimed.
+    assert.equal(begin(ledger, grants, 'one', 1, 1, now).ok, false);
+    // An update an hour on has stopped: it takes no more calls.
+    const old = { updates: [{ id: 'old', at: at(24), notes: 10, read: 2, claimed: 2, done: false }] };
+    assert.deepEqual(begin(old, grants, 'old', 10, 1, now), {
+      ok: false,
+      status: 400,
+      error: 'That update has stopped. Update rules again.',
+    });
+  });
+
+  it('gives a failed call its notes back, to be read again', async () => {
+    const browser = 'r'.repeat(24);
+    const c = await creditsOf(null, browser, config, now);
+    assert.equal((await beginUpdate(c, config, 'again', 5, 5, now)).ok, true);
+    assert.equal((await beginUpdate(c, config, 'again', 5, 5, now)).ok, false, 'claimed');
+    await release(c.owner, 'again', 5);
+    assert.equal((await beginUpdate(c, config, 'again', 5, 5, now)).ok, true, 'free again');
+    await noteRead(c.owner, 'again', 5);
+    assert.equal((await creditsOf(null, browser, config, now)).balance, 200 - updatePrice(5));
   });
 
   it('gives back the whole price, its 20 included, when an update reads nothing', async () => {

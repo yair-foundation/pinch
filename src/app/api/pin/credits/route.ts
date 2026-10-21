@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { accessOf } from '@/lib/access';
+import { paywallOn } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
-import { finishUpdate } from '@/lib/credits';
+import { browserOf, finishUpdate, ownerOf } from '@/lib/credits';
+import { sessionOf } from '@/lib/session';
 
 /*
  * An update is over (D98): POST JSON { finish: id } when the author's click on
@@ -27,7 +28,10 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Forbidden' }, { status: 403, headers });
   const parsed = finishSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Which update?' }, { status: 400, headers });
-  const { credits } = await accessOf(request);
-  if (credits) await finishUpdate(credits.owner, parsed.data.finish);
+  const session = sessionOf(request);
+  const browser = browserOf(request);
+  // A browser without its cookie has no ledger to finish in.
+  if (paywallOn() && (session || !browser.setCookie))
+    await finishUpdate(ownerOf(session, browser.id), parsed.data.finish);
   return Response.json({ ok: true }, { headers });
 }

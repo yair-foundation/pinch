@@ -18,12 +18,15 @@ import { sessionOf, testLoginOn } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  // This browser's id, worked out once: without a cookie a new one is made, and it is that one
+  // the cookie keeps.
+  const ours = browserOf(request);
   const signedIn = sessionOf(request);
   if (paywallOn() && signedIn)
-    await mergeBrowser(browserOf(request).id, signedIn.email).catch((e) =>
+    await mergeBrowser(ours.id, signedIn.email).catch((e) =>
       console.error('[pin] merge', (e as Error).message),
     );
-  const { paywall, session, browser, credits, allowed } = await accessOf(request);
+  const { paywall, session, browser, credits, allowed } = await accessOf(request, ours);
   const config = billingConfig();
   return Response.json(
     {

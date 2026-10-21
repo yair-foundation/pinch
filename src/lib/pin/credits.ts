@@ -29,8 +29,19 @@ export const updatePrice = (notes: number) =>
 /** Credits given: the free ones, or a paid order, and when that order was refunded. */
 export type Grant = { id: string; credits: number; at: string; refundedAt?: string };
 
-/** One click on Update rules: how many notes it set out to read, and how many it has. */
-export type Update = { id: string; at: string; notes: number; read: number; done: boolean };
+/**
+ * One click on Update rules: how many notes it set out to read, how many its calls have taken
+ * on (read, or being read now), and how many it has read.
+ */
+export type Update = {
+  id: string;
+  at: string;
+  notes: number;
+  read: number;
+  /** Ledgers from before claiming count only what was read. */
+  claimed?: number;
+  done: boolean;
+};
 
 /** What an update takes: its whole price while it runs, then the price of what it read. */
 export function takenBy(u: Update, now: number): number {
