@@ -1677,7 +1677,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Account',
-          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Until you sign in, your credits are counted under a random id kept in this browser. Your agent’s key is kept only as a hash; with it your agent gets your rules and their close-ups. Deleting your account deletes your rules; your credits are kept.',
+          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Until you sign in, your credits are counted under a random id kept in this browser. Your agent’s key is kept only as a hash; with it your agent gets your rules, their close-ups and, when it asks, the screenshots they come from. Deleting your account deletes your rules; your credits are kept.',
         )}
         {item(
           'No ads, no analytics.',

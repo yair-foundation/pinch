@@ -7,6 +7,7 @@ import {
   boxInCrop,
   MAX_EVIDENCE,
   MAX_EVIDENCE_BYTES,
+  markedOf,
   PROTOCOL_VERSIONS,
   pickOf,
   placeOf,
@@ -377,5 +378,90 @@ describe('a rule’s close-ups over MCP (D94)', () => {
     assert.ok(MAX_EVIDENCE >= 4);
     // Eight crops at their budget's share and base64 stay under a function's 4.5 MB answer.
     assert.ok((MAX_EVIDENCE_BYTES * 4) / 3 < 4_500_000);
+  });
+});
+
+/** The same batch, its notes.json naming the screenshot's marked copy, which the zip holds too. */
+const withMarked = {
+  assets: [{ ...manifest.assets[0], marked: 'marked/01-dashboard.jpg' }],
+};
+const markedFiles =
+  (marked: Uint8Array | null): BatchFiles =>
+  async (batchId, paths) => {
+    asked.push([batchId, ...paths]);
+    const all = new Map([
+      ['pinch-2026-10-20/notes.json', new TextEncoder().encode(JSON.stringify(withMarked))],
+      ['pinch-2026-10-20/crops/01-dashboard-note-1.jpg', jpegHead(1200, 600)],
+      ...(marked ? ([['pinch-2026-10-20/marked/01-dashboard.jpg', marked]] as const) : []),
+    ]);
+    return new Map(paths.flatMap((p) => (all.has(p) ? [[p, all.get(p) as Uint8Array]] : [])));
+  };
+const wholeEvidence = (whole: unknown, f: BatchFiles) =>
+  answer(
+    {
+      jsonrpc: '2.0',
+      id: 10,
+      method: 'tools/call',
+      params: { name: 'get_rule_evidence', arguments: { rule: 'R1', whole } },
+    },
+    async () => library(),
+    f,
+  ) as ReturnType<typeof evidence>;
+
+describe('a rule’s whole screenshots over MCP (D99)', () => {
+  it('adds each screenshot once, marked, with its scale, only when asked', async () => {
+    asked.length = 0;
+    const r = (await wholeEvidence(true, markedFiles(jpegHead(1800, 900)))).result;
+    assert.equal(r.content.filter((c) => c.type === 'image').length, 2);
+    const [label, image] = r.content.slice(-2);
+    assert.equal(
+      (label as { text: string }).text,
+      'Screenshot dashboard.png, with note 01.1: the whole screen with every marker drawn in, 1800×900 pixels, the screenshot scaled by 0.9 (multiply a note’s screenshot box by it).',
+    );
+    assert.deepEqual(
+      new Uint8Array(Buffer.from((image as { data: string }).data, 'base64')),
+      jpegHead(1800, 900),
+    );
+    assert.deepEqual(asked, [
+      ['b1', 'pinch-2026-10-20/notes.json', 'pinch-2026-10-20/crops/01-dashboard-note-1.jpg'],
+      ['b1', 'pinch-2026-10-20/marked/01-dashboard.jpg'],
+    ]);
+
+    for (const whole of [undefined, false, 'true']) {
+      asked.length = 0;
+      const plain = (await wholeEvidence(whole, markedFiles(jpegHead(1800, 900)))).result;
+      assert.equal(plain.content.filter((c) => c.type === 'image').length, 1, String(whole));
+      assert.equal(asked.length, 1, 'no second read');
+    }
+  });
+
+  it('says when the screenshot is missing or too large, and keeps the close-ups', async () => {
+    const missing = (await wholeEvidence(true, markedFiles(null))).result;
+    assert.equal(missing.content.filter((c) => c.type === 'image').length, 1);
+    assert.equal(
+      (missing.content.at(-1) as { text: string }).text,
+      'Screenshot dashboard.png, with note 01.1: no screenshot kept.',
+    );
+    const huge = new Uint8Array(MAX_EVIDENCE_BYTES);
+    huge.set(jpegHead(1800, 900));
+    const over = (await wholeEvidence(true, markedFiles(huge))).result;
+    assert.equal(over.content.filter((c) => c.type === 'image').length, 1, 'the close-up stays');
+    assert.equal(
+      (over.content.at(-1) as { text: string }).text,
+      'Screenshot dashboard.png, with note 01.1: left out to keep this answer small.',
+    );
+    const older = (await wholeEvidence(true, files)).result;
+    assert.match((older.content.at(-1) as { text: string }).text, /no screenshot kept\.$/);
+  });
+
+  it('reads a screenshot’s marked copy from notes.json', () => {
+    assert.deepEqual(markedOf(withMarked, '01'), {
+      path: 'marked/01-dashboard.jpg',
+      width: 2000,
+      height: 1000,
+    });
+    assert.equal(markedOf(withMarked, '02'), null);
+    assert.equal(markedOf(manifest, '01'), null, 'an export without it');
+    assert.equal(markedOf(null, '01'), null);
   });
 });
