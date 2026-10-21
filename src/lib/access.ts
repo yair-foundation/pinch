@@ -1,4 +1,5 @@
 import { type BillingConfig, billingConfig } from './billing';
+import { keptBytes, STORAGE_BOUGHT_BYTES, STORAGE_FREE_BYTES } from './cloud';
 import { browserOf, type Credits, creditsOf } from './credits';
 import { googleConfigured } from './google';
 import { type Session, sessionOf } from './session';
@@ -44,6 +45,18 @@ export async function gate(request: Request): Promise<Response | null> {
   return a.session
     ? Response.json({ error: 'Get Pinch to use this.' }, { status: 402, headers })
     : Response.json({ error: 'Sign in to use Pinch.' }, { status: 401, headers });
+}
+
+/**
+ * The room an account has left to keep screenshots in (D98): 200 MB free, 2 GB once it has
+ * bought credits or the original offer; no limit of its own until billing is on.
+ */
+export async function storageRoom(request: Request, user: string, path: string) {
+  const a = await accessOf(request);
+  if (!a.credits) return Number.POSITIVE_INFINITY;
+  const cap =
+    a.credits.bought || a.credits.original ? STORAGE_BOUGHT_BYTES : STORAGE_FREE_BYTES;
+  return cap - (await keptBytes(user, path));
 }
 
 /** What an account keeps (its rules, its agent key): a free account is enough (D98). */

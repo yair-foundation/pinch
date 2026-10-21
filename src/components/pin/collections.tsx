@@ -5,10 +5,9 @@ import {
   ChevronDown,
   FileText,
   Cloud,
-  Lock,
   Pencil,
   PlugZap,
-  RotateCcw,
+  RefreshCw,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -64,15 +63,15 @@ import { TOPIC_TONES, tagHit } from './topic-style';
 /*
  * Your rules (D79, D86, D87, D88): the person's one taste library, shown in
  * place of the images from the header. Coming here adds the open images' new
- * notes; the AI reads every note it hasn't read against the rules already
- * there, on its own, a few dozen notes at a time, and each reading
- * strengthens rules, writes new ones or flags a conflict. Rules are guidance
+ * notes; Update rules has the AI read every note it hasn't read against the
+ * rules already there, a few dozen notes at a time, and each reading
+ * strengthens rules, writes new ones or flags a conflict. Once Pinch is paid,
+ * an update takes credits, its price on the button before it runs (D98). Rules are guidance
  * as soon as they are written; the pencil edits one. Each rule opens to the
  * notes it draws on, with their close-ups. Rules can be sliced by topic and
  * by the author's own tags. They reach the agent by Connect agent (D93):
- * over MCP, or copied as a prompt. Before Pinch is bought, the first rules
- * show in full and the rest as placeholders, and nothing leaves. Kept in this browser, or in the account
- * once bought (D81), where this browser's move on their own.
+ * over MCP, or copied as a prompt. Kept in this browser, or in the account
+ * once signed in (D81, D98), where this browser's move on their own.
  */
 
 export type Notice = {
@@ -131,29 +130,33 @@ export function CollectionsView({
   moveFrom,
   openPrints,
   batchZip,
-  paid,
   account,
-  price,
+  credits,
+  offer,
   onPay,
+  onCredits,
   onBack,
   onStatus,
 }: {
   inert: boolean;
   /** Where the rules are kept. */
   backend: CollectionsBackend;
-  /** Rules kept elsewhere that can move here: this browser's, once bought and signed in. */
+  /** Rules kept elsewhere that can move here: this browser's, once signed in. */
   moveFrom?: CollectionsBackend;
   /** The open images' notes, by `noteFingerprint`, to tell whether any are new here. */
   openPrints: string[];
   /** The open images as an export, or null when they have no notes. */
   batchZip: () => Promise<{ blob: Blob; name: string } | null>;
-  /** Whether every rule shows and the rules export: Pinch is bought, or not for sale here. */
-  paid: boolean;
   /** Signed in, can sign in, or neither: what connecting an agent needs first. */
   account: 'in' | 'out' | 'none';
-  price: string;
-  /** Ask the visitor to get Pinch, for what they just tried. */
-  onPay: (why: 'rules' | 'export') => void;
+  /** Credits left, and whether this browser's moved into an account; null when none are counted. */
+  credits: { balance: number; closed: boolean } | null;
+  /** What an update costs: credits for the update and for each note (D98). */
+  offer: { update: number; note: number };
+  /** Ask for credits: this update needs more, or they are in the account. */
+  onPay: () => void;
+  /** An update took credits: read them again. */
+  onCredits: () => void;
   onBack: () => void;
   onStatus: (notice: Notice) => void;
 }) {
@@ -264,8 +267,8 @@ export function CollectionsView({
       for (const x of rest) one = mergeCollection(one, x, nowIso());
       if (rest.length) one = { ...one, name: RULES_NAME };
       let dirty = rest.length > 0 || list.some((x) => x.learnings || !x.rules);
-      // Bought and signed in: this browser's rules move into the account on their own (D87), so
-      // the notes and rules found before buying are there on every device.
+      // Signed in: this browser's rules move into the account on their own (D87, D98), so the
+      // notes and rules found before are there on every device.
       const waiting = moveFrom
         ? (await moveFrom.list().catch(() => [] as Collection[]))
             .map((x) => upgradeCollection(x, newId))
@@ -416,20 +419,24 @@ export function CollectionsView({
     if (openPrints.some((p) => !known.has(p))) addOpen();
   }, [c, openPrints, addOpen]);
 
-  // Bought: the rules found before are read again, to be written in full.
+  // Rules a visitor's preview found before credits (D87, D98) never showed their words: their
+  // notes wait to be read again, in full, with the next update.
   useEffect(() => {
-    if (paid && c?.rules.some((r) => r.locked)) change((x) => unlockRules(x, nowIso()), true);
-  }, [paid, c, change]);
+    if (c?.rules.some((r) => r.locked)) change((x) => unlockRules(x, nowIso()), true);
+  }, [c, change]);
 
-  /** Read every note the AI hasn't, a few dozen at a time, each reading against the rules so far. */
+  /**
+   * Update rules: read every note the AI hasn't, a few dozen at a time, each reading against the
+   * rules so far. One update however many calls it takes, priced for all its notes (D98).
+   */
   const readAll = useCallback(async () => {
     let made = 0;
     let strengthened = 0;
     let conflicts = 0;
-    let hidden = 0;
     let asked = 0;
     const total = ref.current ? unreadNotes(ref.current).length : 0;
     if (!total) return;
+    const update = crypto.randomUUID();
     setReadError(null);
     setReading({ done: 0, total });
     let done = 0;
@@ -467,12 +474,13 @@ export function CollectionsView({
               ...(r.basis === 'interpreted' ? { basis: r.basis } : {}),
               ...(r.question ? { question: r.question.ask } : {}),
             })),
-            shown: ref.current.rules.filter((r) => !r.locked && r.text.trim()).length,
+            update: { id: update, notes: total },
           }),
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
           if (res.status === 503) setLearnAvailable(false);
+          if (res.status === 402) onPay();
           throw new Error(body.error ?? 'No rules this time. Try again.');
         }
         const answer = (await res.json()) as Reading;
@@ -485,10 +493,9 @@ export function CollectionsView({
           })),
         };
         strengthened += new Set(reading.strengthen.map((s) => s.rule)).size;
-        made += reading.propose.filter((p) => !p.locked).length;
-        hidden += reading.propose.filter((p) => p.locked).length;
+        made += reading.propose.length;
         conflicts += reading.propose.filter((p) => p.conflictsWith).length;
-        asked += reading.propose.filter((p) => !p.locked && waiting(p)).length;
+        asked += reading.propose.filter(waiting).length;
         change((x) => applyReading(x, reading, notes, nowIso(), newId), true);
         done += todo.length;
         setReading({ done: Math.min(done, total), total });
@@ -498,7 +505,6 @@ export function CollectionsView({
         strengthened ? `${count(strengthened, 'rule')} strengthened` : '',
         conflicts ? `${count(conflicts, 'conflict')} with your rules` : '',
         asked ? `${asked} waiting for you` : '',
-        hidden ? `${hidden} more found` : '',
       ].filter(Boolean);
       onStatus({
         tone: 'info',
@@ -510,14 +516,21 @@ export function CollectionsView({
       setReadError((e as Error).message || 'No rules this time. Try again.');
     } finally {
       setReading(null);
+      // What the update didn't read comes back now, not after an hour.
+      await fetch('/api/pin/credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ finish: update }),
+      }).catch(() => undefined);
+      onCredits();
     }
-  }, [change, onStatus]);
+  }, [change, onStatus, onPay, onCredits]);
 
   // Rules without a title (older ones, rewritten ones) are named by the AI once the reading is
   // done (D95). Each rule is asked about once per visit, so a failure doesn't loop.
   const titled = useRef(new Set<string>());
   const untitled =
-    c && paid && learnAvailable && !reading
+    c && learnAvailable && !reading
       ? c.rules
           .filter(
             (r) =>
@@ -546,11 +559,10 @@ export function CollectionsView({
       .catch(() => undefined);
   }, [untitledKey]);
 
-  // The AI reads new notes on its own; after a failure it waits for Try again.
+  // New and changed notes wait for Update rules, its price shown before it runs (D98).
   const unread = c ? unreadNotes(c).length : 0;
-  useEffect(() => {
-    if (learnAvailable && unread > 0 && !reading && !readError && busy !== 'add') readAll();
-  }, [learnAvailable, unread, reading, readError, busy, readAll]);
+  const price = unread ? offer.update + offer.note * unread : 0;
+  const short = credits !== null && (credits.closed || price > credits.balance);
 
   /** Every rule the agent gets, as a prompt for one chat. */
   const copyRules = async () => {
@@ -611,7 +623,6 @@ export function CollectionsView({
     );
   const live = c.rules.filter((r) => !r.locked && r.status !== 'dismissed');
   const shown = live.filter((r) => picked(r, pickOf(slice)));
-  const locked = c.rules.filter((r) => r.locked);
   const waits = live.filter(waiting).length;
   const textOf = (id: string) => c.rules.find((r) => r.id === id)?.text ?? '';
   // Removed, a rule is kept as dismissed: out of sight and the agent's reach, never written again.
@@ -662,17 +673,12 @@ export function CollectionsView({
               <button
                 type="button"
                 onClick={() => {
-                  if (!paid) return onPay('export');
                   opener.current = document.activeElement as HTMLElement | null;
                   setConnecting(true);
                 }}
                 className={primary}
               >
-                {paid ? (
-                  <PlugZap className="size-4" aria-hidden />
-                ) : (
-                  <Lock className="size-4" aria-hidden />
-                )}
+                <PlugZap className="size-4" aria-hidden />
                 Connect agent
               </button>
             </div>
@@ -688,17 +694,27 @@ export function CollectionsView({
                 </p>
               )}
             </div>
-            {readError && (
+            {unread > 0 && learnAvailable !== false && !reading && busy !== 'add' && (
               <div
-                role="alert"
+                role={readError ? 'alert' : undefined}
                 className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px]"
               >
                 <p className="flex-1 text-muted-foreground">
-                  {readError} {count(unread, 'note')} still to read.
+                  {readError ? `${readError} ` : ''}
+                  {count(unread, 'new note')} to read into your rules.
+                  {credits &&
+                    (credits.closed
+                      ? ' Your credits are in your account: sign in to use them.'
+                      : ` ${count(credits.balance, 'credit')} left.`)}
                 </p>
-                <button type="button" onClick={() => setReadError(null)} className={button}>
-                  <RotateCcw className="size-4" aria-hidden />
-                  Try again
+                <button
+                  type="button"
+                  onClick={() => (short ? onPay() : readAll())}
+                  className={primary}
+                >
+                  <RefreshCw className="size-4" aria-hidden />
+                  Update rules · {count(unread, 'note')}
+                  {credits ? ` · ${price} credits` : ''}
                 </button>
               </div>
             )}
@@ -723,31 +739,6 @@ export function CollectionsView({
               </div>
             )}
           </header>
-
-          {locked.length > 0 && (
-            <section
-              aria-labelledby="more-heading"
-              className="space-y-3 rounded-xl border border-border bg-muted/50 px-5 py-4"
-            >
-              <h3 id="more-heading" className="text-sm font-medium">
-                Pinch found {count(locked.length, 'more rule')} in your notes
-              </h3>
-              <p className="text-[13px] text-muted-foreground">
-                Get Pinch to see every rule and give them to your agent. {price} once.
-              </p>
-              <ol className="list-none space-y-2 p-0">
-                {locked.slice(0, 3).map((r) => (
-                  <li key={r.id}>
-                    <LockedCard rule={r} collection={c} />
-                  </li>
-                ))}
-              </ol>
-              <button type="button" onClick={() => onPay('rules')} className={primary}>
-                <Lock className="size-4" aria-hidden />
-                See all your rules
-              </button>
-            </section>
-          )}
 
           {live.length > 0 && <SliceBar collection={c} slice={slice} onSlice={setSlice} />}
 
@@ -922,24 +913,6 @@ function SliceBar({
           <div className="flex flex-wrap gap-2">{areas.map(chipOf)}</div>
         </fieldset>
       )}
-    </div>
-  );
-}
-
-/** A rule found before Pinch was bought: what it is about and what it draws on, not its words. */
-function LockedCard({ rule: r, collection: c }: { rule: Rule; collection: Collection }) {
-  const notes = evidenceOf(c, r).length;
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-3">
-      <Lock className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <span aria-hidden className="block h-2.5 w-4/5 rounded bg-muted-foreground/20" />
-        <span className="block text-[13px] text-muted-foreground">
-          A rule
-          {r.topics.length ? ` about ${r.topics.map(topicLabel).join(', ')}` : ''}, from{' '}
-          {count(notes, 'note')}
-        </span>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { get } from '@vercel/blob';
-import { accountGate } from '@/lib/access';
+import { accountGate, storageRoom } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { hasBlob } from '@/lib/blob-doc';
 import {
@@ -70,6 +70,8 @@ export async function PUT(request: Request, ctx: RouteContext<'/api/pin/cloud/ba
   if (who.error) return who.error;
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (bytes.length > MAX_MEMORY_BATCH_BYTES) return fail(413, 'Too large for a local run.');
+  if (bytes.length > (await storageRoom(request, who.user, batchKey(who.user, id))))
+    return fail(413, 'Your account is full. Remove rules you no longer need.');
   memoryBatch.put(who.user, id, bytes);
   return Response.json({ ok: true }, { headers });
 }

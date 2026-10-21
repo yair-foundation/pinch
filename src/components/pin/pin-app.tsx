@@ -67,7 +67,15 @@ import type { SuggestResult } from '@/lib/pin/suggest';
 import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
-import { AccessGate, AccountMenu, DeleteAccountDialog, signOut, useMe } from './account';
+import {
+  AccessGate,
+  AccountMenu,
+  DeleteAccountDialog,
+  OFFER,
+  type Offer,
+  signOut,
+  useMe,
+} from './account';
 import { cloudBackend } from './cloud-store';
 import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
@@ -400,15 +408,17 @@ function Workspace() {
   const [view, setView] = useState<'batch' | 'collections'>('batch');
   const viewRef = useRef(view);
   viewRef.current = view;
-  // Who is looking, and whether Pinch is theirs (D81, D87). Anyone marks images; seeing every
-  // rule, exporting and AI suggestions are for buyers, once billing is on.
+  // Who is looking, and their credits (D81, D98). Anyone marks images and reads notes into
+  // rules with their credits; AI suggestions are for buyers, once billing is on.
   const { me, refresh: refreshMe } = useMe();
-  const paid = !me?.paywall || Boolean(me?.allowed);
-  // What the visitor tried that asked them to get Pinch.
-  const [payWhy, setPayWhy] = useState<'rules' | 'export'>('export');
-  // The rules live in the account once bought, in this browser otherwise.
-  const cloudKey =
-    me?.user && paid && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
+  const allowed = !me?.paywall || Boolean(me?.allowed);
+  // Credits are counted once billing is on, except for buyers of the original offer (D98).
+  const credits =
+    me?.paywall && me.credits && !me.credits.original
+      ? { balance: me.credits.balance, closed: me.credits.closed }
+      : null;
+  // The rules live in the account once signed in, in this browser otherwise.
+  const cloudKey = me?.user && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
   const backend = useMemo(() => {
     if (!cloudKey) return browserBackend;
     const [mode, folder] = cloudKey.split(' ');
@@ -1253,15 +1263,18 @@ function Workspace() {
   const landing = loaded && !asset && view === 'batch';
   // The batch's own controls in the header: its count, suggestions, export and keys.
   const batchTools = view === 'batch' && assets.length > 0;
-  // Bought, in this tab or another: the ask goes, and says so.
+  // Credits bought, in this tab or another: the ask goes, and says so.
+  const balanceAtPay = useRef<number | null>(null);
   useEffect(() => {
-    if (dialog === 'pay' && me?.paywall && me.allowed) {
+    const balance = me?.credits?.balance;
+    if (dialog !== 'pay' || balance === undefined || balanceAtPay.current === null) return;
+    if (balance > balanceAtPay.current) {
       closeDialog();
-      setStatus({ tone: 'info', text: 'Pinch is yours. Every rule and export is open.' });
+      setStatus({ tone: 'info', text: `Credits added: ${balance} to use.` });
     }
   }, [dialog, me, closeDialog]);
-  const openPay = (why: 'rules' | 'export') => {
-    setPayWhy(why);
+  const openPay = () => {
+    balanceAtPay.current = me?.credits?.balance ?? 0;
     openDialog('pay');
   };
   // The open notes as the rules know them, to tell whether coming to the rules brings new ones.
@@ -1363,7 +1376,7 @@ function Workspace() {
             </button>
           )}
           {me?.paywall && me.signIn && !me.user && (
-            // For buyers on another device; anyone else signs in when they get Pinch.
+            // Signing in keeps the rules and the credits in the account, on any device (D98).
             <a
               href="/api/pin/auth/google"
               className={cn(
@@ -1381,7 +1394,7 @@ function Workspace() {
               me={me}
               landing={landing}
               suggestions={
-                suggestAvailable && paid
+                suggestAvailable && allowed
                   ? { on: suggestPref, onToggle: toggleSuggestions }
                   : undefined
               }
@@ -1468,10 +1481,11 @@ function Workspace() {
           moveFrom={cloudKey ? browserBackend : undefined}
           openPrints={openPrints}
           batchZip={batchZip}
-          paid={paid}
           account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
-          price={me?.price ?? '$19'}
+          credits={credits}
+          offer={me?.offer ?? OFFER}
           onPay={openPay}
+          onCredits={refreshMe}
           onBack={() => setView('batch')}
           onStatus={setStatus}
         />
@@ -1479,7 +1493,7 @@ function Workspace() {
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
-          price={me?.paywall ? me.price : undefined}
+          offer={me?.paywall ? { ...(me.offer ?? OFFER), price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
           onPrivacy={() => openDialog('privacy')}
         />
@@ -1547,18 +1561,17 @@ function Workspace() {
           opener={opener.current}
           onClose={closeDialog}
           onDeleted={() =>
-            leaveAccount('Your account and its rules were deleted. Your purchase is kept.')
+            leaveAccount('Your account and its rules were deleted. Your credits are kept.')
           }
         />
       )}
       {dialog === 'pay' && me && (
-        <Dialog id="pay-title" title="Get Pinch" opener={opener.current} onClose={closeDialog}>
+        <Dialog id="pay-title" title="Get credits" opener={opener.current} onClose={closeDialog}>
           <div className="space-y-3 text-[13px] leading-relaxed text-muted-foreground">
             <p className="m-0">
-              {payWhy === 'export'
-                ? 'Connecting your agent is part of Pinch: it gets your current rules for each task.'
-                : 'See every rule Pinch found in your notes, and give them to your agent.'}{' '}
-              {me.price} once, no subscription. Marking images stays free.
+              {me.credits?.closed && !me.user
+                ? 'Your credits moved into your account when you signed in here. Sign in to use them.'
+                : `Each update takes ${(me.offer ?? OFFER).update} credits and ${(me.offer ?? OFFER).note} a note. ${(me.offer ?? OFFER).credits.toLocaleString('en')} credits are ${me.price}, and never run out. Marking images, your rules and your agent stay free.`}
             </p>
             <div className="flex flex-col items-start gap-2">
               <AccessGate
@@ -1656,7 +1669,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <ul className="m-0 list-none space-y-2.5 p-0 text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Images',
-          'stay in this browser. Only AI suggestions send a crop to Anthropic, never stored; once you buy, your rules keep theirs in your account.',
+          'stay in this browser. Only AI suggestions send a crop to Anthropic, never stored; once you sign in, your rules keep theirs in your account.',
         )}
         {item(
           'Notes',
@@ -1664,7 +1677,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Account',
-          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Your agent’s key is kept only as a hash; with it your agent gets your rules and their close-ups. Deleting your account deletes your rules.',
+          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Until you sign in, your credits are counted under a random id kept in this browser. Your agent’s key is kept only as a hash; with it your agent gets your rules and their close-ups. Deleting your account deletes your rules; your credits are kept.',
         )}
         {item(
           'No ads, no analytics.',
@@ -1822,14 +1835,14 @@ const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/8
 function EmptyState({
   dragging,
   inert,
-  price,
+  offer,
   onChoose,
   onPrivacy,
 }: {
   dragging: boolean;
   inert: boolean;
-  /** Pinch's price, once billing is on (D81). */
-  price?: string;
+  /** The one offer and the free credits, once billing is on (D98). */
+  offer?: Offer & { price: string };
   onChoose: () => void;
   onPrivacy: () => void;
 }) {
@@ -1959,8 +1972,8 @@ function EmptyState({
           </div>
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
-              {price
-                ? `Marking images is free. Seeing all your rules and connecting your agent is ${price} once, with a Google sign-in. Images stay in this browser until you buy; the words of your notes go to Anthropic to find your rules.`
+              {offer
+                ? `Marking images is free, and your first ${offer.free} credits read about ${Math.floor((offer.free - offer.update) / offer.note)} notes into rules; then ${offer.credits.toLocaleString('en')} credits for ${offer.price}. Images stay in this browser unless you sign in; the words of your notes go to Anthropic to find your rules.`
                 : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"

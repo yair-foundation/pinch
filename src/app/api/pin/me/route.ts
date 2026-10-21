@@ -4,7 +4,7 @@ import { billingConfig, checkoutUrl } from '@/lib/billing';
 import { hasBlob } from '@/lib/blob-doc';
 import { browserOf, mergeBrowser } from '@/lib/credits';
 import { googleConfigured } from '@/lib/google';
-import { NOTE_CREDITS, PACK_CREDITS, UPDATE_CREDITS } from '@/lib/pin/credits';
+import { FREE_CREDITS, NOTE_CREDITS, PACK_CREDITS, UPDATE_CREDITS } from '@/lib/pin/credits';
 import { sessionOf, testLoginOn } from '@/lib/session';
 
 /*
@@ -44,6 +44,7 @@ export async function GET(request: Request) {
         : null,
       offer: {
         credits: PACK_CREDITS,
+        free: FREE_CREDITS,
         update: UPDATE_CREDITS,
         note: NOTE_CREDITS,
       },
