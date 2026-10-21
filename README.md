@@ -4,7 +4,7 @@ Tag screenshots for your agent. Add a batch of screens, mark what works and what
 
 Pinch is $19 once, with a Google sign-in, sold through Lemon Squeezy (D81, D87). Marking images needs no account, and Your rules shows the first two rules Pinch finds; every rule, connecting an agent and AI suggestions come with buying. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose rules stay in the browser.
 
-Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message), up to 100 images a session.
+Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message); a session holds as many images as the browser has room for (D103).
 
 Optional, with keys: AI drafts for empty notes (suggestions), the AI reading of notes into rules, anonymous saving of the text of notes, and tagging of those notes by design area with Jev (TypeSafe).
 

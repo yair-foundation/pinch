@@ -114,10 +114,6 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
-/** Images a session holds. The browser keeps them all, and the export draws a copy of each. */
-const MAX_IMAGES = 100;
-const FULL_MESSAGE = `Pinch holds up to ${MAX_IMAGES} images at a time. Remove some to add more.`;
-
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
 /** An image with something written on a mark: what the progress line and the filmstrip count. */
@@ -747,11 +743,11 @@ function Workspace() {
         setStatus({ tone: 'error', text: `Couldn't open ${file.name}. ${(e as Error).message}` });
         return;
       }
-      const room = Math.max(0, MAX_IMAGES - assetsRef.current.length);
+      // No cap on images (D103): only the browser's storage stops them.
       const added: Asset[] = [];
       const addedUrls: Record<string, string> = {};
       let full = false;
-      for (const { asset, image } of found.assets.slice(0, room)) {
+      for (const { asset, image } of found.assets) {
         try {
           await store.putImage(asset.id, image);
         } catch (e) {
@@ -772,8 +768,10 @@ function Workspace() {
       const leftOut = found.assets.length - added.length;
       const lines = [`Opened ${file.name}: ${count(added.length, 'image')}, ${count(notes, 'note')}.`];
       if (found.missing) lines.push(`${count(found.missing, 'image')} missing from the zip.`);
-      if (full) lines.push('Browser storage is full. Remove images or export, then continue.');
-      else if (leftOut) lines.push(`${count(leftOut, 'image')} left out. ${FULL_MESSAGE}`);
+      if (full)
+        lines.push(
+          `Browser storage is full${leftOut ? `, so ${count(leftOut, 'image')} ${leftOut === 1 ? 'was' : 'were'} left out` : ''}. Remove images, then continue.`,
+        );
       const trouble = found.missing > 0 || leftOut > 0;
       setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
@@ -792,14 +790,8 @@ function Workspace() {
         if (skippedLine) setStatus({ tone: 'error', text: skippedLine });
         return;
       }
-      // A session holds up to MAX_IMAGES; what doesn't fit is left out, and the message says so.
-      const room = MAX_IMAGES - assetsRef.current.length;
-      if (room <= 0) {
-        setStatus({ tone: 'error', text: FULL_MESSAGE });
-        return;
-      }
-      const images = all.slice(0, room);
-      const leftOut = all.length - images.length;
+      // No cap on images (D103): only the browser's storage stops them, and the message says so.
+      const images = all;
       setStatus({ tone: 'info', text: `Adding ${count(images.length, 'image')}…` });
       const added: Asset[] = [];
       const addedUrls: Record<string, string> = {};
@@ -867,8 +859,7 @@ function Workspace() {
       if (scaled)
         lines.push(`Scaled down ${count(scaled, 'screenshot')} to fit (16 megapixel limit).`);
       if (full) lines.push('Browser storage is full. Remove images or export, then continue.');
-      if (leftOut) lines.push(`${count(leftOut, 'image')} left out. ${FULL_MESSAGE}`);
-      const trouble = failed.length > 0 || skipped > 0 || full || leftOut > 0;
+      const trouble = failed.length > 0 || skipped > 0 || full;
       if (!trouble && !before.length && added.length) lines.push(HOW_TO_MARK);
       setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
