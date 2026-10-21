@@ -1568,7 +1568,7 @@ function Workspace() {
       {dialog === 'pay' && me && (
         <Dialog id="pay-title" title="Get credits" opener={opener.current} onClose={closeDialog}>
           <div className="space-y-3 text-[13px] leading-relaxed text-muted-foreground">
-            <p className="m-0">
+            <p>
               {me.credits?.closed && !me.user
                 ? 'Your credits moved into your account when you signed in here. Sign in to use them.'
                 : `Each update takes ${(me.offer ?? OFFER).update} credits and ${(me.offer ?? OFFER).note} a note. ${(me.offer ?? OFFER).credits.toLocaleString('en')} credits are ${me.price}, and never run out. Marking images, your rules and your agent stay free.`}
