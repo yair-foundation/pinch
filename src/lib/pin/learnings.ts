@@ -84,8 +84,16 @@ export type Rule = {
   status: RuleStatus;
   /** The AI's wording as it came, so the export can say whether the author changed it. */
   drafted?: string;
-  /** Another rule this one pulls against, and why both may hold. */
-  conflict?: { ruleId: string; why: string };
+  /**
+   * Another rule this one pulls against, and why both may hold. `settled`: the author said each
+   * holds in its place (D102), this one where it says, the other everywhere else.
+   */
+  conflict?: { ruleId: string; why: string; settled?: boolean };
+  /**
+   * The taste check's answer this rule is (D102), as `question:option`: the author's own pick,
+   * with no notes until a note strengthens it.
+   */
+  taste?: string;
   /**
    * `interpreted`: Pinch's reading of the author's vaguer words, not their own (D90), with how
    * it read them in `reading`. Absent: stated, the notes' own words.
@@ -456,6 +464,27 @@ export const confirmRule = (c: Collection, id: string, now: string): Collection 
   withRule(c, id, ownWords({}), now);
 
 /**
+ * The author settles a conflict in one step (D102): each rule in its place, or this one wins and
+ * the rule it pulls against is removed (kept as dismissed, so Pinch doesn't write it again).
+ */
+export function settleConflict(
+  c: Collection,
+  id: string,
+  how: 'place' | 'wins',
+  now: string,
+): Collection {
+  const conflict = c.rules.find((r) => r.id === id)?.conflict;
+  if (!conflict) return c;
+  if (how === 'place') return withRule(c, id, { conflict: { ...conflict, settled: true } }, now);
+  return withRule(
+    withRule(c, conflict.ruleId, { status: 'dismissed' }, now),
+    id,
+    { conflict: undefined },
+    now,
+  );
+}
+
+/**
  * The author answers a rule's question: the rule becomes that answer's, as if they had said it
  * (D90), and their agent gets it from now on.
  */
@@ -612,18 +641,38 @@ const said = (n: BatchNote) =>
  * answers. Each rule with where it holds, what it is about, and the notes it draws on.
  */
 export function rulesText(c: Collection, rules: ExportedRule[]): string {
+  // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
   ];
+  const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   for (const r of rules) {
     const about = [...r.rule.topics.map(topicLabel), ...r.rule.tags].join(', ');
     lines.push(
       '',
       `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}`,
     );
+    const against = r.rule.conflict && numbers.get(r.rule.conflict.ruleId);
+    if (r.rule.conflict && against) lines.push(`   ${pullLine(r.rule, against)}`);
     if (principlesOf(r.rule).length)
       lines.push(`   Explained by: ${principlesOf(r.rule).join(', ')}.`);
+    if (r.rule.taste) lines.push("   - the designer's own pick in Pinch's taste check");
     for (const n of r.notes) lines.push(`   - ${fromLine(n)}: ${said(n.note)}`);
   }
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * How a rule that pulls against another tells the agent which to follow (D102): where it holds,
+ * this one; everywhere else, the other. Unsettled, the newer one is followed, and the agent is
+ * told the designer hasn't settled it.
+ */
+function pullLine(r: Rule, against: string): string {
+  const where = oneLine(r.context);
+  const which = where
+    ? `Follow this one ${where}, ${against} elsewhere.`
+    : 'Follow this one, the newer.';
+  if (r.conflict?.settled) return `Holds over ${against}. ${which}`;
+  const why = oneLine(r.conflict?.why ?? '');
+  return `Pulls against ${against}, not settled by the designer yet${why ? `: ${why.replace(/[.\s]+$/, '')}` : ''}. ${which}`;
 }

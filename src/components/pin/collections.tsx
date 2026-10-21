@@ -6,12 +6,12 @@ import {
   FileText,
   Cloud,
   Pencil,
+  ListChecks,
   PlugZap,
   RefreshCw,
   ThumbsDown,
   ThumbsUp,
   Trash2,
-  TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PRINCIPLES } from '@/lib/pin/foundation';
@@ -44,6 +44,7 @@ import {
   picked,
   screenOf,
   screenTagsIn,
+  settleConflict,
   RULES_NAME,
   type Reading,
   type Rule,
@@ -61,6 +62,7 @@ import {
   withTitles,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
+import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
 import { cn } from '@/lib/utils';
 import type { CollectionsBackend } from './collections-backend';
@@ -68,6 +70,7 @@ import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
 import { closeUpForReading } from './render';
 import { RuleSkeleton, ShimmerText } from './shimmer';
+import { TasteCheck } from './taste-check';
 import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
@@ -118,6 +121,82 @@ const field =
   'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none transition-colors duration-150 placeholder:text-[#737373] focus:border-foreground/25 motion-reduce:transition-none dark:placeholder:text-[#7a7a7a]';
 const chip =
   'flex h-7 items-center gap-1 rounded-md border px-2 text-[13px] leading-none whitespace-nowrap transition-colors duration-150 motion-reduce:transition-none';
+/** A rule's status (New, new notes): a filled pill, never an outline (design.md). */
+const badge =
+  'flex h-6 items-center gap-1 rounded-full bg-muted px-2.5 text-[13px] leading-none whitespace-nowrap text-foreground';
+/** An action inside a sentence: underlined words, not a button shape. */
+const link =
+  'rounded-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors duration-150 motion-reduce:transition-none hover:decoration-foreground';
+/**
+ * Whatever on a rule waits for its author (a question, a reading to confirm, a conflict), asked
+ * one way (D102), after the selection prompt the owner chose: the question in a band at the top,
+ * the answers as rows with a radio, each with a line on what it does, and the action at the foot,
+ * once one is picked. Neutral throughout: no icon, no colour.
+ */
+function Choices({
+  name,
+  title,
+  note,
+  options,
+  action,
+  aside,
+}: {
+  name: string;
+  title: string;
+  note?: string;
+  options: { label: string; detail: string; pick: () => void }[];
+  /** The foot's button: "Answer", "Confirm", "Settle". */
+  action: string;
+  /** Beside the button, at the foot's start: where the rule holds, what the agent does meanwhile. */
+  aside?: React.ReactNode;
+}) {
+  const [chosen, setChosen] = useState<number | null>(null);
+  return (
+    <fieldset className="m-0 min-w-0 overflow-hidden rounded-xl border border-border p-0 text-[13px]">
+      <legend className="sr-only">{title}</legend>
+      <div aria-hidden className="space-y-0.5 border-b border-border bg-muted/40 px-4 py-3">
+        <p className="m-0 text-sm font-medium text-foreground">{title}</p>
+        {note && <p className="m-0 leading-relaxed text-muted-foreground">{note}</p>}
+      </div>
+      {note && <p className="sr-only">{note}</p>}
+      {options.length > 0 && (
+        <div className="divide-y divide-border">
+          {options.map((o, i) => (
+            <label
+              key={o.label}
+              className="flex cursor-pointer gap-3 px-4 py-3 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+            >
+              <input
+                type="radio"
+                name={name}
+                checked={chosen === i}
+                onChange={() => setChosen(i)}
+                className="mt-0.5 size-4 shrink-0 cursor-pointer appearance-none rounded-full border border-foreground/30 transition-[border] duration-150 checked:border-[5px] checked:border-foreground motion-reduce:transition-none"
+              />
+              <span className="min-w-0 space-y-0.5">
+                <span className="block text-sm text-foreground">{o.label}</span>
+                <span className="block leading-relaxed text-muted-foreground">{o.detail}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+        <div className="min-w-0 flex-1">{aside}</div>
+        {options.length > 0 && (
+          <button
+            type="button"
+            disabled={chosen === null}
+            onClick={() => chosen !== null && options[chosen]?.pick()}
+            className={primary}
+          >
+            {action}
+          </button>
+        )}
+      </div>
+    </fieldset>
+  );
+}
 
 /**
  * What the page slices rules by: a topic, one of the author's tags, a principle, a screenshot's
@@ -197,6 +276,8 @@ export function CollectionsView({
   const [removing, setRemoving] = useState<string | null>(null);
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
+  // The taste check, open (D102).
+  const [tasting, setTasting] = useState(false);
   const [movable, setMovable] = useState<Collection[]>([]);
   const [slice, setSlice] = useState<Slice>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -702,6 +783,19 @@ export function CollectionsView({
       },
     });
   };
+  const openTaste = () => {
+    opener.current = document.activeElement as HTMLElement | null;
+    setTasting(true);
+  };
+  /** The taste check's picks, kept as the author's own rules (D102). */
+  const keepTaste = (answers: Record<string, string>) => {
+    setTasting(false);
+    change((c) => withTaste(c, answers, nowIso(), newId), true);
+    onStatus({
+      tone: 'info',
+      text: `Kept ${count(Object.keys(answers).length, 'pick')} as rules. Your agent gets them.`,
+    });
+  };
   const card = (r: Rule) => (
     <li key={r.id}>
       <RuleCard
@@ -713,6 +807,29 @@ export function CollectionsView({
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
         onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
         onConfirm={() => change((c) => confirmRule(c, r.id, nowIso()), true)}
+        onSettle={(how) => {
+          const before = r.conflict;
+          change((c) => settleConflict(c, r.id, how, nowIso()), true);
+          if (how !== 'wins' || !before) return;
+          onStatus({
+            tone: 'info',
+            text: 'Settled. The other rule is removed, and Pinch won’t write it again.',
+            action: {
+              label: 'Undo',
+              run: () =>
+                change(
+                  (c) =>
+                    withRule(
+                      withRule(c, before.ruleId, { status: 'approved' }, nowIso()),
+                      r.id,
+                      { conflict: before },
+                      nowIso(),
+                    ),
+                  true,
+                ),
+            },
+          });
+        }}
         onRemove={() => {
           opener.current = document.activeElement as HTMLElement | null;
           setRemoving(r.id);
@@ -724,7 +841,7 @@ export function CollectionsView({
   return (
     <>
       <main
-        inert={inert || connecting || removing !== null || asking}
+        inert={inert || connecting || removing !== null || asking || tasting}
         className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-7 px-6 py-8">
           <header className="space-y-3">
@@ -736,6 +853,10 @@ export function CollectionsView({
                   {waits > 0 && ` ${waits} waiting for you.`}
                 </p>
               </div>
+              <button type="button" onClick={openTaste} className={button}>
+                <ListChecks className="size-4" aria-hidden />
+                Taste check
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -823,11 +944,17 @@ export function CollectionsView({
             <div className="space-y-3 rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
               <p>
                 Mark what to learn and what to avoid on your images. Pinch reads your notes here,
-                finds the patterns and turns them into rules.
+                finds the patterns and turns them into rules. Or start with a dozen quick picks.
               </p>
-              <button type="button" onClick={onBack} className={cn(button, 'mx-auto')}>
-                Back to your images
-              </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button type="button" onClick={onBack} className={button}>
+                  Back to your images
+                </button>
+                <button type="button" onClick={openTaste} className={button}>
+                  <ListChecks className="size-4" aria-hidden />
+                  Taste check
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -860,6 +987,19 @@ export function CollectionsView({
           opener={opener.current}
           onClose={() => setConnecting(false)}
           onCopy={copyRules}
+        />
+      )}
+      {tasting && (
+        <TasteCheck
+          answered={Object.fromEntries(
+            TASTE.flatMap((q) => {
+              const a = answerOf(c, q.id);
+              return a ? [[q.id, a]] : [];
+            }),
+          )}
+          opener={opener.current}
+          onClose={() => setTasting(false)}
+          onDone={keepTaste}
         />
       )}
       {removing !== null && (
@@ -1045,6 +1185,7 @@ function RuleCard({
   onChange,
   onAnswer,
   onConfirm,
+  onSettle,
   onRemove,
 }: {
   rule: Rule;
@@ -1059,6 +1200,8 @@ function RuleCard({
   onAnswer: (option: number) => void;
   /** The author confirms Pinch's reading of a rule (D91). */
   onConfirm: () => void;
+  /** The author settles its conflict (D102): each rule in its place, or this one wins. */
+  onSettle: (how: 'place' | 'wins') => void;
   /** The author asks to remove an outdated rule; the page asks "are you sure" first. */
   onRemove: () => void;
 }) {
@@ -1071,6 +1214,20 @@ function RuleCard({
   const id = `rule-${r.id}`;
   const origin = originOf(r);
   const why = (r.principles ?? []).flatMap((p) => PRINCIPLES.find((x) => x.id === p) ?? []);
+  const unsettled = r.conflict && !r.conflict.settled;
+  // Where a rule holds, which the card doesn't otherwise show (D93): the author can widen a place
+  // Pinch set to everywhere, in one click, while it waits for them or while they edit (D102).
+  const place = r.context.trim();
+  const everywhere = (
+    <button type="button" onClick={() => onChange({ context: '' }, true)} className={link}>
+      Make it everywhere
+    </button>
+  );
+  const widen = place ? (
+    <p className="m-0 text-muted-foreground">
+      Holds {place}. {everywhere}
+    </p>
+  ) : null;
   const edit = () => {
     started.current = r.text;
     setEditing(true);
@@ -1095,22 +1252,12 @@ function RuleCard({
       {/* The rule's name and words beside the pencil; everything under them spans the card. */}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1.5">
-          {(isNew || r.conflict || r.fresh || origin === 'ai-edited') && (
+          {(isNew || unsettled || r.fresh || origin === 'ai-edited') && (
             <div className="flex flex-wrap items-center gap-2 pb-1 text-[13px] text-muted-foreground">
-              {isNew && <span className={cn(chip, 'border-border text-foreground')}>New</span>}
-              {r.conflict && (
-                <span
-                  className={cn(chip, 'border-amber-600/40 text-amber-800 dark:text-amber-300')}
-                >
-                  <TriangleAlert className="size-3.5" aria-hidden />
-                  Conflict
-                </span>
-              )}
-              {r.fresh ? (
-                <span className={cn(chip, 'border-border text-foreground')}>
-                  +{count(r.fresh, 'new note')}
-                </span>
-              ) : null}
+              {isNew && <span className={badge}>New</span>}
+              {/* Plain words like "Edited by you": the conflict's own box says the rest. */}
+              {unsettled && <span>Conflict</span>}
+              {r.fresh ? <span className={badge}>+{count(r.fresh, 'new note')}</span> : null}
               {origin === 'ai-edited' && <span>Edited by you</span>}
             </div>
           )}
@@ -1192,17 +1339,10 @@ function RuleCard({
             topics={r.topics}
             onChange={(topics) => onChange({ topics }, true)}
           />
+          {widen && <div className="text-[13px]">{widen}</div>}
         </div>
-      ) : (
-        (r.basis === 'interpreted' && r.reading && !r.question) ||
-        r.topics.length > 0 ||
-        r.tags.length > 0 ||
-        shows.length > 0
-      ) ? (
+      ) : r.topics.length > 0 || r.tags.length > 0 || shows.length > 0 ? (
         <div className="space-y-2">
-          {r.basis === 'interpreted' && r.reading && !r.question && (
-            <p className="text-[13px] text-muted-foreground">Pinch’s reading: {r.reading}</p>
-          )}
           {(r.topics.length > 0 || r.tags.length > 0 || shows.length > 0) && (
             <ul className="flex list-none flex-wrap gap-1.5 p-0">
               {r.topics.map((t) => (
@@ -1238,84 +1378,125 @@ function RuleCard({
         </div>
       ) : null}
 
+      {/* Each answer with what it makes, so a pick says exactly what it commits to (D102). */}
       {r.question && !editing && (
-        <fieldset className="min-w-0 space-y-2.5 rounded-lg border border-border bg-muted/50 px-3 py-3 text-[13px]">
-          <legend className="float-left w-full text-sm font-medium text-foreground">
-            {r.question.ask}
-          </legend>
-          <div className="clear-left flex flex-wrap gap-2">
-            {r.question.options.map((o, i) => (
-              <button
-                key={o.answer}
-                type="button"
-                title={o.rule}
-                onClick={() => onAnswer(i)}
-                className={cn(button, 'bg-background')}
-              >
-                {o.answer}
-              </button>
-            ))}
-            <button type="button" onClick={edit} className={small}>
-              Something else
-            </button>
-          </div>
-          <p className="text-muted-foreground">Your agent gets this rule once you answer.</p>
-        </fieldset>
+        <Choices
+          name={`${id}-ask`}
+          title={r.question.ask}
+          note="Your agent gets this rule once you answer."
+          aside={widen}
+          action="Answer"
+          options={[
+            ...r.question.options.map((o, i) => ({
+              label: o.answer,
+              detail: o.rule,
+              pick: () => onAnswer(i),
+            })),
+            { label: 'Something else', detail: 'Write it in your own words.', pick: edit },
+          ]}
+        />
       )}
 
       {r.basis === 'interpreted' && !r.question && !editing && (
-        <fieldset className="min-w-0 space-y-2.5 rounded-lg border border-border bg-muted/50 px-3 py-3 text-[13px]">
-          <legend className="float-left w-full text-sm font-medium text-foreground">
-            Is this what you meant?
-          </legend>
-          <div className="clear-left flex flex-wrap gap-2">
-            <button type="button" onClick={onConfirm} className={cn(button, 'bg-background')}>
-              Yes
-            </button>
-            <button type="button" onClick={edit} className={small}>
-              Something else
-            </button>
-          </div>
-          <p className="text-muted-foreground">Your agent gets this rule once you confirm it.</p>
-        </fieldset>
+        <Choices
+          name={`${id}-meant`}
+          title="Is this what you meant?"
+          note="Your agent gets this rule once you confirm it."
+          aside={widen}
+          action="Confirm"
+          options={[
+            {
+              label: 'Yes',
+              detail: r.reading ? `Pinch’s reading: ${r.reading}.` : 'Keep the rule as it is.',
+              pick: onConfirm,
+            },
+            { label: 'Something else', detail: 'Write it in your own words.', pick: edit },
+          ]}
+        />
       )}
 
-      {r.conflict && (
-        <div className="rounded-lg border border-amber-600/30 bg-amber-50 px-3 py-2 text-[13px] text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">
-          <p className="m-0">
-            Pulls against your rule “{pullsAgainst.replace(/[.\s]+$/, '') || 'a rule you removed'}”.
-            {r.conflict.why ? ` ${r.conflict.why}` : ''}
-          </p>
-          <p className="mt-1 text-amber-800 dark:text-amber-200/90">
-            Both are kept. Edit or remove one with the pencil.
-          </p>
-        </div>
+      {/* The other rule exists only while it isn't removed. */}
+      {unsettled && r.conflict && (
+        <Choices
+          name={`${id}-conflict`}
+          title="How should your agent handle this?"
+          note={`Pulls against your rule “${pullsAgainst.replace(/[.\s]+$/, '') || 'a rule you removed'}”.${r.conflict.why ? ` ${r.conflict.why}` : ''}`}
+          aside={
+            <p className="m-0 text-muted-foreground">
+              Until then, your agent follows this one{place ? ` ${place}` : ''}.
+            </p>
+          }
+          action="Settle"
+          options={
+            pullsAgainst
+              ? [
+                  ...(place
+                    ? [
+                        {
+                          label: 'Keep both, by place',
+                          detail: `This one ${place}, the other everywhere else.`,
+                          pick: () => onSettle('place'),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: 'Use this rule only',
+                    detail: 'The other rule is removed. You can undo it.',
+                    pick: () => onSettle('wins'),
+                  },
+                ]
+              : []
+          }
+        />
+      )}
+      {r.conflict?.settled && (
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Holds over your rule “{pullsAgainst.replace(/[.\s]+$/, '') || 'a rule you removed'}”
+          {place ? ` ${place}; that one holds everywhere else.` : '.'}
+        </p>
       )}
 
-      {/* Set apart from the rule and its tags by a divider, edge to edge across the card. */}
-      <div className="-mx-4 border-t border-border px-4 pt-3">
+      {/*
+       * Set apart from the rule and its tags by a divider, edge to edge across the card. With no
+       * notes there is no Source to open: a taste check's answer says where it came from (D102),
+       * and a rule whose notes are gone shows nothing here unless it is being edited.
+       */}
+      <div
+        className={cn(
+          '-mx-4 border-t border-border px-4 pt-3',
+          !notes.length && !r.taste && !editing && 'hidden',
+        )}
+      >
         {/* The notes a rule draws on, and, while editing, removing it: one row. */}
         <div className="-mx-2 -mb-1 flex items-center gap-2">
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={`${id}-notes`}
-            title={`${count(notes.length, 'note')} on ${count(images, 'image')}`}
-            onClick={() => {
-              setOpen(!open);
-              if (!open && r.fresh) onChange({ fresh: 0 }, true);
-            }}
-            className={small}
-          >
-            Source
-            <ChevronDown
-              aria-hidden
-              className={cn(
-                'size-3.5 transition-transform duration-150 motion-reduce:transition-none',
-                open && 'rotate-180',
-              )}
-            />
-          </button>
+          {!notes.length ? (
+            r.taste && (
+              <p className="m-0 flex min-h-8 items-center px-2 text-[13px] text-muted-foreground">
+                From your taste check
+              </p>
+            )
+          ) : (
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={`${id}-notes`}
+              title={`${count(notes.length, 'note')} on ${count(images, 'image')}`}
+              onClick={() => {
+                setOpen(!open);
+                if (!open && r.fresh) onChange({ fresh: 0 }, true);
+              }}
+              className={small}
+            >
+              Source
+              <ChevronDown
+                aria-hidden
+                className={cn(
+                  'size-3.5 transition-transform duration-150 motion-reduce:transition-none',
+                  open && 'rotate-180',
+                )}
+              />
+            </button>
+          )}
           {editing && (
             <button
               type="button"

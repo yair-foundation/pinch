@@ -158,3 +158,17 @@ svg *:is(:focus, :focus-visible) {
     @apply font-sans;
   }
 }
+
+/* The taste check's fade-up (D102): sections rising in, again every few seconds. */
+@keyframes taste-rise {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  32%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
