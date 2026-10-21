@@ -44,14 +44,20 @@ export function browserOf(request: Request): { id: string; setCookie?: string } 
   return { id: fresh, setCookie: cookie(BROWSER_COOKIE, fresh, BROWSER_DAYS * 86_400) };
 }
 
-/** Orders kept before D98 carry no product and no paid time: the original offer was all there was. */
-const productOf = (o: Order, config: BillingConfig) =>
-  o.product ?? (o.paidAt ? config.productId : undefined);
+/**
+ * What an order bought: the credits pack, the original offer, or neither. Orders kept before
+ * D98 carry no product and no paid time: the original offer was all there was then.
+ */
+export function boughtWith(o: Order, config: BillingConfig): 'credits' | 'original' | null {
+  if (o.product === config.creditsProductId) return 'credits';
+  if (o.product) return o.product === config.originalProductId ? 'original' : null;
+  return o.paidAt ? null : 'original';
+}
 
 /** The packs an email's orders gave: paid orders of the credits product, with their refunds. */
 export function grantsOf(orders: Record<string, Order>, config: BillingConfig): Grant[] {
   return Object.entries(orders).flatMap(([id, o]) =>
-    productOf(o, config) === config.productId && o.paidAt
+    boughtWith(o, config) === 'credits' && o.paidAt
       ? [
           {
             id,
@@ -65,14 +71,10 @@ export function grantsOf(orders: Record<string, Order>, config: BillingConfig): 
 }
 
 /** Whether the email bought the original offer while it was on sale, and keeps it (D98). */
-export function keepsOriginal(orders: Record<string, Order>, config: BillingConfig): boolean {
-  if (!config.originalProductId) return false;
-  return Object.values(orders).some(
-    (o) =>
-      o.status === 'paid' &&
-      (o.product === config.originalProductId || (!o.product && !o.paidAt)),
+export const keepsOriginal = (orders: Record<string, Order>, config: BillingConfig) =>
+  Object.values(orders).some(
+    (o) => o.status === 'paid' && boughtWith(o, config) === 'original',
   );
-}
 
 const grantsFor = (orders: Record<string, Order>, config: BillingConfig): Grant[] => [
   { id: FREE_GRANT, credits: FREE_CREDITS, at: '' },

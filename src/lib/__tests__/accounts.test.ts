@@ -125,7 +125,7 @@ describe('Google sign-in', () => {
 
 const config: BillingConfig = {
   storeId: '11',
-  productId: '22',
+  creditsProductId: '22',
   buyUrl: 'https://pinch.lemonsqueezy.com/buy/abc',
   webhookSecret: 'whsec',
   price: '$19',
@@ -158,20 +158,24 @@ const order = (over: {
 });
 
 describe('billing', () => {
-  it('is off until the store, product, link and secret are all set', () => {
+  it('is off until the store, the credits product, link and secret are all set', () => {
     assert.equal(billingConfig({}), null);
     const env = {
       LEMONSQUEEZY_STORE_ID: '11',
-      LEMONSQUEEZY_PRODUCT_ID: '22',
+      LEMONSQUEEZY_CREDITS_PRODUCT_ID: '22',
       PINCH_BUY_URL: 'https://x.co/buy',
       LEMONSQUEEZY_WEBHOOK_SECRET: 's',
     };
     assert.equal(billingConfig(env)?.price, '$19.99');
     assert.equal(billingConfig(env)?.originalProductId, undefined);
     assert.equal(
-      billingConfig({ ...env, LEMONSQUEEZY_ORIGINAL_PRODUCT_ID: '21' })?.originalProductId,
+      billingConfig({ ...env, LEMONSQUEEZY_PRODUCT_ID: '21' })?.originalProductId,
       '21',
     );
+    // Deployed before the credits product is set, the old configuration sells nothing new (D98).
+    const { LEMONSQUEEZY_CREDITS_PRODUCT_ID, ...old } = env;
+    assert.equal(LEMONSQUEEZY_CREDITS_PRODUCT_ID, '22');
+    assert.equal(billingConfig({ ...old, LEMONSQUEEZY_PRODUCT_ID: '21' }), null);
     assert.equal(billingConfig({ ...env, LEMONSQUEEZY_WEBHOOK_SECRET: '' }), null);
   });
 
@@ -205,7 +209,7 @@ describe('billing', () => {
     );
     assert.equal(webhookOutcome(order({ store: 12 }), config).kind, 'ignore');
     assert.equal(webhookOutcome(order({ product: 23 }), config).kind, 'ignore');
-    // The original offer's product counts only while its buyers do (D98).
+    // The original offer's product counts when there is one (D98).
     assert.equal(webhookOutcome(order({ product: 21 }), config).kind, 'ignore');
     assert.equal(
       webhookOutcome(order({ product: 21 }), { ...config, originalProductId: '21' }).kind,
@@ -301,7 +305,7 @@ describe('the paywall', () => {
     GOOGLE_CLIENT_SECRET: 's',
     AUTH_SECRET: SECRET,
     LEMONSQUEEZY_STORE_ID: '11',
-    LEMONSQUEEZY_PRODUCT_ID: '22',
+    LEMONSQUEEZY_CREDITS_PRODUCT_ID: '22',
     PINCH_BUY_URL: 'https://x.co/buy',
     LEMONSQUEEZY_WEBHOOK_SECRET: 'whsec',
   };
@@ -339,7 +343,7 @@ describe('the paywall', () => {
       assert.equal((await gate(request()))?.status, 401);
       const token = signSession({ user: 'g9', email: 'new@x.co', name: 'N' }, SECRET);
       assert.equal((await gate(request(token)))?.status, 402);
-      await recordOrder('new@x.co', 'o9', 'paid', '2026-10-20');
+      await recordOrder('new@x.co', 'o9', 'paid', '2026-10-20', '22');
       assert.equal((await accessOf(request(token))).allowed, true);
       assert.equal(await gate(request(token)), null);
     });
@@ -366,12 +370,19 @@ describe('credits in the store (D98)', () => {
     ]);
   });
 
-  it('keeps the original offer only when its product is named', () => {
-    const orders = { old: { status: 'paid' as const, at: at(19) } };
-    assert.equal(keepsOriginal(orders, config), false, 'the owner’s test order counts for nothing');
-    assert.equal(keepsOriginal(orders, { ...config, originalProductId: '21' }), true);
+  it('keeps the original offer for its buyers, and for orders kept before D98', () => {
+    const withOriginal = { ...config, originalProductId: '21' };
+    const before = { old: { status: 'paid' as const, at: at(19) } };
+    assert.equal(keepsOriginal(before, config), true, 'kept before D98: the only offer then');
+    const bought = {
+      o: { status: 'paid' as const, at: at(22), product: '21', paidAt: at(22) },
+    };
+    assert.equal(keepsOriginal(bought, withOriginal), true);
+    assert.equal(keepsOriginal(bought, config), false, 'no original offer here');
     const refunded = { old: { status: 'refunded' as const, at: at(19) } };
-    assert.equal(keepsOriginal(refunded, { ...config, originalProductId: '21' }), false);
+    assert.equal(keepsOriginal(refunded, withOriginal), false);
+    const pack = { p: { status: 'paid' as const, at: at(22), product: '22', paidAt: at(22) } };
+    assert.equal(keepsOriginal(pack, withOriginal), false, 'a credits pack is not the original');
   });
 
   it('starts an update only with its whole price, and reads no more than it was priced for', () => {

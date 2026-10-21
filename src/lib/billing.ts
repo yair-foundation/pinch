@@ -9,41 +9,44 @@ import { z } from 'zod';
  * an order is paid or refunded, and the order is kept under the buyer's email
  * with its product. With an API key, a buyer whose webhook went astray can
  * restore their orders by email. Everything here is off until the store,
- * product, link and webhook secret are set, and then the tool is paid.
+ * the credits product, the link and the webhook secret are set, and then the
+ * tool is paid.
  *
- * LEMONSQUEEZY_PRODUCT_ID is the credits pack. LEMONSQUEEZY_ORIGINAL_PRODUCT_ID,
- * set only if customers bought the original offer (D81's $19 once) before
- * credits went on sale, names that product, so its buyers keep what they
- * bought (D98).
+ * LEMONSQUEEZY_CREDITS_PRODUCT_ID is the credits pack, and billing stays off
+ * until it is set, so this code can never go live selling credits through the
+ * old checkout. LEMONSQUEEZY_PRODUCT_ID keeps naming the original offer (D81's
+ * $19 once): its orders, and those kept before D98 with no product, keep what
+ * that offer said (D98).
  */
 
 export type BillingConfig = {
   storeId: string;
-  productId: string;
+  /** The credits pack (D98): each paid order of it gives 2,000 credits. */
+  creditsProductId: string;
+  /** The original offer, D81's $19 once, when there is one: its buyers keep what they bought. */
+  originalProductId?: string;
   buyUrl: string;
   webhookSecret: string;
   apiKey?: string;
   price: string;
-  /** The original offer's product, when customers bought it before credits went on sale. */
-  originalProductId?: string;
 };
 
 export function billingConfig(
   env: Record<string, string | undefined> = process.env,
 ): BillingConfig | null {
   const storeId = env.LEMONSQUEEZY_STORE_ID?.trim();
-  const productId = env.LEMONSQUEEZY_PRODUCT_ID?.trim();
+  const creditsProductId = env.LEMONSQUEEZY_CREDITS_PRODUCT_ID?.trim();
   const buyUrl = env.PINCH_BUY_URL?.trim();
   const webhookSecret = env.LEMONSQUEEZY_WEBHOOK_SECRET?.trim();
-  if (!storeId || !productId || !buyUrl || !webhookSecret) return null;
+  if (!storeId || !creditsProductId || !buyUrl || !webhookSecret) return null;
   return {
     storeId,
-    productId,
+    creditsProductId,
+    originalProductId: env.LEMONSQUEEZY_PRODUCT_ID?.trim() || undefined,
     buyUrl,
     webhookSecret,
     apiKey: env.LEMONSQUEEZY_API_KEY?.trim() || undefined,
     price: env.PINCH_PRICE?.trim() || '$19.99',
-    originalProductId: env.LEMONSQUEEZY_ORIGINAL_PRODUCT_ID?.trim() || undefined,
   };
 }
 
@@ -95,9 +98,9 @@ export type WebhookOutcome =
     }
   | { kind: 'ignore'; reason: string };
 
-/** The products Pinch sells: the credits pack, and the original offer while its buyers count. */
+/** The products Pinch knows: the credits pack, and the original offer when there is one. */
 const productsOf = (config: BillingConfig) =>
-  [config.productId, config.originalProductId].filter(Boolean) as string[];
+  [config.creditsProductId, config.originalProductId].filter(Boolean) as string[];
 
 /** What an order webhook means for Pinch: a paid or refunded order of its products, or nothing. */
 export function webhookOutcome(body: unknown, config: BillingConfig): WebhookOutcome {
