@@ -36,7 +36,7 @@ Built and live: the landing with the painting (dusk and a dark card in dark mode
 
 ## Not built
 
-- **Free readings and note packs (D96, decided).** Today marking is free, the first two rules show and $19 opens the rest. Decided instead: 50 free note readings with every rule and the agent connection, then prepaid packs that never expire, with reading only on "Update rules". The pack's size and whether the reading sees crops wait on a cost measurement and a benchmark.
+- **Free credits and one pack (D96, D98, decided).** Today marking is free, the first two rules show and $19 opens the rest. Decided instead: 200 free credits with every rule and the agent connection, then one offer, 2,000 credits for $19.99 that never expire; an update costs 20 credits and 3 a note, shown on Update rules before it runs, and each note goes to the reading with its close-up. Not built; what earlier buyers keep is open.
 - **Agent connection extras**: the agent connects with a pasted key (MCP over HTTP, D89; setup for seven kinds of agent, D92); OAuth sign-in for the connection, usage limits per key and a rules export as an agent skill file are not built.
 - **Teams**: one account, one person; no shared collections. Deferred (D90): Pinch grows bottom up, one designer at a time; a team pilot would be run by hand first.
 - **Tests with designers**: the benchmark's cases were written by hand; no designer's own notes or verdicts yet. Also not built: several answers to one question, a new note answering an open question, and settling a conflict in one step.
