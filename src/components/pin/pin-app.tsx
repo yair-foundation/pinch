@@ -1973,7 +1973,7 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {offer
-                ? `Marking images is free, and your first ${offer.free} credits read about ${Math.floor((offer.free - offer.update) / offer.note)} notes into rules; then ${offer.credits.toLocaleString('en')} credits for ${offer.price}. Images stay in this browser unless you sign in; the words of your notes go to Anthropic to find your rules.`
+                ? `Marking images is free, and your first ${offer.free} credits read up to ${Math.floor((offer.free - offer.update) / offer.note)} notes into rules; then ${offer.credits.toLocaleString('en')} credits for ${offer.price}. Images stay in this browser unless you sign in; the words of your notes go to Anthropic to find your rules.`
                 : 'Free, no account. Images stay in this browser; AI suggestions send the marked area to Anthropic.'}{' '}
               <button
                 type="button"
