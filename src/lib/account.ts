@@ -20,10 +20,13 @@ export const emailKeyOf = (email: string) =>
 
 export type Account = { email: string; name: string; createdAt: string; seenAt: string };
 
-/** Each order Lemon Squeezy reported for an email, as last reported. */
-export type Purchases = {
-  orders: Record<string, { status: 'paid' | 'refunded'; at: string }>;
-};
+/**
+ * Each order Lemon Squeezy reported for an email, as last reported, with its
+ * product and when it was first reported paid (D98). Orders kept before D98
+ * have neither: they are of the original offer, the only product then.
+ */
+export type Order = { status: 'paid' | 'refunded'; at: string; product?: string; paidAt?: string };
+export type Purchases = { orders: Record<string, Order> };
 
 const accountKey = (user: string) => `pinch-accounts/${user}.json`;
 const purchaseKey = (email: string) => `pinch-purchases/${emailKeyOf(email)}.json`;
@@ -52,6 +55,7 @@ export const isPaid = (p: Purchases | null) =>
 /**
  * One order's report applied to an email's purchases: a report older than the
  * one kept is ignored, so webhooks arriving out of order can't undo a refund.
+ * The product and the first time it was paid are kept whatever comes later.
  * Pure, for tests.
  */
 export function applyOrder(
@@ -59,10 +63,18 @@ export function applyOrder(
   order: string,
   status: 'paid' | 'refunded',
   at: string,
+  product?: string,
 ): Purchases {
   const kept = p.orders[order];
-  if (kept && (kept.at > at || (kept.at === at && kept.status === 'refunded'))) return p;
-  return { orders: { ...p.orders, [order]: { status, at } } };
+  const paidAt =
+    status === 'paid' && (!kept?.paidAt || at < kept.paidAt) ? at : kept?.paidAt;
+  const known = {
+    ...((product ?? kept?.product) ? { product: product ?? kept?.product } : {}),
+    ...(paidAt ? { paidAt } : {}),
+  };
+  if (kept && (kept.at > at || (kept.at === at && kept.status === 'refunded')))
+    return { orders: { ...p.orders, [order]: { ...kept, ...known } } };
+  return { orders: { ...p.orders, [order]: { status, at, ...known } } };
 }
 
 export async function purchasesOf(email: string): Promise<Purchases | null> {
@@ -74,9 +86,10 @@ export async function recordOrder(
   order: string,
   status: 'paid' | 'refunded',
   at: string,
+  product?: string,
 ) {
   await updateDocument<Purchases, void>(purchaseKey(email), { orders: {} }, (doc) => {
-    doc.orders = applyOrder(doc, order, status, at).orders;
+    doc.orders = applyOrder(doc, order, status, at, product).orders;
   });
 }
 

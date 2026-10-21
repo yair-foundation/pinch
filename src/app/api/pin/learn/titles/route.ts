@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { accessOf } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { costUsd, visitorKey } from '@/lib/budget';
-import { reserveLearning, settleLearning } from '@/lib/pin/ai-budget';
+import { accessOf } from '@/lib/access';
+import { reserveFree, reserveLearning, settleFree, settleLearning } from '@/lib/pin/ai-budget';
 import {
   cleanTitles,
   titlesPrompt,
@@ -15,9 +15,10 @@ import { clientIp } from '@/lib/pin/visitor';
 
 /*
  * Titles for rules that have none (D95): POST JSON { rules: [{ id, text }] },
- * only the rules' words, and get back { titles: [{ id, title }] }. For those
- * Pinch is open to (bought, or not for sale here); a small model, on the
- * reading's daily ledger. Nothing is stored, and no rule text is logged. Off
+ * only the rules' words, and get back { titles: [{ id, title }] }. For anyone:
+ * since D98 every rule is shown, so every rule gets a title. A small model, on
+ * the reading's daily ledgers (the free one for those who haven't bought),
+ * taking no credits. Nothing is stored, and no rule text is logged. Off
  * whenever reading is off.
  */
 
@@ -38,8 +39,6 @@ export async function POST(request: Request) {
   if (!available()) return fail(503, 'Titles are off right now.');
   if (!isSameOriginWrite(request.headers, new URL(request.url).origin))
     return fail(403, 'Forbidden');
-  const { allowed } = await accessOf(request);
-  if (!allowed) return fail(402, 'Titles are part of Pinch.');
 
   const body = await request.text().catch(() => '');
   if (!body || body.length > MAX_BODY) return fail(400, 'Send a few rules.');
@@ -53,7 +52,12 @@ export async function POST(request: Request) {
   const rules = parsed.data.rules.filter((r) => r.text.trim());
   if (!rules.length) return Response.json({ titles: [] }, { headers });
 
-  const reservation = await reserveLearning(await visitorKey(clientIp(request.headers)));
+  // Those who haven't bought are named on the free ledger, so they can't spend buyers' (D98).
+  const { credits } = await accessOf(request);
+  const free = Boolean(credits && !credits.original && !credits.bought);
+  const reservation = await (free ? reserveFree : reserveLearning)(
+    await visitorKey(clientIp(request.headers)),
+  );
   if (!reservation.ok) return fail(429, 'Pinch has named all it can for today.');
   let spent = 0;
   try {
@@ -78,6 +82,8 @@ export async function POST(request: Request) {
     if (error instanceof Anthropic.RateLimitError) return fail(429, 'Busy. Try again in a minute.');
     return fail(502, 'No titles this time.');
   } finally {
-    await settleLearning(reservation, spent).catch((e) => console.error('[pin] settle', e));
+    await (free ? settleFree : settleLearning)(reservation, spent).catch((e) =>
+      console.error('[pin] settle', e),
+    );
   }
 }

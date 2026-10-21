@@ -1,11 +1,12 @@
-import { forgetPaid } from '@/lib/access';
 import { readAccount, recordOrder } from '@/lib/account';
 import { billingConfig, signatureOk, webhookOutcome } from '@/lib/billing';
 
 /*
- * Lemon Squeezy's order webhook (D81): `order_created` and `order_refunded`,
- * signed with LEMONSQUEEZY_WEBHOOK_SECRET in `X-Signature`. A paid or
- * refunded order of Pinch is kept under the buyer's email, and under the
+ * Lemon Squeezy's order webhook (D81, D98): `order_created` and
+ * `order_refunded`, signed with LEMONSQUEEZY_WEBHOOK_SECRET in `X-Signature`.
+ * A paid or refunded order of Pinch is kept with its product under the
+ * buyer's email (a paid credits pack is 2,000 credits, a refund takes back
+ * what is left of it), and under the
  * signed-in account's email too when the checkout carried the account and the
  * buyer typed another address. Anything else is acknowledged and dropped.
  * No email is logged.
@@ -36,8 +37,7 @@ export async function POST(request: Request) {
     if (account) emails.add(account.email);
   }
   for (const email of emails) {
-    await recordOrder(email, outcome.order, outcome.kind, outcome.at);
-    forgetPaid(email);
+    await recordOrder(email, outcome.order, outcome.kind, outcome.at, outcome.product);
   }
   console.log(`[pin] order ${outcome.kind}`);
   return Response.json({ ok: true });

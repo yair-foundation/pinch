@@ -611,6 +611,47 @@ export function cropImage(
   );
 }
 
+/** A kept close-up's longest side when it goes with a reading (D98). */
+const READING_EDGE = 800;
+
+/**
+ * A note's kept close-up, its mark already drawn, made small enough to go with a reading of its
+ * words (D98): 800px at most on its longest side, as JPEG in base64, and no more than
+ * `maxChars` of it; undefined when even a smaller one would be more.
+ */
+export async function closeUpForReading(
+  jpeg: Uint8Array,
+  maxChars: number,
+): Promise<string | undefined> {
+  const bitmap = await createImageBitmap(new Blob([jpeg as BlobPart], { type: 'image/jpeg' }));
+  try {
+    // A busy close-up that comes out too large tries again smaller; past that it stays home.
+    for (const [edge, quality] of [
+      [READING_EDGE, 0.75],
+      [640, 0.6],
+    ] as const) {
+      const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+      const { canvas, ctx } = canvasOf(
+        Math.max(1, Math.round(bitmap.width * scale)),
+        Math.max(1, Math.round(bitmap.height * scale)),
+      );
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await toBlob(canvas, 'image/jpeg', quality);
+      if (Math.ceil(blob.size / 3) * 4 > maxChars) continue;
+      const url = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read a close-up.'));
+        reader.readAsDataURL(blob);
+      });
+      return url.slice(url.indexOf(',') + 1);
+    }
+    return undefined;
+  } finally {
+    bitmap.close();
+  }
+}
+
 /** The same close-up for a suggestion: 1024px at most, as JPEG. */
 export function cropForAi(
   bitmap: ImageBitmap,

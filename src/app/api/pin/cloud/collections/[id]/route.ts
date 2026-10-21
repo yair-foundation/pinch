@@ -1,4 +1,4 @@
-import { gate } from '@/lib/access';
+import { accountGate } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
 import { deleteCollection, MAX_COLLECTION_BYTES, saveCollection, validId } from '@/lib/cloud';
 import { sessionOf } from '@/lib/session';
@@ -19,7 +19,7 @@ async function owner(request: Request) {
     return { error: fail(403, 'Forbidden') };
   const session = sessionOf(request);
   if (!session) return { error: fail(401, 'Sign in first.') };
-  const blocked = await gate(request);
+  const blocked = accountGate(request);
   if (blocked) return { error: blocked };
   return { user: session.user };
 }

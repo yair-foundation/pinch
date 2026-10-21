@@ -1,6 +1,8 @@
 # Status
 
-## Current state (2026-10-20)
+## Current state (2026-10-21)
+
+Since 2026-10-21 (D98) reading notes into rules takes credits, once billing is on: 200 free for every browser, then one offer, 2,000 credits for $19.99 that never expire. Your rules no longer reads on its own; new and changed notes wait for "Update rules · N notes · P credits", priced before it runs (20 credits and 3 a note) and taken whole, with the credits of notes it didn't read given back. The two-rule preview is gone: every rule shows. Signing in moves this browser's credits and rules into the account, free or bought; Connect agent needs only a sign-in; suggestions stay for buyers with credits left. An account keeps up to 200 MB of screenshots free, 2 GB once it has bought. Verified on a production build in local paid mode (test sign-in, test Lemon Squeezy values, in-memory store, the real model), light and dark, at 1440×900: the landing's copy, a note read for exactly 23 credits (200 to 177), the account menu's credits, sign-in moving the browser's credits into the account (177, the browser closed at 0 after sign-out), an update the credits can't cover opening Get credits with the offer, and a stale page's update refused by the server and the balance read again. Each note now goes to the reading with its close-up, after a notice before the first update in a browser; a failed update gives back its whole price (checked with an invalid model key: 26 credits held, 200 back). The terms for credits are approved by the owner. Not verified: a real Lemon Squeezy pack and its webhook, the Blob store's size listing for the storage caps.
 
 Pinch is its own repository, moved whole out of the GenUI repository where it began as the `/pin` route (decisions D58–D67 in [decisions.md](decisions.md)). The move changed no behaviour: the same app at `/`, the same three API paths, the same IndexedDB name, `localStorage` keys, Blob keys and environment variable names, so existing browsers keep their sessions and the same Blob store can be reused. The host switching that served Pinch from the GenUI deployment is gone; `HANDBOOK_PASSWORD` became `ADMIN_PASSWORD` (realm "Pinch admin") and `PLAYGROUND_SALT` became `VISITOR_SALT` (with a default). Verified on a production build in headless Chromium: landing in both themes pixel-compared with the original, two images added, a dot, an area and an arrow placed with notes, undo, the source key, the shortcuts dialog, an export checked with `unzip -t` (README, AGENTS.md, notes.json, contact sheet, marked copies, crops), reload keeping the session, the 100-image cap, the desktop-only message at 390px, the API routes without keys, same-origin and cross-origin saves, the admin GET without and with the password, and note tagging against the local Jev stub.
 
@@ -34,9 +36,24 @@ AI placement ("Find in image") and the free-text box were removed on 2026-10-20 
 
 Built and live: the landing with the painting (dusk and a dark card in dark mode, night and a light card in light, crossfading on a theme change), parallax and liquid-glass bezel; a Pin / Area / Arrow toolbar; sources as four radio buttons; topic chips on each note; opening an export; Your rules, read from notes into a taste library, sliced by topic, with Connect agent (MCP or a prompt); Google sign-in, Lemon Squeezy and collections in the account (off until configured); the terms page; suggestions with Tab to accept and Esc to dismiss; undo and redo; keyboard shortcuts; anonymous saving of note text with Jev area tags and the owner's JSON read; desktop only; 100 images a session.
 
-## Not built
+## Launching credits (D98)
 
-- **A fuller trial.** Marking is free and the first two rules show; there is no free allowance of every rule or an export (a trial with a monthly plan is being weighed).
+Checked on a production build in local paid mode, with the store in memory: the walkthrough in light and dark; a failed update giving back its whole price; and the order lifecycle through the real routes with signed webhooks. In that lifecycle, a pack added 2,000 credits once, however often its webhook came; a forged webhook was refused; a one-note update took 23, from the free credits first; a refund took back the pack's untouched 2,000 and no more; a late "paid" report didn't undo the refund; a second pack added 2,000.
+
+Not checked here, so to check on the live store before telling anyone: a real Lemon Squeezy checkout and its webhook, "Paid already?" against Lemon Squeezy's API, and the Blob store's compare-and-swap and size listing behind the credits and the storage caps.
+
+In this order, at once (README, Deploying, has the details):
+
+1. The terms (`src/app/terms/page.tsx`) are approved (2026-10-21). Set `PINCH_SUPPORT_EMAIL` in Vercel: the terms send refunds there, and without it they point at the maker's site.
+2. In Lemon Squeezy, create the credits product: 2,000 credits, $19.99, single payment, can be bought again, confirmation back to the site.
+3. In Vercel, set `LEMONSQUEEZY_CREDITS_PRODUCT_ID` and point `PINCH_BUY_URL` at the new checkout. Keep `LEMONSQUEEZY_PRODUCT_ID` on the original product. Until the credits product is set, the code keeps billing off, so a deploy that runs ahead of its settings sells nothing.
+4. Unpublish the original product. Refund the owner's test order if that account should run on credits.
+5. Merge and deploy.
+6. Count the original product's paid orders again: each buyer keeps the original offer.
+7. On the live site, in test mode: buy a pack, see 2,000 credits, update rules, refund, see what is left taken back; upload a batch to see the storage limit read.
+
+
+- **Free credits and one pack (D96, D98, decided).** Today marking is free, the first two rules show and $19 opens the rest. Decided instead: 200 free credits with every rule and the agent connection, then one offer, 2,000 credits for $19.99 that never expire; an update costs 20 credits and 3 a note, shown on Update rules before it runs, and each note goes to the reading with its close-up. Not built. Earlier buyers would keep what they bought; so far the only order was the owner's test.
 - **Agent connection extras**: the agent connects with a pasted key (MCP over HTTP, D89; setup for seven kinds of agent, D92); OAuth sign-in for the connection, usage limits per key and a rules export as an agent skill file are not built.
 - **Teams**: one account, one person; no shared collections. Deferred (D90): Pinch grows bottom up, one designer at a time; a team pilot would be run by hand first.
 - **Tests with designers**: the benchmark's cases were written by hand; no designer's own notes or verdicts yet. Also not built: several answers to one question, a new note answering an open question, and settling a conflict in one step.

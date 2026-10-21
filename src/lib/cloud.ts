@@ -1,4 +1,4 @@
-import { del, issueSignedToken, presignUrl } from '@vercel/blob';
+import { del, issueSignedToken, list, presignUrl } from '@vercel/blob';
 import { userFolder } from './account';
 import { readZipEntries, TAIL_BYTES } from './pin/zip-range';
 import { deleteDocuments, hasBlob, listDocuments, putDocument, readDocument } from './blob-doc';
@@ -17,6 +17,9 @@ export const MAX_COLLECTION_BYTES = 3_000_000;
 export const MAX_BATCH_BYTES = 300 * 1024 * 1024;
 /** Zips kept in memory when there is no store (local runs): smaller, and lost on restart. */
 export const MAX_MEMORY_BATCH_BYTES = 60 * 1024 * 1024;
+/** What an account may keep (D98): 200 MB free, 2 GB once it has bought credits. */
+export const STORAGE_FREE_BYTES = 200 * 1024 * 1024;
+export const STORAGE_BOUGHT_BYTES = 2 * 1024 * 1024 * 1024;
 const URL_MINUTES = 15;
 
 /** Ids are the app's own: lower-case letters and digits. Anything else never reaches a path. */
@@ -85,15 +88,35 @@ export async function batchDownloadUrl(user: string, id: string): Promise<string
   return presignedUrl;
 }
 
-/** The signed token an upload of one batch zip needs: put only, that path only, zips only. */
-export const uploadToken = (pathname: string) =>
+/**
+ * The signed token an upload of one batch zip needs: put only, that path only, zips only, and no
+ * bigger than a batch may be or than the account has room for.
+ */
+export const uploadToken = (pathname: string, room = MAX_BATCH_BYTES) =>
   issueSignedToken({
     pathname,
     operations: ['put'],
     validUntil: Date.now() + URL_MINUTES * 60_000,
     allowedContentTypes: ['application/zip'],
-    maximumSizeInBytes: MAX_BATCH_BYTES,
+    maximumSizeInBytes: Math.min(MAX_BATCH_BYTES, room),
   });
+
+/** The bytes an account keeps, but for one path: the one about to be written over. */
+export async function keptBytes(user: string, except = ''): Promise<number> {
+  const prefix = userFolder(user);
+  if (!hasBlob())
+    return [...memory]
+      .filter(([k]) => k.startsWith(prefix) && k !== except)
+      .reduce((n, [, b]) => n + b.length, 0);
+  let total = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix, cursor, limit: 1000 });
+    for (const b of page.blobs) if (b.pathname !== except) total += b.size;
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+  return total;
+}
 
 /**
  * Some files of one of the account's batch zips (D94), read by byte ranges: from the store on a

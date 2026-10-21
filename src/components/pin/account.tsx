@@ -11,23 +11,37 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FREE_CREDITS, NOTE_CREDITS, PACK_CREDITS, UPDATE_CREDITS } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
 import { Dialog, hit } from './dialog';
 
 /*
- * The account in the page (D81): who is signed in, whether they may use
- * Pinch, where to buy, and where their collections live, as `/api/pin/me`
+ * The account in the page (D81, D98): who is signed in, their credits, the
+ * one offer, where to buy, and where their rules live, as `/api/pin/me`
  * says. Until billing is set up the answer is "open" and the page works as it
  * always did. Read again when the tab comes back, so a purchase made in
  * another tab shows without a reload.
  */
+
+/** The one offer (D98): credits in a pack, the free ones, and what an update takes. */
+export type Offer = { credits: number; free: number; update: number; note: number };
+export const OFFER: Offer = {
+  credits: PACK_CREDITS,
+  free: FREE_CREDITS,
+  update: UPDATE_CREDITS,
+  note: NOTE_CREDITS,
+};
 
 export type Me = {
   paywall: boolean;
   signIn: boolean;
   testLogin: boolean;
   user: { email: string; name: string; picture?: string } | null;
+  /** Whether the buyers' extras (suggestions) are open. */
   allowed: boolean;
+  /** Credits left; null until billing is on. */
+  credits: { balance: number; bought: boolean; original: boolean; closed: boolean } | null;
+  offer?: Offer;
   price: string;
   buyUrl?: string;
   restore: boolean;
@@ -41,7 +55,8 @@ const OPEN: Me = {
   testLogin: false,
   user: null,
   allowed: true,
-  price: '$19',
+  credits: null,
+  price: '$19.99',
   restore: false,
   cloud: null,
   folder: null,
@@ -73,14 +88,11 @@ export function useMe() {
   return { me, refresh };
 }
 
-/** Whether the tool is closed to this visitor: billing is on, and they haven't bought it. */
-export const locked = (me: Me | null) => Boolean(me?.paywall && !me.allowed);
-
 export const signOut = () => fetch('/api/pin/auth/signout', { method: 'POST' });
 
 /**
- * The landing card's action when Pinch is closed: sign in with Google, then buy. Takes the
- * card's own button and hint styles, so it reads as the card's.
+ * Getting credits: sign in with Google, then buy the one offer. Takes the caller's own button and
+ * hint styles, so it reads as theirs.
  */
 export function AccessGate({
   me,
@@ -112,10 +124,13 @@ export function AccessGate({
             Sign-in isn’t set up yet
           </span>
         )}
-        <p className={hintClass}>Pinch is {me.price} once. Sign in, then get it.</p>
+        <p className={hintClass}>Credits are kept with your Google account.</p>
       </>
     );
+  const offer = me.offer ?? OFFER;
   const check = async () => {
+    const before = me.credits?.balance ?? 0;
+    const wasOriginal = Boolean(me.credits?.original);
     setChecking(true);
     try {
       if (me.restore) {
@@ -124,10 +139,13 @@ export function AccessGate({
         if (!res.ok) onMessage('error', body.error ?? 'That didn’t work. Try again.');
       }
       const next = await onRefresh();
-      if (next && !next.allowed)
+      // Found: a pack's credits came, or an order of the original offer (D98).
+      const found =
+        (next?.credits?.balance ?? 0) > before || (!wasOriginal && Boolean(next?.credits?.original));
+      if (next && !found)
         onMessage(
           'info',
-          `No purchase found for ${me.user?.email} yet. It can take a minute after paying; buy with this email, or check again.`,
+          `No new purchase found for ${me.user?.email} yet. It can take a minute after paying; buy with this email, or check again.`,
         );
     } finally {
       setChecking(false);
@@ -136,7 +154,7 @@ export function AccessGate({
   return (
     <>
       <a href={me.buyUrl} className={buttonClass}>
-        Get Pinch, {me.price}
+        Get {offer.credits.toLocaleString('en')} credits, {me.price}
       </a>
       <p className={hintClass}>
         Signed in as {me.user.email}.{' '}
@@ -396,15 +414,19 @@ export function AccountMenu({
               )}
             </div>
           </div>
-          {user && me?.paywall && !me.allowed && (
+          {me?.paywall && me.credits && !me.credits.original && (
             <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5 text-[13px]">
-              <span className="flex-1 text-muted-foreground">Pinch is {me.price} once.</span>
-              {me.buyUrl && (
+              <span className="flex-1 text-muted-foreground">
+                {me.credits.closed
+                  ? 'Your credits are in your account.'
+                  : `${me.credits.balance.toLocaleString('en')} credits left`}
+              </span>
+              {user && me.buyUrl && (
                 <a
                   href={me.buyUrl}
                   className="rounded-md px-1.5 py-0.5 font-medium text-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-background"
                 >
-                  Get Pinch
+                  Get more
                 </a>
               )}
             </div>
@@ -415,7 +437,7 @@ export function AccountMenu({
   );
 }
 
-/** "Are you sure" before the account and its rules go for good; the purchase is kept. */
+/** "Are you sure" before the account and its rules go for good; the credits are kept. */
 export function DeleteAccountDialog({
   opener,
   onClose,
@@ -449,8 +471,8 @@ export function DeleteAccountDialog({
       fallback="[data-account-trigger]"
     >
       <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
-        Your account, your rules and their screenshots go for good. Your purchase is kept, so
-        signing in again still finds it.
+        Your account, your rules and their screenshots go for good. Your credits are kept, so
+        signing in again still finds them.
       </p>
       {error && (
         <p className="m-0 mt-2 text-[13px] text-destructive" role="alert">
