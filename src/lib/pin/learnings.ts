@@ -676,3 +676,176 @@ function pullLine(r: Rule, against: string): string {
   const why = oneLine(r.conflict?.why ?? '');
   return `Pulls against ${against}, not settled by the designer yet${why ? `: ${why.replace(/[.\s]+$/, '')}` : ''}. ${which}`;
 }
+
+/** A file-safe name: "Acme dashboard" becomes "acme-dashboard". */
+export const collectionSlug = (name: string) =>
+  name
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'collection';
+
+/** A file of the rules package, as the zip writer takes it. */
+export type PackageFile = { name: string; data: Uint8Array };
+
+/** The package's folder: "pinch-rules-my-rules-2026-10-22/". */
+export const packageRoot = (c: Collection, stamp: string) =>
+  `pinch-rules-${collectionSlug(c.name)}-${stamp.slice(0, 10)}/`;
+
+/** A batch's folder inside the package: "batches/02-pinch-2026-10-20/". */
+const batchFolder = (i: number, b: Batch) =>
+  `batches/${String(i + 1).padStart(2, '0')}-${collectionSlug(b.name)}/`;
+
+/**
+ * The whole collection as a package to keep (D104): `design-rules.md` and `rules.json` to read,
+ * `collection.json` as it is kept (every rule, with the ones waiting for their author and the
+ * removed, and every batch with its notes), and each batch's files (screenshots, marked copies,
+ * close-ups, `notes.json`) in a folder of its own. `files` is each batch's export read back, by
+ * batch id; a batch whose export can't be read is left out and counted in `missing`, with the
+ * notes whose close-up isn't in it.
+ */
+export function rulesPackage(
+  c: Collection,
+  files: ReadonlyMap<string, ReadonlyMap<string, Uint8Array> | null>,
+  stamp: string,
+): { files: PackageFile[]; rules: number; missing: number } {
+  const root = packageRoot(c, stamp);
+  const encode = (s: string) => new TextEncoder().encode(s);
+  const out: PackageFile[] = [];
+  const folders = new Map<string, string>();
+  let missing = 0;
+  for (const [i, b] of c.batches.entries()) {
+    const folder = batchFolder(i, b);
+    folders.set(b.id, folder);
+    const found = files.get(b.id);
+    if (!found) {
+      missing += b.notes.length;
+      continue;
+    }
+    for (const [name, data] of found)
+      out.push({
+        name: root + folder + (name.startsWith(b.root) ? name.slice(b.root.length) : name),
+        data,
+      });
+    missing += b.notes.filter((n) => !found.has(b.root + n.crop)).length;
+  }
+  const fileOf = (n: ExportedNote) => (folders.get(n.batch.id) ?? '') + n.note.crop;
+  const rules = rulesOf(c);
+  out.unshift(
+    { name: `${root}README.md`, data: encode(packageReadme(c, rules.length, stamp)) },
+    { name: `${root}design-rules.md`, data: encode(rulesMarkdown(c, rules, stamp, fileOf)) },
+    {
+      name: `${root}rules.json`,
+      data: encode(`${JSON.stringify(rulesManifest(c, rules, stamp, fileOf), null, 2)}\n`),
+    },
+    { name: `${root}collection.json`, data: encode(`${JSON.stringify(c, null, 2)}\n`) },
+  );
+  return { files: out, rules: rules.length, missing };
+}
+
+function packageReadme(c: Collection, rules: number, stamp: string): string {
+  return `${[
+    `# ${oneLine(c.name)}: a Pinch backup`,
+    '',
+    `Exported from Pinch on ${stamp.slice(0, 10)}: ${rules} ${rules === 1 ? 'rule' : 'rules'} in ${c.batches.length} ${c.batches.length === 1 ? 'batch' : 'batches'} of notes.`,
+    '',
+    '- `design-rules.md`: the rules to read, or to put where your agent reads its instructions. Each rule names its notes and their close-ups.',
+    '- `rules.json`: the same rules as data.',
+    '- `collection.json`: everything as Pinch keeps it, the rules waiting for you and the removed ones too.',
+    '- `batches/`: one folder for each batch of notes. Each has the screenshots, their marked copies, the close-ups in `crops/`, a contact sheet and `notes.json`. To open one again in Pinch, zip that folder and drop it in.',
+  ].join('\n')}\n`;
+}
+
+const HOW_TO_USE = [
+  'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
+  'The author\'s own taste comes before any general design guidance or design skill you also follow: where they say otherwise, these rules win.',
+  'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
+  '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
+  'Refer to rules by number ("R4"), so the author can find them.',
+  'Each rule lists the notes it comes from and their close-ups. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
+  "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.",
+  "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its notes and close-ups first.",
+];
+
+/** The rules file an agent reads: `design-rules.md`. */
+export function rulesMarkdown(
+  c: Collection,
+  rules: ExportedRule[],
+  exportedAt: string,
+  fileOf: (n: ExportedNote) => string,
+): string {
+  const lines = [
+    `# Design rules: ${oneLine(c.name)}`,
+    '',
+    `Exported from Pinch on ${exportedAt.slice(0, 10)}: ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}.`,
+    '',
+    '## How to use these',
+    '',
+    ...HOW_TO_USE.map((l) => `- ${l}`),
+  ];
+  const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
+  for (const group of byTopic(rules.map((r) => r.rule))) {
+    lines.push('', `## ${group.label}`);
+    for (const rule of group.rules) {
+      const r = rules.find((x) => x.rule === rule) as ExportedRule;
+      const others = rule.topics.slice(1).map(topicLabel);
+      lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
+      if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
+      const against = rule.conflict && numbers.get(rule.conflict.ruleId);
+      if (rule.conflict && against) lines.push('', pullLine(rule, against));
+      if (principlesOf(rule).length) lines.push('', `Explained by: ${principlesOf(rule).join(', ')}.`);
+      if (others.length || rule.tags.length)
+        lines.push(
+          '',
+          [
+            others.length ? `Also about: ${others.join(', ')}.` : '',
+            rule.tags.length ? `Tags: ${rule.tags.join(', ')}.` : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        );
+      if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
+      lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
+      for (const n of r.notes) lines.push(`- \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/** `rules.json`: the same rules as data. */
+export function rulesManifest(
+  c: Collection,
+  rules: ExportedRule[],
+  exportedAt: string,
+  fileOf: (n: ExportedNote) => string,
+) {
+  return {
+    tool: 'Pinch',
+    kind: 'rules',
+    version: 3,
+    collection: c.name,
+    exportedAt,
+    guide: 'design-rules.md',
+    rules: rules.map((r) => ({
+      id: r.id,
+      text: oneLine(r.rule.text),
+      ...(r.rule.context.trim() ? { where: oneLine(r.rule.context) } : {}),
+      topics: r.rule.topics,
+      tags: r.rule.tags,
+      origin: originOf(r.rule),
+      ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
+      notes: r.notes.map((n) => ({
+        evidence: fileOf(n),
+        ref: n.note.ref,
+        batch: n.batch.name,
+        image: n.note.image,
+        source: n.note.source,
+        ...(n.note.screenTag ? { tag: n.note.screenTag } : {}),
+        ...(n.note.works.trim() ? { works: n.note.works.trim() } : {}),
+        ...(n.note.doesNotWork.trim() ? { doesNotWork: n.note.doesNotWork.trim() } : {}),
+      })),
+    })),
+  };
+}

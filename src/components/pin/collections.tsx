@@ -5,6 +5,7 @@ import {
   ChevronDown,
   FileText,
   Cloud,
+  Download,
   Pencil,
   ListChecks,
   PlugZap,
@@ -50,6 +51,8 @@ import {
   type Rule,
   type RulePick,
   rulesOf,
+  rulesPackage,
+  packageRoot,
   rulesText,
   tagsOf,
   unlockRules,
@@ -64,11 +67,12 @@ import {
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
 import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
+import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import type { CollectionsBackend } from './collections-backend';
 import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
-import { closeUpForReading } from './render';
+import { closeUpForReading, download } from './render';
 import { RuleSkeleton, ShimmerText } from './shimmer';
 import { TasteCheck } from './taste-check';
 import { TopicPicker } from './topic-picker';
@@ -709,6 +713,43 @@ export function CollectionsView({
     setAsking(true);
   };
 
+  /**
+   * Everything, as a zip to keep (D104): the rules to read, the collection as it is kept, and
+   * each batch's screenshots, marked copies and close-ups.
+   */
+  const exportAll = async () => {
+    const now = ref.current;
+    if (!now || busy) return;
+    setBusy('export');
+    try {
+      const found = new Map<string, Map<string, Uint8Array> | null>();
+      for (const [i, b] of now.batches.entries()) {
+        onStatus({
+          tone: 'info',
+          text: `Preparing ${Math.min(i + 1, now.batches.length)} of ${now.batches.length}…`,
+          sticky: true,
+        });
+        found.set(b.id, await filesOf(b.id));
+      }
+      const stamp = nowIso();
+      const made = rulesPackage(now, found, stamp);
+      download(
+        new Blob(zip(made.files) as BlobPart[], { type: 'application/zip' }),
+        `${packageRoot(now, stamp).slice(0, -1)}.zip`,
+      );
+      onStatus({
+        tone: made.missing ? 'error' : 'info',
+        text: made.missing
+          ? `Exported ${count(made.rules, 'rule')}, but ${count(made.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
+          : `Exported ${count(made.rules, 'rule')} with their screenshots and close-ups.`,
+      });
+    } catch {
+      onStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   /** Every rule the agent gets, as a prompt for one chat. */
   const copyRules = async () => {
     const now = ref.current;
@@ -856,6 +897,15 @@ export function CollectionsView({
               <button type="button" onClick={openTaste} className={button}>
                 <ListChecks className="size-4" aria-hidden />
                 Taste check
+              </button>
+              <button
+                type="button"
+                onClick={exportAll}
+                disabled={busy !== null || (!c.rules.length && !c.batches.length)}
+                className={button}
+              >
+                <Download className="size-4" aria-hidden />
+                {busy === 'export' ? 'Exporting…' : 'Export'}
               </button>
               <button
                 type="button"

@@ -36,8 +36,10 @@ import {
   noteKey,
   originOf,
   ownWords,
+  packageRoot,
   picked,
   rulesOf,
+  rulesPackage,
   rulesText,
   tagsOf,
   unlockRules,
@@ -1004,5 +1006,54 @@ describe('close-ups in the reading (D98)', () => {
     assert.equal(parsed.success, true, 'the request still goes');
     assert.equal(parsed.data?.notes[0].crop, undefined);
     assert.equal(parsed.data?.notes[0].works, 'x');
+  });
+});
+
+/** The export's files with a close-up for each note of `collection()`. */
+const withCrops = (files: Map<string, Uint8Array>) => {
+  for (const n of collection().batches[0].notes) files.set(`pinch-2026-10-20/${n.crop}`, JPEG);
+  return files;
+};
+
+describe('the rules package (D104)', () => {
+  it('holds the rules, the collection and every batch’s files, and reads back whole', async () => {
+    const c = read();
+    const files = new Map([['b1', withCrops(exportFiles())]]);
+    const made = rulesPackage(c, files, '2026-10-22T09:00:00Z');
+    const root = 'pinch-rules-acme-2026-10-22/';
+    assert.equal(packageRoot(c, '2026-10-22T09:00:00Z'), root);
+    assert.equal(made.rules, 2);
+    assert.equal(made.missing, 0);
+
+    const back = await unzip(
+      new Uint8Array(await new Blob(zip(made.files) as BlobPart[]).arrayBuffer()),
+    );
+    for (const name of ['README.md', 'design-rules.md', 'rules.json', 'collection.json'])
+      assert.ok(back.has(root + name), name);
+    const folder = `${root}batches/01-pinch-2026-10-20/`;
+    assert.ok(back.has(`${folder}notes.json`), 'the batch keeps its own export');
+    assert.ok(back.has(`${folder}crops/01-pricing-note-1.jpg`), 'and its close-ups');
+    assert.deepEqual(
+      JSON.parse(new TextDecoder().decode(back.get(`${root}collection.json`))),
+      JSON.parse(JSON.stringify(c)),
+      'the collection as it is kept',
+    );
+
+    const md = new TextDecoder().decode(back.get(`${root}design-rules.md`));
+    assert.match(md, /\*\*R1\.\*\*/);
+    assert.match(md, /batches\/01-pinch-2026-10-20\/crops\/01-pricing-note-1\.jpg/);
+    const rules = JSON.parse(new TextDecoder().decode(back.get(`${root}rules.json`)));
+    for (const note of rules.rules.flatMap((r: { notes: { evidence: string }[] }) => r.notes))
+      assert.ok(back.has(root + note.evidence), `${note.evidence} is in the zip`);
+  });
+
+  it('counts a batch it can’t read and a close-up that is gone', () => {
+    const c = read();
+    assert.equal(rulesPackage(c, new Map([['b1', null]]), '2026-10-22T09:00:00Z').missing, 3);
+    const bare = rulesPackage(c, new Map([['b1', exportFiles()]]), '2026-10-22T09:00:00Z');
+    assert.equal(bare.missing, 3, 'an export without its close-ups');
+    const gone = withCrops(exportFiles());
+    gone.delete('pinch-2026-10-20/crops/01-pricing-note-1.jpg');
+    assert.equal(rulesPackage(c, new Map([['b1', gone]]), '2026-10-22T09:00:00Z').missing, 1);
   });
 });
