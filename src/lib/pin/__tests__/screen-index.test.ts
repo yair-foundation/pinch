@@ -4,13 +4,33 @@ import { describe, it } from 'node:test';
 import {
   type BatchNote,
   type Collection,
+  mergeCollection,
   newCollection,
+  noteAbout,
+  picked,
+  printOf,
   type Rule,
   rulesOf,
   rulesPackage,
+  rulesText,
+  screenOf,
+  screenTagsIn,
+  withBest,
+  withOpenBest,
 } from '../learnings';
+import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
-import { screenGroup, screenIndex, screenNames, seenOn, seenOnLine } from '../screen-index';
+import {
+  roleOf,
+  screenGroup,
+  screenIndex,
+  screenNames,
+  screenNamesOf,
+  screenSets,
+  seenOn,
+  seenOnLine,
+  withScreenRole,
+} from '../screen-index';
 import { unzip } from '../unzip';
 import { zip } from '../zip';
 
@@ -149,14 +169,14 @@ describe('the index', () => {
     assert.match(md, /## Ours\n\n3 images, 4 notes\./);
     assert.match(
       md,
-      /\| Marketing Assets - Unified Inbox \| 2 \| 3 \| 2 \| 1 \| 2 \| Marketing Asset - Unified Inbox, marketing assets - unified inbox \|/,
+      /\| Marketing Assets - Unified Inbox \| {2}\| 2 \| 3 \| 2 \| 1 \| 0 \| 2 \| Marketing Asset - Unified Inbox, marketing assets - unified inbox \|/,
     );
-    assert.match(md, /\| Unified Inbox \| 1 \| 1 \| 0 \| 1 \| 1 \| {2}\|/);
+    assert.match(md, /\| Unified Inbox \| {2}\| 1 \| 1 \| 0 \| 1 \| 0 \| 1 \| {2}\|/);
     assert.match(
       md,
-      /## Other product\n\n1 image, 1 note\.\n[\s\S]*\| \(no tag\) \| 1 \| 1 \| 1 \| 0 \| 1 \|/,
+      /## Other product\n\n1 image, 1 note\.\n[\s\S]*\| \(no tag\) \| {2}\| 1 \| 1 \| 1 \| 0 \| 0 \| 1 \|/,
     );
-    assert.match(md, /## Source not set[\s\S]*\| Linear \| 1 \| 1 \| 1 \| 0 \| 0 \|/);
+    assert.match(md, /## Source not set[\s\S]*\| Linear \| {2}\| 1 \| 1 \| 1 \| 0 \| 0 \| 0 \|/);
   });
 
   it('counts two screenshots with one file name as two', () => {
@@ -180,7 +200,7 @@ describe('the index', () => {
       note('06.2', 'g.png', 'ours', undefined, 'Fine.'),
     );
     const out = screenIndex(odd, rulesOf(odd), '2026-10-22T09:00:00Z');
-    assert.match(out, /\| A \\\| B \| 1 \| 1 \|/);
+    assert.match(out, /\| A \\\| B \| {2}\| 1 \| 1 \|/);
     const ours = out.slice(out.indexOf('## Ours'), out.indexOf('## Other product'));
     assert.ok(ours.indexOf('(no tag)') > ours.indexOf('| Unified Inbox |'), 'no tag comes last');
   });
@@ -226,6 +246,7 @@ describe('the review sheets (D106)', () => {
       doesNot: '',
       rules: ['R1'],
       crop: 'crops/01.1.jpg',
+      best: false,
     });
     assert.equal(cells[1].verdict, 'bad');
     assert.deepEqual(cells[1].rules, ['R2']);
@@ -288,5 +309,264 @@ describe('a rule with no notes in design-rules.md', () => {
     assert.match(md, /Rule c\.\n\nThe designer's own pick in Pinch's taste check\./);
     assert.doesNotMatch(md, /From 0 notes/);
     assert.match(md, /From 2 notes:/, 'a rule with notes still lists them');
+  });
+});
+
+describe('the same screen tag for the agent (D108)', () => {
+  it('picks and lists rules by a tag whatever its spelling', () => {
+    const c = library();
+    const [a, b] = c.rules;
+    assert.ok(picked(a, { screen: ['marketing asset – unified inbox'] }, c));
+    assert.ok(picked(b, { screen: ['MARKETING ASSETS - UNIFIED INBOX'] }, c));
+    assert.ok(!picked(a, { screen: ['Unified Inbox'] }, c), 'a narrower set is its own');
+    assert.deepEqual(screenOf(c, b), ['Marketing Assets - Unified Inbox', 'Unified Inbox']);
+    assert.deepEqual(screenTagsIn(c, c.rules), [
+      { value: 'Marketing Assets - Unified Inbox', n: 2 },
+      { value: 'Unified Inbox', n: 1 },
+    ]);
+  });
+});
+
+describe('a best example (D108)', () => {
+  const at = { batchId: 'b1', note: '01.1' };
+
+  it('is marked and unmarked on a note that says what works, and only there', () => {
+    const c = library();
+    const marked = withBest(c, at, true, 'now');
+    assert.equal(marked.batches[0].notes[0].best, true);
+    assert.equal(marked.updatedAt, 'now');
+    assert.equal(withBest(marked, at, true, 'later'), marked, 'already marked: unchanged');
+    const unmarked = withBest(marked, at, false, 'later');
+    assert.ok(!('best' in unmarked.batches[0].notes[0]));
+    const onlyBad = { batchId: 'b1', note: '02.1' };
+    assert.equal(withBest(c, onlyBad, true, 'now'), c, 'a note on what doesn’t work can’t be one');
+    assert.equal(withBest(c, { batchId: 'b1', note: '99.9' }, true, 'now'), c);
+  });
+
+  it('survives a merge, whichever copy of the note is kept', () => {
+    const into = library();
+    const from = withBest({ ...library(), id: 'c2' }, at, true, 'now');
+    from.batches = from.batches.map((b) => ({ ...b, id: 'b2' }));
+    from.rules = [];
+    const merged = mergeCollection(into, from, 'later');
+    assert.equal(merged.batches.length, 1, 'the same notes are not kept twice');
+    assert.equal(merged.batches[0].notes[0].best, true);
+  });
+
+  it('is said wherever the note is: the agent’s text, the rules, the index and the sheets', async () => {
+    const c = withBest(library(), at, true, 'now');
+    assert.equal(
+      noteAbout(c.batches[0].notes[0]),
+      " (Ours; tag Marketing Assets - Unified Inbox; the author's best example)",
+    );
+    const rules = rulesOf(c);
+    assert.match(rulesText(c, rules), /weigh it above the others/);
+    assert.match(rulesText(c, rules), /the author's best example\): works: "Clean\."/);
+
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-22T09:00:00Z');
+    const read = (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+    const json = JSON.parse(read('rules.json'));
+    assert.equal(json.rules[0].notes[0].best, true);
+    assert.ok(!('best' in json.rules[0].notes[1]));
+    assert.match(read('design-rules.md'), /best example" is one they hold up/);
+
+    const index = read('index.md');
+    assert.match(index, /\| Best \| Rules \|/);
+    assert.match(index, /\| Marketing Assets - Unified Inbox \| {2}\| 2 \| 3 \| 2 \| 1 \| 1 \| 2 \|/);
+    assert.match(index, /6\. The author marked 1 note as a best example: the one they hold up/);
+    assert.match(index, /7\. Turn the rules a rendered page can decide into checks/);
+    assert.match(
+      index,
+      /## Best examples\n\n.*\n\n- `batches\/01-pinch-2026-10-21\/crops\/01\.1\.jpg`, note 01\.1 on a\.png \(Ours; Marketing Assets - Unified Inbox\): “Clean\.” \(R1\)/,
+    );
+    assert.equal(reviewCells(c.batches[0], rules, screenNames(c))[0].best, true);
+  });
+
+  it('leaves the index as it was when there is none', () => {
+    const c = library();
+    const index = screenIndex(c, rulesOf(c), '2026-10-22T09:00:00Z');
+    assert.doesNotMatch(index, /Best examples|best examples/);
+    assert.match(index, /\n6\. Turn the rules a rendered page can decide into checks/);
+    assert.match(
+      index,
+      /On the author’s own product \(Ours\), a note on what doesn’t work also says what not to carry over/,
+    );
+  });
+});
+
+describe('render checks in the package (D108)', () => {
+  it('gives the method and a worklist row for every rule, by its lasting key', () => {
+    const c = library();
+    const rules = rulesOf(c);
+    const md = checksGuide(c, rules, '2026-10-22T09:00:00Z');
+    assert.match(md, /^# Render checks: My rules/);
+    assert.match(md, /2 rules, 0 of them held to a place/);
+    assert.match(md, /Name it by the rule’s `key`/);
+    assert.match(md, /\| R1 \| `a` \| Rule a\. \| {2}\| {2}\| {2}\|/);
+    assert.match(md, /\| R2 \| `b` \| Rule b\. \|/);
+  });
+
+  it('is in the package, named in its README, and rules.json carries each key', () => {
+    const c = library();
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-22T09:00:00Z');
+    const names = made.files.map((f) => f.name);
+    assert.ok(names.includes(`pinch-rules-my-rules-2026-10-22/${CHECKS_FILE}`));
+    const read = (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+    assert.match(read('README.md'), /`checks\.md`: how to turn the rules/);
+    assert.deepEqual(
+      JSON.parse(read('rules.json')).rules.map((r: { id: string; key: string }) => [r.id, r.key]),
+      [
+        ['R1', 'a'],
+        ['R2', 'b'],
+      ],
+    );
+  });
+});
+
+describe('one spelling per set while typing (D110)', () => {
+  it('names a typed tag by the spelling already in use, and lists each set once', () => {
+    const known = screenNamesOf(['Marketing Assets - Unified Inbox', 'Co-pilot', 'Co-pilot']);
+    assert.equal(known.name('marketing asset – unified inbox'), 'Marketing Assets - Unified Inbox');
+    assert.equal(known.name('Copilot'), 'Co-pilot');
+    assert.equal(known.name('Reports'), 'Reports', 'a new set keeps its own spelling');
+    assert.deepEqual(screenNamesOf(['b', 'A', 'a', 'B ', 'b']).all(), ['b', 'A']);
+  });
+});
+
+describe('a best example marked on an image (D110)', () => {
+  it('goes out in notes.json, comes back on import, and reaches the reading', async () => {
+    const { manifest, readme } = await import('../model');
+    const { batchNotes, readExport, assetsOf } = await import('../import');
+    const { learnPrompt, learnSystem } = await import('../learn');
+    const asset = {
+      id: 'a1',
+      name: 'Inbox.png',
+      type: 'image/png',
+      width: 100,
+      height: 100,
+      note: '',
+      marks: [
+        {
+          id: 'm1',
+          shape: { kind: 'dot' as const, x: 0.5, y: 0.5 },
+          label: '',
+          good: 'Clean.',
+          bad: '',
+          origin: 'user' as const,
+          best: true,
+        },
+        {
+          id: 'm2',
+          shape: { kind: 'dot' as const, x: 0.2, y: 0.2 },
+          label: '',
+          good: '',
+          bad: 'Busy.',
+          origin: 'user' as const,
+          best: true,
+        },
+      ],
+    };
+    const data = manifest([asset], '2026-10-23T10:00:00Z');
+    assert.equal(data.assets[0].notes[0].best, true);
+    assert.ok(!('best' in data.assets[0].notes[1]), 'only a note that says what works');
+    assert.match(
+      readme([asset], '2026-10-23T10:00:00Z'),
+      /The author's best example: the one to follow\./,
+    );
+    const files = new Map([['pinch-x/notes.json', new TextEncoder().encode(JSON.stringify(data))]]);
+    const exp = readExport(files);
+    assert.equal(batchNotes(exp)[0].best, true);
+    assert.ok(!('best' in batchNotes(exp)[1]));
+    files.set(
+      'pinch-x/' + data.assets[0].image,
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]),
+    );
+    assert.equal(assetsOf(exp, files, () => 'id').assets[0].asset.marks[0].best, true);
+    assert.match(
+      learnPrompt({
+        notes: [{ id: 'n1', works: 'Clean.', doesNotWork: '', topics: [], best: true }],
+        rules: [],
+      }),
+      /"bestExample":true/,
+    );
+    assert.match(learnSystem, /bestExample is one the designer holds up/);
+  });
+
+  it('reaches the rules from the open images, and a note never marked there keeps its mark', () => {
+    const c = withBest(library(), { batchId: 'b1', note: '01.1' }, true, 'now');
+    const print = (ref: string) =>
+      printOf(c.batches[0].notes.find((n) => n.ref === ref) as BatchNote);
+    assert.equal(withOpenBest(c, new Map(), 'later'), c, 'nothing marked on the images');
+    const unmarked = withOpenBest(c, new Map([[print('01.1'), false]]), 'later');
+    assert.ok(!('best' in unmarked.batches[0].notes[0]));
+    const marked = withOpenBest(c, new Map([[print('02.2'), true]]), 'later');
+    assert.equal(marked.batches[0].notes.find((n) => n.ref === '02.2')?.best, true);
+    assert.equal(marked.batches[0].notes[0].best, true, 'the other mark stays');
+    const bad = withOpenBest(c, new Map([[print('02.1'), true]]), 'later');
+    assert.equal(bad, c, 'a note that only says what doesn’t work can’t be one');
+  });
+});
+
+describe('a role for each set of screenshots (D110)', () => {
+  it('is given once for a set, whatever its spelling, and taken back', () => {
+    const c = withScreenRole(library(), 'marketing asset – unified inbox', 'target', 'now');
+    assert.equal(roleOf(c, 'Marketing Assets - Unified Inbox'), 'target');
+    assert.equal(roleOf(c, 'Unified Inbox'), undefined);
+    assert.equal(
+      roleOf(
+        withScreenRole(c, 'Marketing Assets - Unified Inbox', null, 'x'),
+        'Marketing Asset - Unified Inbox',
+      ),
+      undefined,
+    );
+    assert.deepEqual(screenSets(c), [
+      { name: 'Marketing Assets - Unified Inbox', notes: 3 },
+      { name: 'Unified Inbox', notes: 1 },
+      { name: 'Linear', notes: 1 },
+    ]);
+  });
+
+  it('goes into the index, the rules, rules.json and the agent’s text', () => {
+    let c = withScreenRole(library(), 'Marketing Assets - Unified Inbox', 'target', 'now');
+    c = withScreenRole(c, 'Unified Inbox', 'today', 'now');
+    const rules = rulesOf(c);
+    const index = screenIndex(c, rules, '2026-10-22T09:00:00Z');
+    assert.match(index, /\| Screen tag \| Role \| Images \|/);
+    assert.match(index, /\| Marketing Assets - Unified Inbox \| Target style \| 2 \|/);
+    assert.match(index, /\| Unified Inbox \| How it looks today \| 1 \|/);
+    assert.match(index, /\| \(no tag\) \| {2}\| 1 \|/);
+    assert.match(index, /Where the author gave a set a role \(the Role column\)/);
+    assert.doesNotMatch(screenIndex(library(), rulesOf(library()), 'x'), /the Role column/);
+    assert.match(
+      rulesText(c, rules),
+      /The author gave these screen tags a role: “Marketing Assets - Unified Inbox” is the target style: the look to aim for; “Unified Inbox” is how the product looks today/,
+    );
+    const made = rulesPackage(c, new Map(), '2026-10-22T09:00:00Z');
+    const read = (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+    assert.match(
+      read('design-rules.md'),
+      /Seen on: Ours \(Marketing Assets - Unified Inbox, target style; Unified Inbox, how it looks today\)\./,
+    );
+    assert.deepEqual(JSON.parse(read('rules.json')).screenRoles, [
+      { tag: 'Marketing Assets - Unified Inbox', role: 'target' },
+      { tag: 'Unified Inbox', role: 'today' },
+    ]);
+  });
+
+  it('survives a merge, this one’s roles first', () => {
+    const into = withScreenRole(library(), 'Unified Inbox', 'today', 'n');
+    const from = withScreenRole(
+      withScreenRole({ ...library(), id: 'c2' }, 'Unified Inbox', 'target', 'n'),
+      'Linear',
+      'principle',
+      'n',
+    );
+    from.batches = from.batches.map((b) => ({ ...b, id: 'b2' }));
+    const merged = mergeCollection(into, from, 'later');
+    assert.equal(roleOf(merged, 'Unified Inbox'), 'today');
+    assert.equal(roleOf(merged, 'Linear'), 'principle');
   });
 });

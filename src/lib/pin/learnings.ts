@@ -1,3 +1,11 @@
+import { CHECK_SCRIPT } from './check-script';
+import {
+  type Checks,
+  CHECK_SCRIPT_FILE,
+  CHECKS_DATA_FILE,
+  checksManifest,
+  checksOf,
+} from './checks';
 import { principleName } from './foundation';
 import {
   itemsLine,
@@ -9,8 +17,18 @@ import {
   type Topic,
   topicLabel,
 } from './model';
+import { checksGuide, CHECKS_FILE } from './package-checks';
 import { type ReviewList, reviewCells, reviewFile, reviewPages, reviewSpan } from './review-sheets';
-import { screenIndex, screenNames, seenOn, seenOnLine } from './screen-index';
+import {
+  rolesLine,
+  type ScreenNames,
+  type ScreenRole,
+  screenGroup,
+  screenIndex,
+  screenNames,
+  seenOn,
+  seenOnLine,
+} from './screen-index';
 
 /*
  * The person's taste library (D79, D86, D87): one collection of design rules
@@ -40,6 +58,8 @@ export type BatchNote = {
   screenTag?: string;
   /** The close-up's path inside the export's folder: "crops/02-pricing-note-3.jpg". */
   crop: string;
+  /** The author holds this note up as the one to follow (D108). Only on a note that says what works. */
+  best?: true;
 };
 
 export type Batch = {
@@ -140,6 +160,10 @@ export type Collection = {
   read: string[];
   /** Before D87 only. */
   learnings?: Learning[];
+  /** The render checks (D109), worked out from the rules in the background. */
+  checks?: Checks;
+  /** What each set of screenshots is for, by the set's compared tag (`screenGroup`, D110). */
+  screenRoles?: Record<string, ScreenRole>;
 };
 
 /** The name of the one collection each person has (D86). */
@@ -222,6 +246,7 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
   for (const b of into.batches)
     for (const n of b.notes) where.set(fingerprintOf(n), { batchId: b.id, note: n.ref });
   const moved = new Map<string, NoteRef>();
+  const bestHere = new Set<string>();
   const batchIds = new Set(into.batches.map((b) => b.id));
   const batches = [...into.batches];
   for (const b of from.batches) {
@@ -229,7 +254,11 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
     const kept: BatchNote[] = [];
     for (const n of b.notes) {
       const here = where.get(fingerprintOf(n));
-      if (here) moved.set(noteKey({ batchId: b.id, note: n.ref }), here);
+      if (here) {
+        moved.set(noteKey({ batchId: b.id, note: n.ref }), here);
+        // A best example (D108) stays one, whichever copy of the note is kept.
+        if (n.best) bestHere.add(noteKey(here));
+      }
       else {
         kept.push(n);
         where.set(fingerprintOf(n), { batchId: b.id, note: n.ref });
@@ -237,6 +266,14 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
     }
     if (kept.length) batches.push({ ...b, notes: kept });
   }
+  for (const [i, b] of batches.entries())
+    if (b.notes.some((n) => !n.best && bestHere.has(noteKey({ batchId: b.id, note: n.ref }))))
+      batches[i] = {
+        ...b,
+        notes: b.notes.map((n) =>
+          bestHere.has(noteKey({ batchId: b.id, note: n.ref })) ? { ...n, best: true } : n,
+        ),
+      };
   const at = (r: NoteRef) => moved.get(noteKey(r)) ?? r;
   const once = (refs: NoteRef[]) => [...new Map(refs.map((r) => [noteKey(r), r])).values()];
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -256,7 +293,19 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
     const i = k.indexOf('/');
     read.add(noteKey(at({ batchId: k.slice(0, i), note: k.slice(i + 1) })));
   }
-  return { ...into, updatedAt: now, batches, rules, read: [...read] };
+  // The checks this one has stay; the other's come only where this one has none (D109).
+  const checks = into.checks ?? from.checks;
+  // A role this one gives a set stays; the other's fill in the sets this one hasn't given (D110).
+  const screenRoles = { ...from.screenRoles, ...into.screenRoles };
+  return {
+    ...into,
+    updatedAt: now,
+    batches,
+    rules,
+    read: [...read],
+    ...(checks ? { checks } : {}),
+    ...(Object.keys(screenRoles).length ? { screenRoles } : {}),
+  };
 }
 
 /** The collection with a batch added; its notes wait for the AI. */
@@ -271,6 +320,25 @@ export const withRule = (c: Collection, id: string, change: Partial<Rule>, now: 
   updatedAt: now,
   rules: c.rules.map((r) => (r.id === id ? { ...r, ...change } : r)),
 });
+
+/**
+ * The collection with a note marked as one of the author's best examples, or no longer (D108).
+ * Only a note that says what works can be one; anything else is left as it is.
+ */
+export function withBest(c: Collection, ref: NoteRef, best: boolean, now: string): Collection {
+  const batch = c.batches.find((b) => b.id === ref.batchId);
+  const note = batch?.notes.find((n) => n.ref === ref.note);
+  if (!batch || !note || Boolean(note.best) === best || (best && !note.works.trim())) return c;
+  const { best: _, ...rest } = note;
+  const next: BatchNote = best ? { ...rest, best: true } : rest;
+  return {
+    ...c,
+    updatedAt: now,
+    batches: c.batches.map((b) =>
+      b === batch ? { ...b, notes: b.notes.map((n) => (n === note ? next : n)) } : b,
+    ),
+  };
+}
 
 /** Every note the AI hasn't read yet, oldest batch first. */
 export function unreadNotes(c: Collection): { batch: Batch; note: BatchNote }[] {
@@ -293,18 +361,21 @@ export function noteAt(c: Collection, ref: NoteRef): { batch: Batch; note: Batch
 export const evidenceOf = (c: Collection, r: Rule) =>
   r.evidence.map((e) => noteAt(c, e)).filter((x) => x !== undefined);
 
-/** A screen tag compared as the same whatever its case or spacing: "linear" is "Linear ". */
-const screenKey = (v: string) => cleanScreenTag(v).toLowerCase();
+/**
+ * A screen tag compared as the same whatever its case, spacing, punctuation or plural (D105,
+ * D108): "Marketing Asset - Inbox" is "marketing assets – inbox".
+ */
+const screenKey = (v: string) => screenGroup(cleanScreenTag(v));
 
 /**
  * The tags of a rule's screenshots (D100): every one its notes' screenshots carry, each once,
- * spelled as first met. Read from the notes, so it stays current.
+ * spelled as the author spelled it most (D108). Read from the notes, so it stays current.
  */
-export function screenOf(c: Collection, r: Rule): string[] {
+export function screenOf(c: Collection, r: Rule, names: ScreenNames = screenNames(c)): string[] {
   const out: string[] = [];
   for (const { note } of evidenceOf(c, r)) {
     const v = note.screenTag;
-    if (v && !out.some((x) => screenKey(x) === screenKey(v))) out.push(v);
+    if (v && !out.some((x) => screenKey(x) === screenKey(v))) out.push(names.name(v));
   }
   return out;
 }
@@ -312,8 +383,9 @@ export function screenOf(c: Collection, r: Rule): string[] {
 /** The screen tags across some rules, with how many rules carry each, most first. */
 export function screenTagsIn(c: Collection, rules: Rule[]): { value: string; n: number }[] {
   const out: { value: string; n: number }[] = [];
+  const names = screenNames(c);
   for (const r of rules)
-    for (const v of screenOf(c, r)) {
+    for (const v of screenOf(c, r, names)) {
       const have = out.find((x) => screenKey(x.value) === screenKey(v));
       if (have) have.n++;
       else out.push({ value: v, n: 1 });
@@ -349,6 +421,36 @@ export function withScreenTags(
   });
   return changed ? { ...c, updatedAt: now, batches } : c;
 }
+
+/**
+ * The collection with best examples (D110) brought in from the open images, by each note's
+ * fingerprint, like their tags: a note the author marked or unmarked on its image takes that;
+ * one never marked there keeps what Your rules says. The same collection back when nothing changed.
+ */
+export function withOpenBest(
+  c: Collection,
+  byPrint: ReadonlyMap<string, boolean>,
+  now: string,
+): Collection {
+  let changed = false;
+  const batches = c.batches.map((b) => {
+    let touched = false;
+    const notes = b.notes.map((n) => {
+      const best = byPrint.get(fingerprintOf(n));
+      if (best === undefined || Boolean(n.best) === (best && Boolean(n.works.trim()))) return n;
+      touched = true;
+      const { best: _, ...rest } = n;
+      return best && n.works.trim() ? { ...rest, best: true as const } : rest;
+    });
+    if (!touched) return b;
+    changed = true;
+    return { ...b, notes };
+  });
+  return changed ? { ...c, updatedAt: now, batches } : c;
+}
+
+/** A note's fingerprint, to find it among the open images. */
+export const printOf = (n: BatchNote) => fingerprintOf(n);
 
 /** How many images a rule's notes are on. */
 export const imagesOf = (c: Collection, r: Rule) =>
@@ -578,7 +680,9 @@ export type RulePick = {
 const screenPicked = (c: Collection | undefined, r: Rule, want: RulePick['screen']) =>
   !want?.length ||
   (c !== undefined &&
-    screenOf(c, r).some((v) => want.some((w) => screenKey(w) === screenKey(v))));
+    evidenceOf(c, r).some(
+      ({ note }) => note.screenTag && want.some((w) => screenKey(w) === screenKey(note.screenTag ?? '')),
+    ));
 
 export const picked = (r: Rule, pick: RulePick, c?: Collection) =>
   screenPicked(c, r, pick.screen) &&
@@ -623,9 +727,16 @@ export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
 /** Where a note came from, in one line: "note 02.3 on pricing.png (Competitor)". */
 const fromLine = (n: ExportedNote) => `note ${n.note.ref} on ${n.note.image}${noteAbout(n.note)}`;
 
-/** Whose design a note's screenshot is and its tag (D100), as " (Competitor; tag Linear)". */
-export function noteAbout(n: Pick<BatchNote, 'source' | 'screenTag'>): string {
-  const about = [n.source ? sourceLabel(n.source) : '', n.screenTag ? `tag ${n.screenTag}` : ''];
+/**
+ * Whose design a note's screenshot is, its tag (D100) and whether the author holds it up as a
+ * best example (D108), as " (Competitor; tag Linear; the author's best example)".
+ */
+export function noteAbout(n: Pick<BatchNote, 'source' | 'screenTag' | 'best'>): string {
+  const about = [
+    n.source ? sourceLabel(n.source) : '',
+    n.screenTag ? `tag ${n.screenTag}` : '',
+    n.best ? "the author's best example" : '',
+  ];
   const parts = about.filter(Boolean);
   return parts.length ? ` (${parts.join('; ')})` : '';
 }
@@ -645,7 +756,8 @@ const said = (n: BatchNote) =>
 export function rulesText(c: Collection, rules: ExportedRule[]): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside. Refer to rules by number.`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside. A note marked the author's best example is one they hold up to follow: weigh it above the others. Refer to rules by number.`,
+    ...(rolesLine(c) ? [rolesLine(c)] : []),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   for (const r of rules) {
@@ -749,7 +861,18 @@ export function rulesPackage(
   const fileOf = (n: ExportedNote) => (folders.get(n.batch.id) ?? '') + n.note.crop;
   out.unshift(
     { name: `${root}README.md`, data: encode(packageReadme(c, rules.length, stamp)) },
-    { name: `${root}index.md`, data: encode(screenIndex(c, rules, stamp, reviews)) },
+    { name: `${root}index.md`, data: encode(screenIndex(c, rules, stamp, reviews, folders)) },
+    { name: root + CHECKS_FILE, data: encode(checksGuide(c, rules, stamp)) },
+    // The checks worked out from the rules and the script that runs them (D109), when there are any.
+    ...(checksOf(c).length
+      ? [
+          {
+            name: root + CHECKS_DATA_FILE,
+            data: encode(`${JSON.stringify(checksManifest(c, rules, stamp), null, 2)}\n`),
+          },
+          { name: root + CHECK_SCRIPT_FILE, data: encode(CHECK_SCRIPT) },
+        ]
+      : []),
     { name: `${root}design-rules.md`, data: encode(rulesMarkdown(c, rules, stamp, fileOf)) },
     {
       name: `${root}rules.json`,
@@ -767,6 +890,12 @@ function packageReadme(c: Collection, rules: number, stamp: string): string {
     `Exported from Pinch on ${stamp.slice(0, 10)}: ${rules} ${rules === 1 ? 'rule' : 'rules'} in ${c.batches.length} ${c.batches.length === 1 ? 'batch' : 'batches'} of notes.`,
     '',
     '- `index.md`: where to start. The notes sorted by source and screen tag, with counts and a reading order, to find the sets that match your task.',
+    `- \`${CHECKS_FILE}\`: how to turn the rules a rendered page can decide into checks in your own project, so they hold every time.`,
+    ...(checksOf(c).length
+      ? [
+          `- \`${CHECKS_DATA_FILE}\` and \`${CHECK_SCRIPT_FILE}\`: checks Pinch worked out from the rules, ready to run on any rendered page in a browser.`,
+        ]
+      : []),
     '- `design-rules.md`: the rules to read, or to put where your agent reads its instructions. Each rule names its notes and their close-ups.',
     '- `rules.json`: the same rules as data.',
     '- `collection.json`: everything as Pinch keeps it, the rules waiting for you and the removed ones too.',
@@ -779,6 +908,8 @@ const HOW_TO_USE = [
   'The author\'s own taste comes before any general design guidance or design skill you also follow: where they say otherwise, these rules win.',
   'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
   '"Seen on" says whose design the rule\'s notes are on (Ours, Competitor, Other product, Concept) and the screen tags of those screenshots. `index.md` sorts all the notes the same way, with a reading order.',
+  'A note marked "the author\'s best example" is one they hold up as the one to follow: weigh it above the others. `index.md` lists them all.',
+  'A screen tag in "Seen on" may carry the role the author gave its set: target style is the look to aim for; how it looks today shows the product as it is, so take what exists from it, not its look; principle only gives the idea, never the look.',
   '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule lists the notes it comes from and their close-ups. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
@@ -824,7 +955,7 @@ export function rulesMarkdown(
             .filter(Boolean)
             .join(' '),
         );
-      const seen = seenOnLine(seenOn(r.notes, names));
+      const seen = seenOnLine(seenOn(r.notes, names), c);
       if (seen) lines.push('', `Seen on: ${seen}.`);
       if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
       // A rule with no notes, such as a taste-check pick (D102), has nothing to list.
@@ -851,8 +982,21 @@ export function rulesManifest(
     collection: c.name,
     exportedAt,
     guide: 'design-rules.md',
+    // What each set of screenshots is for, as the author says (D110).
+    ...(Object.keys(c.screenRoles ?? {}).length
+      ? {
+          screenRoles: screenNames(c)
+            .all()
+            .flatMap((tag) => {
+              const role = c.screenRoles?.[screenGroup(tag)];
+              return role ? [{ tag, role }] : [];
+            }),
+        }
+      : {}),
     rules: rules.map((r) => ({
       id: r.id,
+      // The same from one export to the next, where the number isn't: for checks kept by rule (D108).
+      key: r.rule.id,
       text: oneLine(r.rule.text),
       ...(r.rule.context.trim() ? { where: oneLine(r.rule.context) } : {}),
       topics: r.rule.topics,
@@ -866,6 +1010,7 @@ export function rulesManifest(
         batch: n.batch.name,
         image: n.note.image,
         source: n.note.source,
+        ...(n.note.best ? { best: true } : {}),
         ...(n.note.screenTag ? { tag: n.note.screenTag } : {}),
         ...(n.note.works.trim() ? { works: n.note.works.trim() } : {}),
         ...(n.note.doesNotWork.trim() ? { doesNotWork: n.note.doesNotWork.trim() } : {}),

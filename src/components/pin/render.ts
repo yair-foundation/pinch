@@ -845,7 +845,14 @@ function drawReviewCell(
   ctx.font = `600 18px ${MONO}`;
   ctx.fillStyle = '#f4f4f5';
   ctx.fillText(cell.ref, x + pad, ty);
-  const refW = ctx.measureText(`${cell.ref}  `).width;
+  let refW = ctx.measureText(`${cell.ref}  `).width;
+  if (cell.best) {
+    // The author's best example (D108): neutral, since colour is kept for the verdicts.
+    ctx.font = `600 14px ${SANS}`;
+    ctx.fillStyle = '#f4f4f5';
+    ctx.fillText('★ Best example', x + pad + refW, ty);
+    refW += ctx.measureText('★ Best example  ').width;
+  }
   if (cell.about) {
     ctx.font = `14px ${SANS}`;
     ctx.fillStyle = '#a1a1aa';

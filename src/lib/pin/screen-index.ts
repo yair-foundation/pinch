@@ -32,28 +32,94 @@ export type ScreenNames = {
   name: (tag: string) => string;
   /** The other spellings of the same set, most used first. */
   others: (tag: string) => string[];
+  /** Every set once, by the name it goes by, the most used first. */
+  all: () => string[];
 };
 
 /** How the collection's screen tags are named, each set under one spelling. */
-export function screenNames(c: Collection): ScreenNames {
+export const screenNames = (c: Collection): ScreenNames =>
+  screenNamesOf(c.batches.flatMap((b) => b.notes.flatMap((n) => n.screenTag ?? [])));
+
+/**
+ * How some screen tags are named, each set under the spelling used most (D105, D110): from a
+ * collection's notes, or, for the tag field, the open images' tags with the collection's.
+ */
+export function screenNamesOf(tags: readonly string[]): ScreenNames {
   const spellings = new Map<string, Map<string, number>>();
-  for (const b of c.batches)
-    for (const n of b.notes) {
-      const tag = cleanScreenTag(n.screenTag);
-      if (!tag) continue;
-      const key = screenGroup(tag);
-      const seen = spellings.get(key) ?? new Map<string, number>();
-      seen.set(tag, (seen.get(tag) ?? 0) + 1);
-      spellings.set(key, seen);
-    }
+  for (const raw of tags) {
+    const tag = cleanScreenTag(raw);
+    if (!tag) continue;
+    const key = screenGroup(tag);
+    const seen = spellings.get(key) ?? new Map<string, number>();
+    seen.set(tag, (seen.get(tag) ?? 0) + 1);
+    spellings.set(key, seen);
+  }
   const ranked = (tag: string) =>
     [...(spellings.get(screenGroup(tag))?.entries() ?? [])]
       .sort((a, b) => b[1] - a[1])
       .map(([s]) => s);
+  const total = (key: string) =>
+    [...(spellings.get(key)?.values() ?? [])].reduce((n, k) => n + k, 0);
   return {
     name: (tag) => ranked(tag)[0] ?? cleanScreenTag(tag),
     others: (tag) => ranked(tag).slice(1),
+    all: () =>
+      [...spellings.keys()]
+        .sort((a, b) => total(b) - total(a))
+        .map((key) => ranked([...(spellings.get(key)?.keys() ?? [])][0])[0]),
   };
+}
+
+/** What a set of screenshots is for, as the author says (D110). */
+export type ScreenRole = 'target' | 'today' | 'principle';
+
+export const SCREEN_ROLES: { role: ScreenRole; label: string; means: string }[] = [
+  { role: 'target', label: 'Target style', means: 'the target style: the look to aim for' },
+  {
+    role: 'today',
+    label: 'How it looks today',
+    means: 'how the product looks today: take what exists from it, not its look',
+  },
+  { role: 'principle', label: 'Principle only', means: 'principle only: take the idea, never the look' },
+];
+
+const roleInfo = (role: ScreenRole) => SCREEN_ROLES.find((r) => r.role === role);
+
+/** The role the author gave a tag's set, whatever the tag's spelling. */
+export const roleOf = (c: Pick<Collection, 'screenRoles'>, tag: string): ScreenRole | undefined =>
+  c.screenRoles?.[screenGroup(tag)];
+
+/** The collection with a set's role given, or taken away. */
+export function withScreenRole(
+  c: Collection,
+  tag: string,
+  role: ScreenRole | null,
+  now: string,
+): Collection {
+  const key = screenGroup(tag);
+  const { [key]: _, ...rest } = c.screenRoles ?? {};
+  return { ...c, updatedAt: now, screenRoles: role ? { ...rest, [key]: role } : rest };
+}
+
+/** Every set of screenshots by its name, with how many notes it holds, the most first. */
+export function screenSets(c: Collection): { name: string; notes: number }[] {
+  const names = screenNames(c);
+  const counts = new Map<string, number>();
+  for (const b of c.batches)
+    for (const n of b.notes) {
+      const tag = cleanScreenTag(n.screenTag);
+      if (tag) counts.set(screenGroup(tag), (counts.get(screenGroup(tag)) ?? 0) + 1);
+    }
+  return names.all().map((name) => ({ name, notes: counts.get(screenGroup(name)) ?? 0 }));
+}
+
+/** The roles given, as a sentence for an agent; '' when there are none. */
+export function rolesLine(c: Collection): string {
+  const given = screenSets(c).flatMap(({ name }) => {
+    const role = roleOf(c, name);
+    return role ? [`“${name}” is ${roleInfo(role)?.means}`] : [];
+  });
+  return given.length ? `The author gave these screen tags a role: ${given.join('; ')}.` : '';
 }
 
 /** Where a rule was seen: the notes' sources, each with the screen tags on its screenshots. */
@@ -72,12 +138,19 @@ export function seenOn(notes: ExportedNote[], names: ScreenNames): SeenOn[] {
   return order.filter((k) => by.has(k)).map((source) => ({ source, tags: by.get(source) ?? [] }));
 }
 
-/** A rule's "seen on" in one line: "Ours (Co-pilot, Inbox); Other product". */
-export const seenOnLine = (seen: SeenOn[]) =>
+/**
+ * A rule's "seen on" in one line: "Ours (Co-pilot, Inbox); Other product", each tag with the
+ * role the author gave its set, when `c` is given (D110): "Ours (Inbox, target style)".
+ */
+export const seenOnLine = (seen: SeenOn[], c?: Pick<Collection, 'screenRoles'>) =>
   seen
     .map((s) => {
       const who = s.source ? sourceLabel(s.source) : 'Source not set';
-      return s.tags.length ? `${who} (${s.tags.join(', ')})` : who;
+      const tags = s.tags.map((t) => {
+        const role = c && roleOf(c, t);
+        return role ? `${t}, ${roleInfo(role)?.label.toLowerCase()}` : t;
+      });
+      return tags.length ? `${who} (${tags.join('; ')})` : who;
     })
     .join('; ');
 
@@ -87,6 +160,7 @@ type Cell = {
   notes: number;
   works: number;
   doesNot: number;
+  best: number;
   rules: number;
 };
 
@@ -104,6 +178,8 @@ export function screenIndex(
   rules: ExportedRule[],
   stamp: string,
   reviews: ReviewList = [],
+  /** Each batch's folder in the package, by batch id, for the best examples' close-ups. */
+  folders: ReadonlyMap<string, string> = new Map(),
 ): string {
   const names = screenNames(c);
   const sources = new Map<SourceKind | null, Map<string, Cell>>();
@@ -118,6 +194,7 @@ export function screenIndex(
       notes: 0,
       works: 0,
       doesNot: 0,
+      best: 0,
       rules: 0,
     };
     sets.set(key, have);
@@ -136,6 +213,16 @@ export function screenIndex(
       notes++;
       if (n.works.trim()) have.works++;
       if (n.doesNotWork.trim()) have.doesNot++;
+      if (n.best) have.best++;
+    }
+  const best = c.batches.flatMap((b) =>
+    b.notes.filter((n) => n.best).map((note) => ({ batch: b, note })),
+  );
+  const rulesOn = new Map<string, string[]>();
+  for (const r of rules)
+    for (const { batch, note } of r.notes) {
+      const k = `${batch.id}/${note.ref}`;
+      rulesOn.set(k, [...(rulesOn.get(k) ?? []), r.id]);
     }
   for (const r of rules) {
     const drawn = new Set<Cell>();
@@ -156,7 +243,19 @@ export function screenIndex(
     reviews.length
       ? '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw. To look at many at once, open a batch’s review sheets (listed at the end): its close-ups with their notes beside them, nine to a sheet.'
       : '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw.',
-    '5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source. A note on what doesn’t work says what is wrong in its screenshot, and a few say it as what the author would prefer instead (“I prefer a white border”): look at the close-up, avoid what the screenshot does there and follow what the words ask for. Works and Doesn’t count the notes of each kind for each set. A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.',
+    `5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source. A note on what doesn’t work says what is wrong in its screenshot, and a few say it as what the author would prefer instead (“I prefer a white border”): look at the close-up, avoid what the screenshot does there and follow what the words ask for. Works and Doesn’t count the notes of each kind for each set. On the author’s own product (Ours), a note on what doesn’t work also says what not to carry over into new work. A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.${
+      Object.keys(c.screenRoles ?? {}).length
+        ? ' Where the author gave a set a role (the Role column), it says how to weigh that set: Target style is the look to aim for; How it looks today shows the product as it is, so take what exists from it, not its look; Principle only gives the idea, never the look.'
+        : ''
+    }`,
+    ...(best.length
+      ? [
+          best.length === 1
+            ? '6. The author marked 1 note as a best example: the one they hold up to follow. Weigh it above the others, and start from it (under Best examples).'
+            : `6. The author marked ${best.length} notes as best examples: the ones they hold up to follow. Weigh them above the others, and start from them (listed under Best examples).`,
+        ]
+      : []),
+    `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];
@@ -173,8 +272,8 @@ export function screenIndex(
       '',
       `${plural(imgs, 'image')}, ${plural(total, 'note')}.`,
       '',
-      '| Screen tag | Images | Notes | Works | Doesn’t | Rules | Also typed as |',
-      '| --- | ---: | ---: | ---: | ---: | ---: | --- |',
+      '| Screen tag | Role | Images | Notes | Works | Doesn’t | Best | Rules | Also typed as |',
+      '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
     );
     const rows = [...sets.entries()].sort(
       ([ka, a], [kb, b]) =>
@@ -182,8 +281,28 @@ export function screenIndex(
     );
     for (const [key, s] of rows)
       lines.push(
-        `| ${cell(s.name)} | ${s.images.size} | ${s.notes} | ${s.works} | ${s.doesNot} | ${s.rules} | ${key ? cell(names.others(s.name).join(', ')) : ''} |`,
+        `| ${cell(s.name)} | ${key ? (roleInfo(roleOf(c, s.name) as ScreenRole)?.label ?? '') : ''} | ${s.images.size} | ${s.notes} | ${s.works} | ${s.doesNot} | ${s.best} | ${s.rules} | ${key ? cell(names.others(s.name).join(', ')) : ''} |`,
       );
+  }
+  if (best.length) {
+    lines.push(
+      '',
+      '## Best examples',
+      '',
+      'The notes the author holds up as the ones to follow, in batch order, each with its close-up and the rules that draw on it.',
+      '',
+    );
+    for (const { batch, note } of best) {
+      const about = [
+        note.source ? sourceLabel(note.source) : '',
+        note.screenTag ? names.name(note.screenTag) : '',
+      ].filter(Boolean);
+      const on = rulesOn.get(`${batch.id}/${note.ref}`) ?? [];
+      const crop = folders.has(batch.id) ? `\`${folders.get(batch.id)}${note.crop}\`, ` : '';
+      lines.push(
+        `- ${crop}note ${note.ref} on ${cell(note.image)}${about.length ? ` (${cell(about.join('; '))})` : ''}: “${cell(note.works)}”${on.length ? ` (${on.join(', ')})` : ''}`,
+      );
+    }
   }
   if (reviews.length) {
     lines.push(

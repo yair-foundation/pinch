@@ -35,6 +35,8 @@ export type ReviewCell = {
   rules: string[];
   /** Where its close-up is in the batch's export. */
   crop: string;
+  /** One of the author's best examples (D108). */
+  best: boolean;
 };
 
 /** A batch's notes as cells, in note order. */
@@ -53,6 +55,7 @@ export function reviewCells(batch: Batch, rules: ExportedRule[], names: ScreenNa
     doesNot: itemsLine(n.doesNotWork),
     rules: by.get(n.ref) ?? [],
     crop: n.crop,
+    best: Boolean(n.best),
   }));
 }
 

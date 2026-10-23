@@ -10,6 +10,7 @@ import {
   ListChecks,
   PlugZap,
   RefreshCw,
+  Star,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -40,6 +41,8 @@ import {
   type NoteRef,
   newCollection,
   newNotes,
+  noteAt,
+  printOf,
   originOf,
   ownWords,
   picked,
@@ -60,13 +63,30 @@ import {
   upgradeCollection,
   waiting,
   withBatch,
+  withBest,
+  withOpenBest,
   withScreenTags,
   withRule,
   withTitles,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
+import {
+  CHECK_KINDS,
+  type Check as RenderCheck,
+  checksBasis,
+  checksRequest,
+  checksStale,
+  withChecks,
+} from '@/lib/pin/checks';
 import { reviewCells } from '@/lib/pin/review-sheets';
-import { screenNames } from '@/lib/pin/screen-index';
+import {
+  roleOf,
+  SCREEN_ROLES,
+  type ScreenRole,
+  screenNames,
+  screenSets,
+  withScreenRole,
+} from '@/lib/pin/screen-index';
 import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
 import { zip } from '@/lib/pin/zip';
@@ -110,6 +130,8 @@ const nowIso = () => new Date().toISOString();
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** The collection is written this long after its last change, so typing a rule isn't a write per key. */
 const SAVE_PAUSE = 600;
+/** The render checks are worked out this long after the rules last changed (D109). */
+const CHECKS_PAUSE = 8000;
 
 const button = cn(
   hit,
@@ -241,6 +263,8 @@ export function CollectionsView({
   moveFrom,
   openPrints,
   openScreens,
+  openBest,
+  onOpenBest,
   batchZip,
   account,
   credits,
@@ -258,6 +282,10 @@ export function CollectionsView({
   openPrints: string[];
   /** The open images' notes' screen tags, by the same fingerprint (D100). */
   openScreens: ReadonlyMap<string, string | undefined>;
+  /** The best examples marked or unmarked on the open images, by the same fingerprint (D110). */
+  openBest: ReadonlyMap<string, boolean>;
+  /** A best example marked here, carried to its note on an open image (D110). */
+  onOpenBest: (print: string, best: boolean) => void;
   /** The open images as an export, or null when they have no notes. */
   batchZip: () => Promise<{ blob: Blob; name: string } | null>;
   /** Signed in, can sign in, or neither: what connecting an agent needs first. */
@@ -539,6 +567,11 @@ export function CollectionsView({
     if (!c || withScreenTags(c, openScreens, '') === c) return;
     change((x) => withScreenTags(x, openScreens, nowIso()), true);
   }, [c, openScreens, change]);
+  // So do best examples marked or unmarked there (D110).
+  useEffect(() => {
+    if (!c || withOpenBest(c, openBest, '') === c) return;
+    change((x) => withOpenBest(x, openBest, nowIso()), true);
+  }, [c, openBest, change]);
 
   // Rules a visitor's preview found before credits (D87, D98) never showed their words: their
   // notes wait to be read again, in full, with the next update.
@@ -595,6 +628,7 @@ export function CollectionsView({
             ...(note.label ? { label: note.label } : {}),
             topics: note.topics,
             source: note.source,
+            ...(note.best ? { best: true } : {}),
             ...(crop ? { crop } : {}),
           };
         });
@@ -748,8 +782,14 @@ export function CollectionsView({
           unsheeted++;
         }
       }
+      // Checks worked out from older rules are brought up to date first (D109); without them the
+      // package still goes.
+      if (learnAvailable) {
+        onStatus({ tone: 'info', text: 'Preparing…', sticky: true });
+        await refreshChecks().catch(() => undefined);
+      }
       const stamp = nowIso();
-      const made = rulesPackage(now, found, stamp, sheets);
+      const made = rulesPackage(ref.current ?? now, found, stamp, sheets);
       download(
         new Blob(zip(made.files) as BlobPart[], { type: 'application/zip' }),
         `${packageRoot(now, stamp).slice(0, -1)}.zip`,
@@ -768,6 +808,41 @@ export function CollectionsView({
       setBusy(null);
     }
   };
+
+  /**
+   * The render checks (D109), worked out from the rules when they changed since the last time:
+   * the rules' and notes' words go to Pinch's AI, free and behind its daily cap, and what comes
+   * back is kept for the package. The author never sees them, so nothing is said either way.
+   */
+  const refreshChecks = useCallback(async () => {
+    const now = ref.current;
+    if (!now) return;
+    const rules = checksRequest(rulesOf(now));
+    const basis = checksBasis(rules);
+    if (!rules.length || !checksStale(now, basis)) return;
+    const res = await fetch('/api/pin/checks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules }),
+    });
+    if (!res.ok) return;
+    const data = (await res.json().catch(() => ({}))) as { checks?: RenderCheck[] };
+    const list = (data.checks ?? []).filter((x) => CHECK_KINDS.includes(x.kind));
+    change((x) => withChecks(x, list, basis, nowIso()), true);
+  }, [change]);
+  // A while after the rules settle, and not while Pinch is reading or busy.
+  const checksKey =
+    c && learnAvailable && !reading && busy === null ? checksBasis(checksRequest(rulesOf(c))) : '';
+  const checksAsked = useRef('');
+  useEffect(() => {
+    if (!checksKey || !ref.current || !checksStale(ref.current, checksKey)) return;
+    if (checksAsked.current === checksKey) return;
+    const timer = setTimeout(() => {
+      checksAsked.current = checksKey;
+      refreshChecks().catch(() => undefined);
+    }, CHECKS_PAUSE);
+    return () => clearTimeout(timer);
+  }, [checksKey, refreshChecks]);
 
   /** Every rule the agent gets, as a prompt for one chat. */
   const copyRules = async () => {
@@ -867,6 +942,11 @@ export function CollectionsView({
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
         onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
         onConfirm={() => change((c) => confirmRule(c, r.id, nowIso()), true)}
+        onBest={(ref, best) => {
+          change((c) => withBest(c, ref, best, nowIso()), true);
+          const kept = noteAt(c, ref)?.note;
+          if (kept) onOpenBest(printOf(kept), best);
+        }}
         onSettle={(how) => {
           const before = r.conflict;
           change((c) => settleConflict(c, r.id, how, nowIso()), true);
@@ -1045,6 +1125,14 @@ export function CollectionsView({
 
           {slice && !shown.length && (
             <p className="text-center text-sm text-muted-foreground">No rules here yet.</p>
+          )}
+
+          {!slice && screenSets(c).length > 0 && (
+            <ScreenRoles
+              sets={screenSets(c)}
+              roleOf={(tag) => roleOf(c, tag)}
+              onRole={(tag, role) => change((x) => withScreenRole(x, tag, role, nowIso()), true)}
+            />
           )}
         </div>
       </main>
@@ -1256,6 +1344,7 @@ function RuleCard({
   onConfirm,
   onSettle,
   onRemove,
+  onBest,
 }: {
   rule: Rule;
   collection: Collection;
@@ -1273,6 +1362,8 @@ function RuleCard({
   onSettle: (how: 'place' | 'wins') => void;
   /** The author asks to remove an outdated rule; the page asks "are you sure" first. */
   onRemove: () => void;
+  /** The author marks one of its notes as a best example, or no longer (D108). */
+  onBest: (ref: NoteRef, best: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const started = useRef('');
@@ -1597,7 +1688,11 @@ function RuleCard({
             <ol className="list-none space-y-2 p-0">
               {notes.map(({ batch, note }) => (
                 <li key={`${batch.id}/${note.ref}`}>
-                  <Evidence note={note} crop={crops[`${batch.id}/${note.ref}`]} />
+                  <Evidence
+                    note={note}
+                    crop={crops[`${batch.id}/${note.ref}`]}
+                    onBest={(best) => onBest({ batchId: batch.id, note: note.ref }, best)}
+                  />
                 </li>
               ))}
             </ol>
@@ -1620,8 +1715,19 @@ function SmallIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** One note a rule draws on: its close-up, where it is, and what the author wrote. */
-function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
+/**
+ * One note a rule draws on: its close-up, where it is, and what the author wrote. A note that
+ * says what works can be marked one of the author's best examples (D108).
+ */
+function Evidence({
+  note,
+  crop,
+  onBest,
+}: {
+  note: BatchNote;
+  crop?: string;
+  onBest: (best: boolean) => void;
+}) {
   return (
     <div className="grid grid-cols-[6rem_1fr] gap-3 rounded-lg bg-muted/50 p-2">
       {crop ? (
@@ -1644,11 +1750,24 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
         </div>
       )}
       <div className="min-w-0 text-[13px] text-muted-foreground">
-        <p className="truncate">
-          <span className="font-mono">{note.ref}</span> · {note.image}
-          {note.source ? ` · ${sourceLabel(note.source)}` : ''}
-          {note.screenTag ? ` · ${note.screenTag}` : ''}
-        </p>
+        <div className="flex items-start gap-2">
+          <p className="min-w-0 flex-1 truncate pt-1.5">
+            <span className="font-mono">{note.ref}</span> · {note.image}
+            {note.source ? ` · ${sourceLabel(note.source)}` : ''}
+            {note.screenTag ? ` · ${note.screenTag}` : ''}
+          </p>
+          {note.works && (
+            <button
+              type="button"
+              aria-pressed={Boolean(note.best)}
+              onClick={() => onBest(!note.best)}
+              className={cn(small, '-my-1 shrink-0', note.best && 'text-foreground')}
+            >
+              <Star className={cn('size-4', note.best && 'fill-current')} aria-hidden />
+              Best example
+            </button>
+          )}
+        </div>
         {/* What it says, each side behind its thumb in a small box, with room under the title line. */}
         <div className="mt-2.5 space-y-2">
           {note.works && (
@@ -1672,5 +1791,62 @@ function Evidence({ note, crop }: { note: BatchNote; crop?: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * What each set of screenshots is for (D110): one role per screen tag, whatever its spelling,
+ * so the agent weighs the set right. The target style is still everything the notes say works.
+ */
+function ScreenRoles({
+  sets,
+  roleOf,
+  onRole,
+}: {
+  sets: { name: string; notes: number }[];
+  roleOf: (tag: string) => ScreenRole | undefined;
+  onRole: (tag: string, role: ScreenRole | null) => void;
+}) {
+  return (
+    <section aria-labelledby="screen-roles" className="space-y-2.5">
+      <h3
+        id="screen-roles"
+        className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
+      >
+        Screen tags
+        <span className="font-mono font-normal text-muted-foreground/70">{sets.length}</span>
+      </h3>
+      <div className="space-y-2 rounded-xl border border-border p-4">
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
+          Say what each set of screenshots is for, so your agent weighs it right.
+        </p>
+        <ul className="list-none divide-y divide-border p-0">
+          {sets.map((s, i) => (
+            <li key={s.name} className="flex items-center gap-3 py-2">
+              <label htmlFor={`role-${i}`} className="flex min-w-0 flex-1 items-baseline gap-2">
+                <span className="truncate text-sm text-foreground">{s.name}</span>
+                <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
+                  {s.notes}
+                </span>
+              </label>
+              <select
+                id={`role-${i}`}
+                value={roleOf(s.name) ?? ''}
+                onChange={(e) => onRole(s.name, (e.target.value as ScreenRole) || null)}
+                className={cn(field, 'w-auto shrink-0 py-1.5 text-[13px]')}
+              >
+                <option value="">No role</option>
+                {SCREEN_ROLES.map((r) => (
+                  <option key={r.role} value={r.role}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }

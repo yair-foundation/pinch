@@ -97,6 +97,12 @@ export type Mark = {
   origin: MarkOrigin;
   /** For an AI mark: the words of the note it came from. */
   quote?: string;
+  /**
+   * One of the author's best examples (D108, D110): the note they hold up to follow. Only on a
+   * note that says what works. Unset until the author marks it either way, so a note never
+   * marked doesn't undo a mark made on Your rules.
+   */
+  best?: boolean;
   /** For an AI mark: whether the user has checked where it landed. */
   confirmed?: boolean;
   suggestion?: Suggestion;
@@ -664,6 +670,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
             ...(m.label.trim() ? { label: m.label.trim() } : {}),
             works: itemsOf(m.good).join('\n'),
             doesNotWork: itemsOf(m.bad).join('\n'),
+            ...(m.best && m.good.trim() ? { best: true } : {}),
             ...(topicsOf(m).length ? { topics: topicsOf(m) } : {}),
             shape: roundShape(m.shape),
             pixels: shapePixels(m.shape, a.width, a.height),
@@ -731,6 +738,7 @@ export function readme(assets: Asset[], exportedAt: string): string {
       );
       if (topicsOf(m).length) lines.push(`About: ${topicsOf(m).map(topicLabel).join(', ')}`);
       if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${itemsLine(m.good)}`);
+      if (m.best && m.good.trim()) lines.push("The author's best example: the one to follow.");
       if (m.bad.trim()) lines.push(`What doesn't${suggestedText(m, 'bad')}: ${itemsLine(m.bad)}`);
       if (m.origin === 'ai' && m.quote) lines.push(`From the note: "${oneLine(m.quote)}"`);
     });

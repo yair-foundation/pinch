@@ -17,6 +17,7 @@ import {
   Plus,
   RotateCcw,
   SquareDashed,
+  Star,
   StickyNote,
   Swords,
   Tag,
@@ -66,6 +67,7 @@ import {
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { noteFingerprint } from '@/lib/pin/learnings';
+import { screenGroup, screenNamesOf } from '@/lib/pin/screen-index';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import type { SuggestResult } from '@/lib/pin/suggest';
 import { unzip } from '@/lib/pin/unzip';
@@ -207,6 +209,10 @@ class History {
 
 /** How long typing in one field keeps adding to the same step. */
 const TYPING_PAUSE = 800;
+
+/** A note's fingerprint as the rules keep it, to find it among the open images (D110). */
+const markPrint = (a: Asset, m: Mark) =>
+  noteFingerprint(exportName(a), itemsOf(m.good).join('\n'), itemsOf(m.bad).join('\n'));
 /** A drag or a run of arrow presses on one note is one step. */
 const DRAG_PAUSE = 250;
 
@@ -994,6 +1000,24 @@ function Workspace() {
       coalesce: { key: `screen:${asset.id}`, within: TYPING_PAUSE },
     });
   };
+  /**
+   * Leaving the tag field: a tag that is another spelling of one the images or rules already
+   * use (case, spacing, punctuation, a plural) takes that spelling, so a set keeps one name (D110).
+   */
+  const settleScreenTag = () => {
+    if (!asset) return;
+    const tag = cleanScreenTag(asset.screenTag);
+    if (!tag) return;
+    const others = [
+      ...assetsRef.current.filter((a) => a.id !== asset.id).flatMap((a) => a.screenTag ?? []),
+      ...ruleTags,
+    ];
+    const name = screenNamesOf(others).name(tag);
+    if (name === tag || screenGroup(name) !== screenGroup(tag)) return;
+    update(asset.id, (a) => ({ ...a, screenTag: name }), {
+      coalesce: { key: `screen:${asset.id}`, within: TYPING_PAUSE },
+    });
+  };
   const setScreenTagForAll = () => {
     const tag = cleanScreenTag(asset?.screenTag);
     if (!tag) return;
@@ -1289,15 +1313,50 @@ function Workspace() {
     balanceAtPay.current = me?.credits?.balance ?? 0;
     openDialog('pay');
   };
-  // Every tag typed on an open image, each once, to suggest on the others.
-  const screenTags = useMemo(() => {
-    const out: string[] = [];
-    for (const a of assets) {
-      const v = cleanScreenTag(a.screenTag);
-      if (v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
-    }
-    return out;
-  }, [assets]);
+  // The tags the rules already know, so the tag field offers them and keeps one spelling per set (D110).
+  const [ruleTags, setRuleTags] = useState<string[]>([]);
+  useEffect(() => {
+    if (view !== 'batch') return;
+    let gone = false;
+    backend
+      .list()
+      .then((list) => {
+        if (!gone)
+          setRuleTags(
+            list.flatMap((c) => c.batches.flatMap((b) => b.notes.flatMap((n) => n.screenTag ?? []))),
+          );
+      })
+      .catch(() => undefined);
+    return () => {
+      gone = true;
+    };
+  }, [backend, view]);
+  // Every tag typed on an open image or known to the rules, one spelling per set, to suggest.
+  const screenTags = useMemo(
+    () => screenNamesOf([...assets.flatMap((a) => a.screenTag ?? []), ...ruleTags]).all(),
+    [assets, ruleTags],
+  );
+  // Each open note's best mark, when the author set one, so it reaches the rules (D110).
+  const openBest = useMemo(
+    () =>
+      new Map<string, boolean>(
+        assets.flatMap((a) =>
+          a.marks
+            .filter((m) => verdictOf(m) !== 'empty' && m.best !== undefined)
+            .map((m) => [markPrint(a, m), Boolean(m.best)] as const),
+        ),
+      ),
+    [assets],
+  );
+  /** A best example marked on Your rules, carried to its note on an open image (D110). */
+  const setOpenBest = (print: string, best: boolean) => {
+    const a = assetsRef.current.find((x) => x.marks.some((m) => markPrint(x, m) === print));
+    if (!a) return;
+    update(a.id, (x) => ({
+      ...x,
+      marks: x.marks.map((m) => (markPrint(x, m) === print ? { ...m, best } : m)),
+    }));
+  };
   // Each open note's screen tags by its fingerprint as kept, so tags typed later reach the rules.
   const openScreens = useMemo(
     () =>
@@ -1524,6 +1583,8 @@ function Workspace() {
           moveFrom={cloudKey ? browserBackend : undefined}
           openPrints={openPrints}
           openScreens={openScreens}
+          openBest={openBest}
+          onOpenBest={setOpenBest}
           batchZip={batchZip}
           account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
           credits={credits}
@@ -1577,6 +1638,7 @@ function Workspace() {
             onSourceForAll={setSourceForAll}
             screenTags={screenTags}
             onScreenTag={setScreenTag}
+            onScreenTagSettle={settleScreenTag}
             onScreenTagForAll={setScreenTagForAll}
             onSelect={(id) => {
               if (id !== selected) deselect();
@@ -2803,6 +2865,7 @@ function Panel({
   onSourceForAll,
   screenTags,
   onScreenTag,
+  onScreenTagSettle,
   onScreenTagForAll,
   onSelect,
   onChangeMark,
@@ -2822,9 +2885,11 @@ function Panel({
   suggesting: string | null;
   onSource: (source: Source | undefined) => void;
   onSourceForAll: () => void;
-  /** The tags typed on any image, to suggest. */
+  /** The tags typed on any image or known to the rules, one spelling per set, to suggest. */
   screenTags: string[];
   onScreenTag: (value: string) => void;
+  /** Leaving the field: another spelling of a known tag takes the known one (D110). */
+  onScreenTagSettle: () => void;
   onScreenTagForAll: () => void;
   onSelect: (id: string) => void;
   onChangeMark: (id: string, change: Partial<Mark>) => void;
@@ -2876,6 +2941,7 @@ function Panel({
           suggestions={screenTags}
           total={total}
           onChange={onScreenTag}
+          onSettle={onScreenTagSettle}
           onForAll={onScreenTagForAll}
         />
         {/* What the whole image is above, its notes below: an edge-to-edge line between. */}
@@ -3090,6 +3156,22 @@ function MarkEditor({
         onDismiss={() => onDismiss('works')}
         onKeyDown={doneOnShortcut}
       />
+      {mark.good.trim() && (
+        // One of the author's best examples (D110): the note they hold up to follow.
+        <button
+          type="button"
+          aria-pressed={Boolean(mark.best)}
+          onClick={() => onChange({ best: !mark.best })}
+          className={cn(
+            hit,
+            '!mt-2 flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+            mark.best && 'text-foreground',
+          )}
+        >
+          <Star className={cn('size-4', mark.best && 'fill-current')} aria-hidden />
+          Best example
+        </button>
+      )}
       <ItemsField
         id={`doesnt-${mark.id}`}
         label="What to avoid"
@@ -3585,19 +3667,22 @@ function SuggestionHint({ id, ghost }: { id: string; ghost: string }) {
  */
 /**
  * The screenshot's own tag (D100): a product, a feature, a domain, typed once for the image
- * and carried by every note on it to the rules. It suggests the tags of the other images.
+ * and carried by every note on it to the rules. It suggests the tags of the other images and of
+ * the rules, and on leaving takes the known spelling of a tag typed another way (D110).
  */
 function ScreenTagField({
   value,
   suggestions,
   total,
   onChange,
+  onSettle,
   onForAll,
 }: {
   value: string;
   suggestions: string[];
   total: number;
   onChange: (value: string) => void;
+  onSettle: () => void;
   onForAll: () => void;
 }) {
   const others = suggestions.filter((v) => v.toLowerCase() !== value.trim().toLowerCase());
@@ -3636,6 +3721,7 @@ function ScreenTagField({
         placeholder="A product, feature or domain"
         list={others.length ? 'screen-tag-list' : undefined}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onSettle}
         className="min-h-9 w-full min-w-0 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-150 placeholder:text-[#737373] focus:border-foreground/25 motion-reduce:transition-none dark:placeholder:text-[#7a7a7a]"
       />
       {others.length > 0 && (

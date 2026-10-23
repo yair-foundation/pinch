@@ -122,7 +122,7 @@ describe('Pinch for agents (MCP)', () => {
     )) as { result: { tools: typeof TOOLS } };
     assert.deepEqual(
       tools.result.tools.map((t) => t.name),
-      ['get_design_rules', 'get_rule_evidence', 'list_rule_topics'],
+      ['get_design_rules', 'get_rule_evidence', 'get_render_checks', 'list_rule_topics'],
     );
     assert.equal(
       (

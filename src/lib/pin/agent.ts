@@ -1,4 +1,6 @@
 import { jpegSize } from '@/lib/image';
+import { CHECK_SCRIPT } from './check-script';
+import { CHECK_SCRIPT_FILE, checksManifest, checksOf } from './checks';
 import {
   type Collection,
   type ExportedNote,
@@ -36,7 +38,7 @@ import {
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS =
-  'Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough.';
+  'Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render.';
 
 export const TOOLS = [
   {
@@ -87,6 +89,23 @@ export const TOOLS = [
         },
       },
       required: ['rule'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'get_render_checks',
+    title: 'Get render checks',
+    description:
+      'Checks a script can hold on any rendered page, worked out by Pinch from this person’s rules (D109): the smallest text, text contrast, colours to avoid, the fonts allowed and how many type sizes, each with the rules it holds by number. The person didn’t set the numbers, and some are estimates (each check’s why says so), so read a failure as a likely break of the rules it names and look at the render before changing it. Returns the checks as JSON, and check-render.js: plain JavaScript to run them in a page (Playwright, Puppeteer, a browser console). Load the script, then pinchChecks.run(checks, { scale }) with scale the size the page is shown at over the size it is rendered at, and pinchChecks.report(result) for one line per failure.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        script: {
+          type: 'boolean',
+          description: 'Leave out, or true, for check-render.js too; false when you already have it.',
+        },
+      },
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -504,6 +523,11 @@ export async function answer(
       return reply(id, { tools: TOOLS });
     case 'tools/call': {
       if (params.name === 'list_rule_topics') return reply(id, text(topicsText(await rules())));
+      if (params.name === 'get_render_checks') {
+        const c = await rules();
+        const args = (params.arguments ?? {}) as { script?: unknown };
+        return reply(id, renderChecksContent(c, args.script !== false));
+      }
       if (params.name === 'get_rule_evidence') {
         const c = await rules();
         if (!c || !files)
@@ -534,4 +558,22 @@ export async function answer(
     default:
       return failure(id, -32601, `Method not found: ${m.method}`);
   }
+}
+
+/**
+ * The render checks for an agent (D109, D110): the same `checks.json` the package carries, and
+ * the script that runs them unless the agent says it has it.
+ */
+export function renderChecksContent(c: Collection | null, withScript: boolean) {
+  if (!c || !checksOf(c).length)
+    return text(
+      'No render checks yet. Pinch works them out from the rules while the person has Your rules open; call get_design_rules and follow the rules meanwhile.',
+    );
+  const spec = JSON.stringify(checksManifest(c, rulesOf(c), new Date().toISOString()), null, 2);
+  return {
+    content: [
+      { type: 'text', text: `checks.json:\n${spec}` },
+      ...(withScript ? [{ type: 'text', text: `${CHECK_SCRIPT_FILE}:\n${CHECK_SCRIPT}` }] : []),
+    ],
+  };
 }

@@ -23,6 +23,7 @@ const noteSchema = z.object({
   label: z.string().max(200).optional(),
   works: z.string().max(5000).default(''),
   doesNotWork: z.string().max(5000).default(''),
+  best: z.boolean().optional(),
   topics: z.array(z.string().max(40)).max(20).optional(),
   shape: shapeSchema,
   crop: z.string().max(300),
@@ -88,6 +89,7 @@ function markOf(n: PinchExport['assets'][number]['notes'][number], id: string): 
     good: n.works,
     bad: n.doesNotWork,
     origin: 'user',
+    ...(n.best && n.works.trim() ? { best: true } : {}),
     ...(topics.length ? { topics } : {}),
     ...(accepted.good || accepted.bad ? { accepted } : {}),
   };
@@ -143,5 +145,6 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       ...(n.label?.trim() ? { label: n.label.trim() } : {}),
       ...(cleanScreenTag(a.tag) ? { screenTag: cleanScreenTag(a.tag) } : {}),
       crop: n.crop,
+      ...(n.best && n.works.trim() ? { best: true as const } : {}),
     })),
   );

@@ -44,6 +44,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 | `PIN_LEARN` | unset | `0` turns reading notes into rules off. |
 | `PIN_LEARN_MODEL` | `claude-opus-5-5` | Model that reads notes into rules (`/api/pin/learn`). |
 | `PIN_TITLE_MODEL` | `claude-haiku-5-5` | Model that names rules written without a title (`/api/pin/learn/titles`, D95). |
+| `PIN_CHECKS_MODEL` | `claude-opus-5-5` | Model that proposes render checks from the rules (`/api/pin/checks`, D109). |
 | `PIN_LEARN_DAILY_USD` | `10` | Reading notes into rules for buyers: USD cap per day. |
 | `PIN_LEARN_PER_VISITOR` | `60` | Readings (up to 30 notes each) per visitor per day; a visitor also gets at most a third of the day's dollars. |
 | `PIN_LEARN_CALLS_PER_DAY` | `600` | Readings per day, all buyers. |
@@ -87,7 +88,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 
 ```
 src/app/                 layout (fonts, metadata, theme), page (the tool at "/"), robots.ts, global.css
-src/app/api/pin/         suggest, learn, notes; me, auth/ (google, callback, signout, test), billing/ (webhook,
+src/app/api/pin/         suggest, learn, checks, notes; me, auth/ (google, callback, signout, test), billing/ (webhook,
                          restore), account, cloud/ (collections, batches, upload)
 src/app/terms/           the terms page
 src/components/pin/      the app (pin-app.tsx), collections (collections.tsx; kept in the browser, collections-store.ts,

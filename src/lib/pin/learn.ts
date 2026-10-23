@@ -54,6 +54,8 @@ export const learnRequestSchema = z.object({
           .enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]])
           .nullable()
           .optional(),
+        /** One of the author's best examples (D110). */
+        best: z.boolean().optional(),
         /**
          * The note's close-up with its mark drawn on, a JPEG in base64 (D98). One too large is
          * dropped, not the request: the note is read from its words.
@@ -172,6 +174,7 @@ How to read the notes:
 - One judgment, one rule. When several notes say the same thing, even about different screens and in different words, they make one rule that draws on all of them. "Too many outlines", "These borders feel heavy" and "Love how spacing separates these sections" make one rule: "Separate sections with spacing; use few, light borders."
 - When a new note says what a library rule already says, it strengthens that rule: list it under strengthen. Don't write the rule again. Only when it says the same thing, not something near it; when in doubt, write a new rule.
 - A note can say more than one thing; then it goes in more than one rule.
+- A note marked bestExample is one the designer holds up as the one to follow: let its specifics shape the rule's wording, and when it pulls against an ordinary note, follow it.
 - Keep the context. Notes can pull different ways in different places: "I like dense tables" and "This onboarding feels crowded" are both true. Write a rule for each and say where it holds ("in data tables", "in onboarding"); never merge them into one vague preference.
 - When a new note contradicts a library rule and no context explains the difference, propose the rule the note teaches, set conflictsWith to that rule's id, and say in one sentence what the two disagree on, in words the designer reads: name the rules by what they say, never by id. Never change the library rule.
 - Library rules may carry the designer's own edits: strengthen them, never reword them. Never write again a rule with status dismissed; a note that says the same strengthens it instead.
@@ -230,6 +233,7 @@ export function learnPrompt(req: Pick<LearnRequest, 'notes' | 'rules'>): string 
     ...(n.topics.length ? { about: n.topics } : {}),
     ...(n.works.trim() ? { whatWorks: n.works.trim() } : {}),
     ...(n.doesNotWork.trim() ? { whatDoesnt: n.doesNotWork.trim() } : {}),
+    ...(n.best && n.works.trim() ? { bestExample: true } : {}),
   }));
   return `${library}\n\nThe new notes:\n\n${JSON.stringify(notes)}`;
 }
