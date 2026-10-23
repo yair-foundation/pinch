@@ -152,11 +152,11 @@ export function screenIndex(
     '',
     '1. Read `design-rules.md`. The rules are the author’s taste, and each one names the notes it comes from.',
     '2. Find the sets below that match your task: its product or feature in the tag, and the kind of design in the Source. Several tags often apply, such as the product itself, the kind of feature, and a general pool of the author’s own work.',
-    '3. Read each matching set’s notes in `batches/`, the larger sets first. A set whose notes mostly say what works shows the author’s taste; one whose notes mostly say what doesn’t shows what to avoid.',
+    '3. Read each matching set’s notes in `batches/`, the larger sets first.',
     reviews.length
       ? '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw. To look at many at once, open a batch’s review sheets (listed at the end): its close-ups with their notes beside them, nine to a sheet.'
       : '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw.',
-    '5. Pinch doesn’t record which sets are the target style and which only show how something looks today. Where it matters, read the notes, or ask.',
+    '5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source; what their notes say doesn’t work is what to avoid. Works and Doesn’t count them for each set. A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.',
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];

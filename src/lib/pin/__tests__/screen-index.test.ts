@@ -165,10 +165,11 @@ describe('the index', () => {
     assert.match(screenIndex(twin, rulesOf(twin), '2026-10-22T09:00:00Z'), /6 images with notes/);
   });
 
-  it('opens with a reading order, and says what Pinch does not know', () => {
+  it('opens with a reading order, and says what the target style is', () => {
     assert.match(md, /## Reading order\n\n1\. Read `design-rules\.md`/);
     assert.match(md, /open the close-up behind it/);
-    assert.match(md, /doesn’t record which sets are the target style/);
+    assert.match(md, /target style is the sum of everything their notes say works/);
+    assert.doesNotMatch(md, /read the notes, or ask/);
   });
 
   it('puts a tag with no name last and escapes a pipe', () => {
