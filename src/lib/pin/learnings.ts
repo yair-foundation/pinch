@@ -9,6 +9,7 @@ import {
   type Topic,
   topicLabel,
 } from './model';
+import { screenIndex, screenNames, seenOn, seenOnLine } from './screen-index';
 
 /*
  * The person's taste library (D79, D86, D87): one collection of design rules
@@ -735,6 +736,7 @@ export function rulesPackage(
   const rules = rulesOf(c);
   out.unshift(
     { name: `${root}README.md`, data: encode(packageReadme(c, rules.length, stamp)) },
+    { name: `${root}index.md`, data: encode(screenIndex(c, rules, stamp)) },
     { name: `${root}design-rules.md`, data: encode(rulesMarkdown(c, rules, stamp, fileOf)) },
     {
       name: `${root}rules.json`,
@@ -751,6 +753,7 @@ function packageReadme(c: Collection, rules: number, stamp: string): string {
     '',
     `Exported from Pinch on ${stamp.slice(0, 10)}: ${rules} ${rules === 1 ? 'rule' : 'rules'} in ${c.batches.length} ${c.batches.length === 1 ? 'batch' : 'batches'} of notes.`,
     '',
+    '- `index.md`: where to start. The notes sorted by source and screen tag, with counts and a reading order, to find the sets that match your task.',
     '- `design-rules.md`: the rules to read, or to put where your agent reads its instructions. Each rule names its notes and their close-ups.',
     '- `rules.json`: the same rules as data.',
     '- `collection.json`: everything as Pinch keeps it, the rules waiting for you and the removed ones too.',
@@ -762,6 +765,7 @@ const HOW_TO_USE = [
   'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
   'The author\'s own taste comes before any general design guidance or design skill you also follow: where they say otherwise, these rules win.',
   'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
+  '"Seen on" says whose design the rule\'s notes are on (Ours, Competitor, Other product, Concept) and the screen tags of those screenshots. `index.md` sorts all the notes the same way, with a reading order.',
   '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule lists the notes it comes from and their close-ups. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
@@ -786,6 +790,7 @@ export function rulesMarkdown(
     ...HOW_TO_USE.map((l) => `- ${l}`),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
+  const names = screenNames(c);
   for (const group of byTopic(rules.map((r) => r.rule))) {
     lines.push('', `## ${group.label}`);
     for (const rule of group.rules) {
@@ -806,6 +811,8 @@ export function rulesMarkdown(
             .filter(Boolean)
             .join(' '),
         );
+      const seen = seenOnLine(seenOn(r.notes, names));
+      if (seen) lines.push('', `Seen on: ${seen}.`);
       if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
       lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
       for (const n of r.notes) lines.push(`- \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
@@ -821,10 +828,11 @@ export function rulesManifest(
   exportedAt: string,
   fileOf: (n: ExportedNote) => string,
 ) {
+  const names = screenNames(c);
   return {
     tool: 'Pinch',
     kind: 'rules',
-    version: 3,
+    version: 4,
     collection: c.name,
     exportedAt,
     guide: 'design-rules.md',
@@ -835,6 +843,7 @@ export function rulesManifest(
       topics: r.rule.topics,
       tags: r.rule.tags,
       origin: originOf(r.rule),
+      seenOn: seenOn(r.notes, names),
       ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
       notes: r.notes.map((n) => ({
         evidence: fileOf(n),
