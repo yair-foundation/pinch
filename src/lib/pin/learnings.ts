@@ -10,6 +10,7 @@ import { principleName } from './foundation';
 import {
   itemsLine,
   cleanScreenTag,
+  SOURCES,
   type SourceKind,
   sortTopics,
   sourceLabel,
@@ -20,6 +21,8 @@ import {
 import { checksGuide, CHECKS_FILE } from './package-checks';
 import { type ReviewList, reviewCells, reviewFile, reviewPages, reviewSpan } from './review-sheets';
 import {
+  OUTSIDE_TARGET,
+  outsideTarget,
   rolesLine,
   type ScreenNames,
   type ScreenRole,
@@ -27,6 +30,7 @@ import {
   screenIndex,
   screenNames,
   seenOn,
+  sourceRoleOf,
   seenOnLine,
 } from './screen-index';
 
@@ -932,6 +936,8 @@ export function rulesMarkdown(
     '## How to use these',
     '',
     ...HOW_TO_USE.map((l) => `- ${l}`),
+    // The author made someone else's product the target style (D111): say how far that goes.
+    ...(outsideTarget(c) ? [`- ${OUTSIDE_TARGET}`] : []),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   const names = screenNames(c);
@@ -985,12 +991,18 @@ export function rulesManifest(
     // What each set of screenshots is for, as the author says (D110).
     ...(Object.keys(c.screenRoles ?? {}).length
       ? {
-          screenRoles: screenNames(c)
-            .all()
-            .flatMap((tag) => {
-              const role = c.screenRoles?.[screenGroup(tag)];
-              return role ? [{ tag, role }] : [];
+          screenRoles: [
+            ...SOURCES.flatMap((s) => {
+              const role = sourceRoleOf(c, s.kind);
+              return role ? [{ source: s.kind, role }] : [];
             }),
+            ...screenNames(c)
+              .all()
+              .flatMap((tag) => {
+                const role = c.screenRoles?.[screenGroup(tag)];
+                return role ? [{ tag, role }] : [];
+              }),
+          ],
         }
       : {}),
     rules: rules.map((r) => ({

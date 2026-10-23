@@ -21,6 +21,7 @@ import {
 import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
 import {
+  outsideTarget,
   roleOf,
   screenGroup,
   screenIndex,
@@ -29,7 +30,10 @@ import {
   screenSets,
   seenOn,
   seenOnLine,
+  sourceRoleOf,
+  sourceSets,
   withScreenRole,
+  withSourceRole,
 } from '../screen-index';
 import { unzip } from '../unzip';
 import { zip } from '../zip';
@@ -373,7 +377,10 @@ describe('a best example (D108)', () => {
 
     const index = read('index.md');
     assert.match(index, /\| Best \| Rules \|/);
-    assert.match(index, /\| Marketing Assets - Unified Inbox \| {2}\| 2 \| 3 \| 2 \| 1 \| 1 \| 2 \|/);
+    assert.match(
+      index,
+      /\| Marketing Assets - Unified Inbox \| {2}\| 2 \| 3 \| 2 \| 1 \| 1 \| 2 \|/,
+    );
     assert.match(index, /6\. The author marked 1 note as a best example: the one they hold up/);
     assert.match(index, /7\. Turn the rules a rendered page can decide into checks/);
     assert.match(
@@ -537,11 +544,11 @@ describe('a role for each set of screenshots (D110)', () => {
     assert.match(index, /\| Marketing Assets - Unified Inbox \| Target style \| 2 \|/);
     assert.match(index, /\| Unified Inbox \| How it looks today \| 1 \|/);
     assert.match(index, /\| \(no tag\) \| {2}\| 1 \|/);
-    assert.match(index, /Where the author gave a set a role \(the Role column\)/);
+    assert.match(index, /Where the author gave a set a role \(the Role column, or a whole source in its heading\)/);
     assert.doesNotMatch(screenIndex(library(), rulesOf(library()), 'x'), /the Role column/);
     assert.match(
       rulesText(c, rules),
-      /The author gave these screen tags a role: “Marketing Assets - Unified Inbox” is the target style: the look to aim for; “Unified Inbox” is how the product looks today/,
+      /The author gave these screenshots a role \(a tag’s own role comes first\): “Marketing Assets - Unified Inbox” is the target style: the look to aim for; “Unified Inbox” is how the product looks today/,
     );
     const made = rulesPackage(c, new Map(), '2026-10-22T09:00:00Z');
     const read = (name: string) =>
@@ -568,5 +575,68 @@ describe('a role for each set of screenshots (D110)', () => {
     const merged = mergeCollection(into, from, 'later');
     assert.equal(roleOf(merged, 'Unified Inbox'), 'today');
     assert.equal(roleOf(merged, 'Linear'), 'principle');
+  });
+});
+
+describe('a role for every screenshot of a source (D111)', () => {
+  it('is given to a source, and a tag’s own role comes first', () => {
+    let c = withSourceRole(library(), 'other', 'target', 'now');
+    assert.equal(sourceRoleOf(c, 'other'), 'target');
+    assert.ok(outsideTarget(c));
+    assert.ok(
+      !outsideTarget(withSourceRole(library(), 'ours', 'target', 'now')),
+      'our own product is not outside',
+    );
+    assert.deepEqual(sourceSets(c), [
+      { source: 'ours', notes: 4 },
+      { source: 'other', notes: 1 },
+    ]);
+    c = withSourceRole(c, 'other', null, 'later');
+    assert.equal(sourceRoleOf(c, 'other'), undefined);
+  });
+
+  it('tells the agent outside products are the target style in look, never in product', () => {
+    let c = withSourceRole(library(), 'other', 'target', 'now');
+    c = withScreenRole(c, 'Unified Inbox', 'today', 'now');
+    const rules = rulesOf(c);
+    const index = screenIndex(c, rules, '2026-10-22T09:00:00Z');
+    assert.match(index, /## Other product · Target style/);
+    assert.match(
+      index,
+      /## Other product · Target style\n\n.*\n\n.*\n.*\n\| \(no tag\) \| Target style \| 1 \|/,
+    );
+    assert.match(
+      index,
+      /gives a principle, never a copy, unless the author made it the target style\. Screenshots of someone else’s product that the author made the target style show the look to aim for: match their quality and look, never their product, brand or content\./,
+    );
+    assert.doesNotMatch(
+      index,
+      /\(Competitor, Other product, Concept\) gives a principle, never a copy\./,
+    );
+    assert.match(
+      rulesText(c, rules),
+      /every Other product screenshot is the target style: the look to aim for; “Unified Inbox” is how the product looks today/,
+    );
+    assert.match(rulesText(c, rules), /never their product, brand or content/);
+    const made = rulesPackage(c, new Map(), '2026-10-22T09:00:00Z');
+    const read = (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+    assert.match(
+      read('design-rules.md'),
+      /\n- Screenshots of someone else’s product that the author made the target style/,
+    );
+    assert.match(
+      read('design-rules.md'),
+      /Seen on: Ours \(Marketing Assets - Unified Inbox\); Other product, target style\./,
+    );
+    assert.deepEqual(JSON.parse(read('rules.json')).screenRoles, [
+      { source: 'other', role: 'target' },
+      { tag: 'Unified Inbox', role: 'today' },
+    ]);
+    const plainIndex = screenIndex(library(), rulesOf(library()), 'x');
+    assert.match(
+      plainIndex,
+      /\(Competitor, Other product, Concept\) gives a principle, never a copy\./,
+    );
   });
 });

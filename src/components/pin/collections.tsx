@@ -85,7 +85,10 @@ import {
   type ScreenRole,
   screenNames,
   screenSets,
+  sourceRoleOf,
+  sourceSets,
   withScreenRole,
+  withSourceRole,
 } from '@/lib/pin/screen-index';
 import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
@@ -1127,11 +1130,25 @@ export function CollectionsView({
             <p className="text-center text-sm text-muted-foreground">No rules here yet.</p>
           )}
 
-          {!slice && screenSets(c).length > 0 && (
+          {!slice && sourceSets(c).length + screenSets(c).length > 0 && (
             <ScreenRoles
-              sets={screenSets(c)}
-              roleOf={(tag) => roleOf(c, tag)}
-              onRole={(tag, role) => change((x) => withScreenRole(x, tag, role, nowIso()), true)}
+              sets={[
+                ...sourceSets(c).map((s) => ({
+                  key: `source:${s.source}`,
+                  name: sourceLabel(s.source),
+                  notes: s.notes,
+                  role: sourceRoleOf(c, s.source),
+                  onRole: (role: ScreenRole | null) =>
+                    change((x) => withSourceRole(x, s.source, role, nowIso()), true),
+                })),
+                ...screenSets(c).map((s) => ({
+                  ...s,
+                  key: `tag:${s.name}`,
+                  role: roleOf(c, s.name),
+                  onRole: (role: ScreenRole | null) =>
+                    change((x) => withScreenRole(x, s.name, role, nowIso()), true),
+                })),
+              ]}
             />
           )}
         </div>
@@ -1796,17 +1813,20 @@ function Evidence({
 
 
 /**
- * What each set of screenshots is for (D110): one role per screen tag, whatever its spelling,
- * so the agent weighs the set right. The target style is still everything the notes say works.
+ * What each set of screenshots is for (D110, D111): a role for each source, then each screen tag
+ * (whatever its spelling), so the agent weighs the set right; a tag's own role comes first. The
+ * target style is still everything the notes say works.
  */
 function ScreenRoles({
   sets,
-  roleOf,
-  onRole,
 }: {
-  sets: { name: string; notes: number }[];
-  roleOf: (tag: string) => ScreenRole | undefined;
-  onRole: (tag: string, role: ScreenRole | null) => void;
+  sets: {
+    key: string;
+    name: string;
+    notes: number;
+    role?: ScreenRole;
+    onRole: (role: ScreenRole | null) => void;
+  }[];
 }) {
   return (
     <section aria-labelledby="screen-roles" className="space-y-2.5">
@@ -1814,39 +1834,33 @@ function ScreenRoles({
         id="screen-roles"
         className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
       >
-        Screen tags
-        <span className="font-mono font-normal text-muted-foreground/70">{sets.length}</span>
+        Roles
       </h3>
-      <div className="space-y-2 rounded-xl border border-border p-4">
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
-          Say what each set of screenshots is for, so your agent weighs it right.
-        </p>
-        <ul className="list-none divide-y divide-border p-0">
-          {sets.map((s, i) => (
-            <li key={s.name} className="flex items-center gap-3 py-2">
-              <label htmlFor={`role-${i}`} className="flex min-w-0 flex-1 items-baseline gap-2">
-                <span className="truncate text-sm text-foreground">{s.name}</span>
-                <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
-                  {s.notes}
-                </span>
-              </label>
-              <select
-                id={`role-${i}`}
-                value={roleOf(s.name) ?? ''}
-                onChange={(e) => onRole(s.name, (e.target.value as ScreenRole) || null)}
-                className={cn(field, 'w-auto shrink-0 py-1.5 text-[13px]')}
-              >
-                <option value="">No role</option>
-                {SCREEN_ROLES.map((r) => (
-                  <option key={r.role} value={r.role}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ul className="list-none divide-y divide-border rounded-xl border border-border px-4 py-1">
+        {sets.map((s, i) => (
+          <li key={s.key} className="flex items-center gap-3 py-2">
+            <label htmlFor={`role-${i}`} className="flex min-w-0 flex-1 items-baseline gap-2">
+              <span className="truncate text-sm text-foreground">{s.name}</span>
+              <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
+                {s.notes}
+              </span>
+            </label>
+            <select
+              id={`role-${i}`}
+              value={s.role ?? ''}
+              onChange={(e) => s.onRole((e.target.value as ScreenRole) || null)}
+              className={cn(field, 'w-auto shrink-0 py-1.5 text-[13px]')}
+            >
+              <option value="">No role</option>
+              {SCREEN_ROLES.map((r) => (
+                <option key={r.role} value={r.role}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

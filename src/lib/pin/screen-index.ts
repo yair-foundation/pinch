@@ -113,13 +113,66 @@ export function screenSets(c: Collection): { name: string; notes: number }[] {
   return names.all().map((name) => ({ name, notes: counts.get(screenGroup(name)) ?? 0 }));
 }
 
+/** A source's role is kept beside the tags' roles, under a key no tag can have (D111). */
+const sourceKey = (source: SourceKind) => `source:${source}`;
+
+/**
+ * The role the author gave every screenshot of a source (D111): "everything from other
+ * products is the target style". A tag's own role wins over it.
+ */
+export const sourceRoleOf = (
+  c: Pick<Collection, 'screenRoles'>,
+  source: SourceKind,
+): ScreenRole | undefined => c.screenRoles?.[sourceKey(source)];
+
+/** The collection with a source's role given, or taken away. */
+export function withSourceRole(
+  c: Collection,
+  source: SourceKind,
+  role: ScreenRole | null,
+  now: string,
+): Collection {
+  const key = sourceKey(source);
+  const { [key]: _, ...rest } = c.screenRoles ?? {};
+  return { ...c, updatedAt: now, screenRoles: role ? { ...rest, [key]: role } : rest };
+}
+
+/** Every source that has notes, with how many, in the usual order. */
+export function sourceSets(c: Collection): { source: SourceKind; notes: number }[] {
+  const counts = new Map<SourceKind, number>();
+  for (const b of c.batches)
+    for (const n of b.notes) if (n.source) counts.set(n.source, (counts.get(n.source) ?? 0) + 1);
+  return SOURCES.flatMap((s) => {
+    const notes = counts.get(s.kind);
+    return notes ? [{ source: s.kind, notes }] : [];
+  });
+}
+
+/** Whether the author made someone else's product the target style, so "never copy" needs saying differently. */
+export const outsideTarget = (c: Pick<Collection, 'screenRoles'>) =>
+  (['competitor', 'other', 'concept'] as const).some((s) => sourceRoleOf(c, s) === 'target');
+
+/**
+ * What the role of someone else's product means to an agent (D111): the target style there is
+ * the level and the look, never the product itself.
+ */
+export const OUTSIDE_TARGET =
+  'Screenshots of someone else’s product that the author made the target style show the look to aim for: match their quality and look, never their product, brand or content.';
+
 /** The roles given, as a sentence for an agent; '' when there are none. */
 export function rolesLine(c: Collection): string {
-  const given = screenSets(c).flatMap(({ name }) => {
-    const role = roleOf(c, name);
-    return role ? [`“${name}” is ${roleInfo(role)?.means}`] : [];
-  });
-  return given.length ? `The author gave these screen tags a role: ${given.join('; ')}.` : '';
+  const given = [
+    ...sourceSets(c).flatMap(({ source }) => {
+      const role = sourceRoleOf(c, source);
+      return role ? [`every ${sourceLabel(source)} screenshot is ${roleInfo(role)?.means}`] : [];
+    }),
+    ...screenSets(c).flatMap(({ name }) => {
+      const role = roleOf(c, name);
+      return role ? [`“${name}” is ${roleInfo(role)?.means}`] : [];
+    }),
+  ];
+  if (!given.length) return '';
+  return `The author gave these screenshots a role (a tag’s own role comes first): ${given.join('; ')}.${outsideTarget(c) ? ` ${OUTSIDE_TARGET}` : ''}`;
 }
 
 /** Where a rule was seen: the notes' sources, each with the screen tags on its screenshots. */
@@ -145,7 +198,8 @@ export function seenOn(notes: ExportedNote[], names: ScreenNames): SeenOn[] {
 export const seenOnLine = (seen: SeenOn[], c?: Pick<Collection, 'screenRoles'>) =>
   seen
     .map((s) => {
-      const who = s.source ? sourceLabel(s.source) : 'Source not set';
+      const sourceRole = c && s.source && sourceRoleOf(c, s.source);
+      const who = `${s.source ? sourceLabel(s.source) : 'Source not set'}${sourceRole ? `, ${roleInfo(sourceRole)?.label.toLowerCase()}` : ''}`;
       const tags = s.tags.map((t) => {
         const role = c && roleOf(c, t);
         return role ? `${t}, ${roleInfo(role)?.label.toLowerCase()}` : t;
@@ -243,9 +297,9 @@ export function screenIndex(
     reviews.length
       ? '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw. To look at many at once, open a batch’s review sheets (listed at the end): its close-ups with their notes beside them, nine to a sheet.'
       : '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw.',
-    `5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source. A note on what doesn’t work says what is wrong in its screenshot, and a few say it as what the author would prefer instead (“I prefer a white border”): look at the close-up, avoid what the screenshot does there and follow what the words ask for. Works and Doesn’t count the notes of each kind for each set. On the author’s own product (Ours), a note on what doesn’t work also says what not to carry over into new work. A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.${
+    `5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source. A note on what doesn’t work says what is wrong in its screenshot, and a few say it as what the author would prefer instead (“I prefer a white border”): look at the close-up, avoid what the screenshot does there and follow what the words ask for. Works and Doesn’t count the notes of each kind for each set. On the author’s own product (Ours), a note on what doesn’t work also says what not to carry over into new work. ${outsideTarget(c) ? `A design from someone else’s product gives a principle, never a copy, unless the author made it the target style. ${OUTSIDE_TARGET}` : 'A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.'}${
       Object.keys(c.screenRoles ?? {}).length
-        ? ' Where the author gave a set a role (the Role column), it says how to weigh that set: Target style is the look to aim for; How it looks today shows the product as it is, so take what exists from it, not its look; Principle only gives the idea, never the look.'
+        ? ' Where the author gave a set a role (the Role column, or a whole source in its heading), it says how to weigh that set, a tag’s own role first: Target style is the look to aim for; How it looks today shows the product as it is, so take what exists from it, not its look; Principle only gives the idea, never the look.'
         : ''
     }`,
     ...(best.length
@@ -268,7 +322,7 @@ export function screenIndex(
     const imgs = new Set(all.flatMap((s) => [...s.images])).size;
     lines.push(
       '',
-      `## ${source ? sourceLabel(source) : 'Source not set'}`,
+      `## ${source ? sourceLabel(source) : 'Source not set'}${source && sourceRoleOf(c, source) ? ` · ${roleInfo(sourceRoleOf(c, source) as ScreenRole)?.label}` : ''}`,
       '',
       `${plural(imgs, 'image')}, ${plural(total, 'note')}.`,
       '',
@@ -281,7 +335,7 @@ export function screenIndex(
     );
     for (const [key, s] of rows)
       lines.push(
-        `| ${cell(s.name)} | ${key ? (roleInfo(roleOf(c, s.name) as ScreenRole)?.label ?? '') : ''} | ${s.images.size} | ${s.notes} | ${s.works} | ${s.doesNot} | ${s.best} | ${s.rules} | ${key ? cell(names.others(s.name).join(', ')) : ''} |`,
+        `| ${cell(s.name)} | ${(key ? roleInfo(roleOf(c, s.name) as ScreenRole)?.label : undefined) ?? (source ? (roleInfo(sourceRoleOf(c, source) as ScreenRole)?.label ?? '') : '')} | ${s.images.size} | ${s.notes} | ${s.works} | ${s.doesNot} | ${s.best} | ${s.rules} | ${key ? cell(names.others(s.name).join(', ')) : ''} |`,
       );
   }
   if (best.length) {
