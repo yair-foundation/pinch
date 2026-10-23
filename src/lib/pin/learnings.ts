@@ -744,7 +744,7 @@ export function rulesPackage(
       out.push({ name: root + folder + reviewFile(p), data });
       return { file: reviewFile(p), notes: reviewSpan(pages[p]) };
     });
-    reviews.push({ folder, batch: b.name, sheets: listed });
+    reviews.push({ folder, sheets: listed });
   }
   const fileOf = (n: ExportedNote) => (folders.get(n.batch.id) ?? '') + n.note.crop;
   out.unshift(
@@ -827,7 +827,9 @@ export function rulesMarkdown(
       const seen = seenOnLine(seenOn(r.notes, names));
       if (seen) lines.push('', `Seen on: ${seen}.`);
       if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
-      lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
+      // A rule with no notes, such as a taste-check pick (D102), has nothing to list.
+      if (r.notes.length)
+        lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
       for (const n of r.notes) lines.push(`- \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
     }
   }

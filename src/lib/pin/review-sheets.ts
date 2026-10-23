@@ -70,7 +70,6 @@ export const reviewFile = (page: number) => `review-${String(page + 1).padStart(
 /** A batch's sheets as the index lists them: each file with the first and last note on it. */
 export type ReviewList = {
   folder: string;
-  batch: string;
   sheets: { file: string; notes: string }[];
 }[];
 

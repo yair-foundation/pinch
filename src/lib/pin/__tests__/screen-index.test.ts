@@ -169,6 +169,7 @@ describe('the index', () => {
     assert.match(md, /## Reading order\n\n1\. Read `design-rules\.md`/);
     assert.match(md, /open the close-up behind it/);
     assert.match(md, /target style is the sum of everything their notes say works/);
+    assert.match(md, /avoid what the screenshot does there and follow what the words ask for/);
     assert.doesNotMatch(md, /read the notes, or ask/);
   });
 
@@ -259,6 +260,11 @@ describe('the review sheets (D106)', () => {
       made.files.find((f) => f.name === `${root}index.md`)?.data,
     );
     assert.match(index, /## Review sheets/);
+    assert.match(
+      index,
+      /\*\*01-pinch-2026-10-21\*\*/,
+      'each batch is headed by its folder, which is unique',
+    );
     assert.match(index, /`batches\/01-pinch-2026-10-21\/review-01\.jpg`: notes 01\.1 to 05\.1/);
     assert.match(index, /open a batch’s review sheets/);
 
@@ -268,5 +274,19 @@ describe('the review sheets (D106)', () => {
       none.files.find((f) => f.name === `${root}index.md`)?.data,
     );
     assert.doesNotMatch(bare, /Review sheets/);
+  });
+});
+
+describe('a rule with no notes in design-rules.md', () => {
+  it('has no "From 0 notes" line', async () => {
+    const c = library();
+    c.rules.push({ ...rule('c', []), taste: 'dark' });
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-22T09:00:00Z');
+    const md = new TextDecoder().decode(
+      made.files.find((f) => f.name.endsWith('/design-rules.md'))?.data,
+    );
+    assert.match(md, /Rule c\.\n\nThe designer's own pick in Pinch's taste check\./);
+    assert.doesNotMatch(md, /From 0 notes/);
+    assert.match(md, /From 2 notes:/, 'a rule with notes still lists them');
   });
 });
