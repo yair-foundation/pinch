@@ -121,6 +121,11 @@ export type Rule = {
    */
   taste?: string;
   /**
+   * Agreed with the agent in conversation and kept by the author (D116): what they agreed, and
+   * when it was kept. A new rule from the agent has no notes until a note strengthens it.
+   */
+  agreed?: { why: string; at: string };
+  /**
    * `interpreted`: Pinch's reading of the author's vaguer words, not their own (D90), with how
    * it read them in `reading`. Absent: stated, the notes' own words.
    */
@@ -832,6 +837,8 @@ export function rulesText(c: Collection, rules: ExportedRule[]): string {
     if (principlesOf(r.rule).length)
       lines.push(`   Explained by: ${principlesOf(r.rule).join(', ')}.`);
     if (r.rule.taste) lines.push("   - the designer's own pick in Pinch's taste check");
+    if (r.rule.agreed)
+      lines.push(`   - agreed with the designer in conversation: ${oneLine(r.rule.agreed.why)}`);
     for (const n of r.notes) lines.push(`   - ${fromLine(n)}: ${said(n.note)}`);
   }
   return `${lines.join('\n')}\n`;
@@ -1036,7 +1043,9 @@ export function rulesMarkdown(
       const seen = seenOnLine(seenOn(r.notes, names), c);
       if (seen) lines.push('', `Seen on: ${seen}.`);
       if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
-      // A rule with no notes, such as a taste-check pick (D102), has nothing to list.
+      if (rule.agreed)
+        lines.push('', `Agreed with the author in conversation: ${oneLine(rule.agreed.why)}`);
+      // A rule with no notes, such as a taste-check pick (D102) or one agreed (D116), has nothing to list.
       if (r.notes.length)
         lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
       for (const n of r.notes) lines.push(`- \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
@@ -1086,6 +1095,7 @@ export function rulesManifest(
       topics: r.rule.topics,
       tags: r.rule.tags,
       origin: originOf(r.rule),
+      ...(r.rule.agreed ? { agreed: oneLine(r.rule.agreed.why) } : {}),
       seenOn: seenOn(r.notes, names),
       ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
       notes: r.notes.map((n) => ({

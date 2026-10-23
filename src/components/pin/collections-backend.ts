@@ -1,4 +1,5 @@
 import type { Collection } from '@/lib/pin/learnings';
+import type { Proposal } from '@/lib/pin/proposals';
 
 /*
  * Where collections are kept: in this browser (`collections-store.ts`), or in
@@ -15,4 +16,7 @@ export type CollectionsBackend = {
   putBatch(id: string, zip: Blob): Promise<void>;
   getBatch(id: string): Promise<Blob | undefined>;
   deleteBatch(id: string): Promise<void>;
+  /** The rules the agent proposed, waiting (D116): only an account has an agent to propose. */
+  proposals?(): Promise<Proposal[]>;
+  dropProposal?(id: string): Promise<void>;
 };

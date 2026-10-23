@@ -81,6 +81,7 @@ import {
   checksStale,
   withChecks,
 } from '@/lib/pin/checks';
+import { keepProposal, type Proposal } from '@/lib/pin/proposals';
 import { reviewCells } from '@/lib/pin/review-sheets';
 import {
   roleOf,
@@ -316,6 +317,8 @@ export function CollectionsView({
   const [removing, setRemoving] = useState<string | null>(null);
   // The batch of notes the author asked to remove, waiting on "are you sure" (D115).
   const [unbatching, setUnbatching] = useState<string | null>(null);
+  // The rules the agent proposed, waiting to be kept or dropped (D116).
+  const [proposals, setProposals] = useState<Proposal[]>([]);
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
   // The taste check, open (D102).
@@ -378,6 +381,31 @@ export function CollectionsView({
       flush();
     };
   }, [save]);
+
+  // The agent may propose while the page is open: read again whenever the page comes back.
+  useEffect(() => {
+    const read = backend.proposals;
+    if (!read) return;
+    let live = true;
+    const load = () => {
+      read()
+        .then((p) => {
+          if (live) setProposals(p);
+        })
+        .catch(() => undefined);
+    };
+    const back = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    load();
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', load);
+    return () => {
+      live = false;
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', load);
+    };
+  }, [backend]);
 
   /** One collection of this browser's moved into the account's: its new notes' zips, then it. */
   const moveIn = useCallback(
@@ -939,6 +967,27 @@ export function CollectionsView({
         .catch(() => undefined);
     onStatus({ tone: 'info', text: 'Batch removed.' });
   };
+  // Kept, a proposal becomes a rule, and leaves the account's list once the rule is saved (D116).
+  const keepProposed = (p: Proposal) => {
+    setProposals((x) => x.filter((y) => y.id !== p.id));
+    change((c) => keepProposal(c, p, nowIso(), newId), true);
+    const now = ref.current;
+    if (now)
+      backend
+        .save(now)
+        .then(() => backend.dropProposal?.(p.id))
+        .catch(() => undefined);
+    onStatus({
+      tone: 'info',
+      text: p.rule ? 'Rule changed. Your agent gets it now.' : 'Rule kept. Your agent gets it now.',
+    });
+  };
+  const dropProposed = (p: Proposal) => {
+    setProposals((x) => x.filter((y) => y.id !== p.id));
+    backend.dropProposal?.(p.id).catch(() =>
+      onStatus({ tone: 'error', text: 'That didn’t reach your account, so it may show again.' }),
+    );
+  };
   const openTaste = () => {
     opener.current = document.activeElement as HTMLElement | null;
     setTasting(true);
@@ -1098,6 +1147,10 @@ export function CollectionsView({
               </div>
             )}
           </header>
+
+          {proposals.length > 0 && (
+            <Proposed proposals={proposals} onKeep={keepProposed} onDrop={dropProposed} />
+          )}
 
           {live.length > 0 && <SliceBar collection={c} slice={slice} onSlice={setSlice} />}
 
@@ -1714,21 +1767,22 @@ function RuleCard({
 
       {/*
        * Set apart from the rule and its tags by a divider, edge to edge across the card. With no
-       * notes there is no Source to open: a taste check's answer says where it came from (D102),
-       * and a rule whose notes are gone shows nothing here unless it is being edited.
+       * notes there is no Source to open: a taste check's answer (D102), or a rule agreed with the
+       * agent (D116), says where it came from, and a rule whose notes are gone shows nothing here
+       * unless it is being edited.
        */}
       <div
         className={cn(
           '-mx-4 border-t border-border px-4 pt-3',
-          !notes.length && !r.taste && !editing && 'hidden',
+          !notes.length && !r.taste && !r.agreed && !editing && 'hidden',
         )}
       >
         {/* The notes a rule draws on, and, while editing, removing it: one row. */}
         <div className="-mx-2 -mb-1 flex items-center gap-2">
           {!notes.length ? (
-            r.taste && (
+            (r.taste || r.agreed) && (
               <p className="m-0 flex min-h-8 items-center px-2 text-[13px] text-muted-foreground">
-                From your taste check
+                {r.agreed ? 'Agreed with your agent' : 'From your taste check'}
               </p>
             )
           ) : (
@@ -1940,6 +1994,55 @@ function ScreenRoles({
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * The rules the agent proposed (D116), each with what it replaces, where it holds and what was
+ * agreed, to keep or drop. Nothing reaches the agent until it is kept.
+ */
+function Proposed({
+  proposals,
+  onKeep,
+  onDrop,
+}: {
+  proposals: Proposal[];
+  onKeep: (p: Proposal) => void;
+  onDrop: (p: Proposal) => void;
+}) {
+  return (
+    <section aria-labelledby="proposed" className="space-y-2.5">
+      <h3
+        id="proposed"
+        className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
+      >
+        From your agent
+        <span className="font-mono font-normal text-muted-foreground/70">{proposals.length}</span>
+      </h3>
+      <ol className="list-none space-y-3 p-0">
+        {proposals.map((p) => (
+          <li key={p.id} className="space-y-2 rounded-xl border border-border px-4 py-3">
+            {p.was && (
+              <p className="m-0 text-[13px] text-muted-foreground line-through decoration-muted-foreground/50">
+                {p.was}
+              </p>
+            )}
+            <p className="m-0 text-[15px] leading-snug text-foreground">{p.text}</p>
+            {p.where && <p className="m-0 text-[13px] text-muted-foreground">{p.where}</p>}
+            <p className="m-0 text-[13px] text-muted-foreground">{p.why}</p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => onDrop(p)} className={button}>
+                Drop
+              </button>
+              <button type="button" onClick={() => onKeep(p)} className={primary}>
+                <Check className="size-4" aria-hidden />
+                Keep
+              </button>
+            </div>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

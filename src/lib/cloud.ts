@@ -1,7 +1,15 @@
 import { del, issueSignedToken, list, presignUrl } from '@vercel/blob';
 import { userFolder } from './account';
+import { type Proposal, proposalsIn, withProposal } from './pin/proposals';
 import { readZipEntries, TAIL_BYTES } from './pin/zip-range';
-import { deleteDocuments, hasBlob, listDocuments, putDocument, readDocument } from './blob-doc';
+import {
+  deleteDocuments,
+  hasBlob,
+  listDocuments,
+  putDocument,
+  readDocument,
+  updateDocument,
+} from './blob-doc';
 
 /*
  * An account's collections in the private Blob store (D81): each collection
@@ -10,7 +18,8 @@ import { deleteDocuments, hasBlob, listDocuments, putDocument, readDocument } fr
  * Zips are tens of megabytes, more than a function passes, so the browser
  * moves them straight to and from the store on short-lived presigned URLs,
  * scoped to one path. Without Blob credentials (local runs) the zips live in
- * this process's memory and go through the route instead.
+ * this process's memory and go through the route instead. The rules the
+ * agent proposes wait in one more document beside them (D116).
  */
 
 export const MAX_COLLECTION_BYTES = 3_000_000;
@@ -57,6 +66,29 @@ export async function deleteCollection(user: string, id: string) {
   for (const b of batchIds) await deleteBatch(user, b);
   await deleteDocuments([collectionKey(user, id)]);
 }
+
+/**
+ * The rules the agent proposed, waiting for the person (D116): one document beside the
+ * collections, `pinch-users/<account>/proposals.json`, changed by compare-and-swap, since the
+ * agent adds to it and the page takes from it. Never part of the collection, which the page
+ * writes whole.
+ */
+const proposalsKey = (user: string) => `${userFolder(user)}proposals.json`;
+type Proposals = { proposals: Proposal[] };
+
+export async function listProposals(user: string): Promise<Proposal[]> {
+  return proposalsIn((await readDocument<Proposals>(proposalsKey(user), { proposals: [] })).doc);
+}
+
+export const addProposal = (user: string, p: Proposal) =>
+  updateDocument<Proposals, void>(proposalsKey(user), { proposals: [] }, (doc) => {
+    doc.proposals = withProposal(proposalsIn(doc), p);
+  });
+
+export const dropProposal = (user: string, id: string) =>
+  updateDocument<Proposals, void>(proposalsKey(user), { proposals: [] }, (doc) => {
+    doc.proposals = proposalsIn(doc).filter((p) => p.id !== id);
+  });
 
 const memory = new Map<string, Uint8Array>();
 

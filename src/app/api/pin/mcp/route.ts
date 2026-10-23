@@ -1,5 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { userOfAgentKey } from '@/lib/agent-keys';
-import { batchFiles, listCollections } from '@/lib/cloud';
+import { addProposal, batchFiles, listCollections } from '@/lib/cloud';
 import { answer, type RpcMessage } from '@/lib/pin/agent';
 import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/learnings';
 
@@ -9,14 +10,17 @@ import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/l
  * the account's key as `Authorization: Bearer pk_…`; any account, bought or
  * free, at any balance (D98). Its tools hand over the account's rules, read from the store
  * at each call, so the agent always has the current ones, and a rule's
- * close-ups from the account's own batch zips (D94). No AI runs here, and
- * nothing about the call is logged but its method.
+ * close-ups from the account's own batch zips (D94); a rule the agent proposes
+ * waits in the account for the person (D116). No AI runs here, and nothing
+ * about the call is logged but its method.
  */
 
 export const dynamic = 'force-dynamic';
 
 const MAX_BODY = 100_000;
 const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' };
+/** An id like the app's own: lower-case letters and digits (`validId`). */
+const newId = () => Array.from(randomBytes(12), (b) => (b % 36).toString(36)).join('');
 const rpcError = (status: number, code: number, message: string) =>
   Response.json({ jsonrpc: '2.0', id: null, error: { code, message } }, { status, headers });
 
@@ -53,8 +57,11 @@ export async function POST(request: Request) {
   for (const m of messages.slice(0, 20)) {
     if (m && typeof m === 'object' && typeof m.method === 'string')
       console.log(`[pin] mcp ${m.method}`);
-    const r = await answer(m && typeof m === 'object' ? m : {}, rules, (id, paths) =>
-      batchFiles(user, id, paths),
+    const r = await answer(
+      m && typeof m === 'object' ? m : {},
+      rules,
+      (id, paths) => batchFiles(user, id, paths),
+      { id: newId, save: (p) => addProposal(user, p) },
     );
     if (r) replies.push(r);
   }

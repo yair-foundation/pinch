@@ -14,7 +14,7 @@ import {
   type TOOLS,
   topicsText,
 } from '../agent';
-import { type Collection, newCollection, type Rule } from '../learnings';
+import { type Collection, newCollection, type Rule, rulesOf } from '../learnings';
 
 const rule = (id: string, text: string, extra: Partial<Rule> = {}): Rule => ({
   id,
@@ -122,7 +122,13 @@ describe('Pinch for agents (MCP)', () => {
     )) as { result: { tools: typeof TOOLS } };
     assert.deepEqual(
       tools.result.tools.map((t) => t.name),
-      ['get_design_rules', 'get_rule_evidence', 'get_render_checks', 'list_rule_topics'],
+      [
+        'get_design_rules',
+        'get_rule_evidence',
+        'get_render_checks',
+        'propose_rule',
+        'list_rule_topics',
+      ],
     );
     assert.equal(
       (
@@ -463,5 +469,49 @@ describe('a rule’s whole screenshots over MCP (D99)', () => {
     assert.equal(markedOf(withMarked, '02'), null);
     assert.equal(markedOf(manifest, '01'), null, 'an export without it');
     assert.equal(markedOf(null, '01'), null);
+  });
+});
+
+describe('a rule the agent proposes (D116)', () => {
+  const propose = (args: unknown, saved: unknown[], store = true) =>
+    answer(
+      {
+        jsonrpc: '2.0',
+        id: 9,
+        method: 'tools/call',
+        params: { name: 'propose_rule', arguments: args },
+      },
+      async () => library(),
+      undefined,
+      store ? { id: () => 'p1', save: async (p) => void saved.push(p) } : undefined,
+    );
+
+  it('waits for the person, a change kept by its rule’s lasting key', async () => {
+    const saved: { rule?: string; was?: string; text: string }[] = [];
+    const r = await propose(
+      { rule: 'R2', text: 'Separate sections with space only.', why: 'They said so today.' },
+      saved,
+    );
+    assert.match(textOf(r), /^Proposed a change to R2\. It waits on Your rules in Pinch/);
+    assert.equal(saved.length, 1);
+    const r2 = rulesOf(library())[1].rule;
+    assert.equal(saved[0].rule, r2.id);
+    assert.equal(saved[0].was, r2.text);
+    const fresh = await propose({ text: 'AI boxes are white.', why: 'Agreed.' }, saved);
+    assert.match(textOf(fresh), /it isn’t one of their rules until they keep it/);
+  });
+
+  it('says what is wrong, and stores nothing', async () => {
+    const saved: unknown[] = [];
+    const r = (await propose({ text: 'x', why: 'y', rule: 'R40' }, saved)) as {
+      result: { isError?: boolean };
+    };
+    assert.equal(r.result.isError, true);
+    assert.match(textOf(r), /No rule R40/);
+    assert.equal(saved.length, 0);
+    const off = (await propose({ text: 'x', why: 'y' }, saved, false)) as {
+      result: { isError?: boolean };
+    };
+    assert.equal(off.result.isError, true);
   });
 });
