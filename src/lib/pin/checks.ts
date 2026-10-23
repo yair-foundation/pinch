@@ -3,20 +3,27 @@ import type { Collection, ExportedRule } from './learnings';
 
 /**
  * Render checks (D109): a few numbers a script can hold on any rendered page (the smallest text,
- * text contrast, colours to avoid, the fonts allowed, how many type sizes), each tied to the
- * rules it comes from. Pinch's AI works them out from the rules' words and their notes, in the
+ * text contrast, colours to avoid, the fonts allowed, fonts to avoid (D112), how many type sizes),
+ * each tied to the rules it comes from. Pinch's AI works them out from the rules' words and their notes, in the
  * background whenever the rules change; the author never sees them. They go into the package
  * (`checks.json`, run by `check-render.js`) for the agent. Pure: the request, the answer,
  * tidying, and the collection's checks.
  */
 
-export type CheckKind = 'textSize' | 'contrast' | 'bannedColours' | 'fonts' | 'typeSizes';
+export type CheckKind =
+  | 'textSize'
+  | 'contrast'
+  | 'bannedColours'
+  | 'fonts'
+  | 'bannedFonts'
+  | 'typeSizes';
 
 export const CHECK_KINDS: readonly CheckKind[] = [
   'textSize',
   'contrast',
   'bannedColours',
   'fonts',
+  'bannedFonts',
   'typeSizes',
 ];
 
@@ -48,6 +55,12 @@ export const CHECK_INFO: Record<
     unit: 'font families allowed',
     list: true,
     holds: 'Every visible text is set in one of these families.',
+  },
+  bannedFonts: {
+    label: 'Fonts to avoid',
+    unit: 'font families',
+    list: true,
+    holds: 'No visible text is set in one of these families.',
   },
   typeSizes: {
     label: 'Type sizes',
@@ -131,7 +144,14 @@ export const checksSchema = z.object({
   checks: z
     .array(
       z.object({
-        kind: z.enum(['textSize', 'contrast', 'bannedColours', 'fonts', 'typeSizes']),
+        kind: z.enum([
+          'textSize',
+          'contrast',
+          'bannedColours',
+          'fonts',
+          'bannedFonts',
+          'typeSizes',
+        ]),
         number: z
           .number()
           .nullable()
@@ -141,7 +161,7 @@ export const checksSchema = z.object({
         list: z
           .array(z.string())
           .describe(
-            'For bannedColours: hex colours like "#1f3a93". For fonts: family names. Empty for the three numbers.',
+            'For bannedColours: hex colours like "#1f3a93". For fonts and bannedFonts: family names. Empty for the three numbers.',
           ),
         rules: z
           .array(z.string())
@@ -156,11 +176,12 @@ export const checksSchema = z.object({
     .describe('At most one check per kind; leave a kind out when no rule supports it.'),
 });
 
-export const checksSystem = `You turn a designer's rules into a few numbers a script can check on any rendered page. Each rule is one sentence of their taste, with the notes it came from. The script can check five things, and only these:
+export const checksSystem = `You turn a designer's rules into a few numbers a script can check on any rendered page. Each rule is one sentence of their taste, with the notes it came from. The script can check six things, and only these:
 - textSize: the smallest size any visible text may be, in px at the size the design is shown.
 - contrast: the lowest contrast ratio (WCAG, to 1) any text may have with its background.
 - bannedColours: colours no text, background or border may use, as hex.
 - fonts: the font families text may be set in.
+- bannedFonts: font families no text may be set in, such as a typeface the rules call legacy.
 - typeSizes: the most different text sizes one design may use.
 
 Propose a check only where the rules support it, and give the ids of the rules it holds. Take numbers from the rules' and notes' own words where they give them. Where they don't (for example "text is too small for UI mocks", or "avoid this dark navy blue, it's legacy"), estimate a number that would hold the rule, and say in "why" that it's an estimate; never make a check stricter than the rules ask for. Leave out a kind no rule supports. A rule drawn from another product's design is a principle, not a colour or font to ban or require. Write "why" in plain words, one sentence, without naming products or companies.`;
@@ -234,10 +255,19 @@ export const checksOf = (c: Collection): Check[] =>
 export const checksStale = (c: Collection, basis: string) => c.checks?.basis !== basis;
 
 /** The collection with checks worked out from the rules `basis` names, replacing any before. */
-export const withChecks = (c: Collection, list: Check[], basis: string, now: string): Collection => ({
+export const withChecks = (
+  c: Collection,
+  list: Check[],
+  basis: string,
+  now: string,
+): Collection => ({
   ...c,
   updatedAt: now,
-  checks: { basis, at: now, list: CHECK_KINDS.flatMap((k) => list.find((x) => x.kind === k) ?? []) },
+  checks: {
+    basis,
+    at: now,
+    list: CHECK_KINDS.flatMap((k) => list.find((x) => x.kind === k) ?? []),
+  },
 });
 
 /** `checks.json`: the checks, each with the rules it holds by number and lasting key. */

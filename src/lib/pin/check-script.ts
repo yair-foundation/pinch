@@ -121,6 +121,12 @@ export const CHECK_SCRIPT = String.raw`/*
           if (allowed.indexOf(String(t.family).toLowerCase()) < 0)
             found.push({ where: t.where, text: t.text, found: t.family || '(none)', limit: 'one of ' + v.join(', ') });
         });
+      } else if (check.kind === 'bannedFonts') {
+        var avoid = v.map(function (f) { return f.toLowerCase(); });
+        texts.forEach(function (t) {
+          if (avoid.indexOf(String(t.family).toLowerCase()) >= 0)
+            found.push({ where: t.where, text: t.text, found: t.family, limit: 'a family other than ' + v.join(', ') });
+        });
       } else if (check.kind === 'typeSizes') {
         var sizes = [];
         texts.forEach(function (t) {

@@ -11,6 +11,7 @@ import {
   checksPrompt,
   checksRequest,
   checksStale,
+  checksSystem,
   cleanChecks,
   cleanValue,
   hexOf,
@@ -337,5 +338,73 @@ describe('render checks for a connected agent (D110)', () => {
     assert.deepEqual(spec.checks[0].rules, [{ id: 'R1', key: 'a' }]);
     assert.match(both.content[1].text, /^check-render\.js:\n/);
     assert.equal(renderChecksContent(c, false).content.length, 1, 'without the script when asked');
+  });
+});
+
+describe('fonts to avoid (D112)', () => {
+  it('is a check the model can answer, tidied like a list of families', () => {
+    const out = cleanChecks(
+      {
+        checks: [
+          {
+            kind: 'bannedFonts',
+            number: null,
+            list: ['"Nunito"', 'nunito ', 'Nunito Sans'],
+            rules: ['c'],
+            why: 'The rules call Nunito legacy.',
+          },
+        ],
+      },
+      ['a', 'b', 'c'],
+    );
+    assert.deepEqual(out, [
+      {
+        kind: 'bannedFonts',
+        value: ['Nunito', 'Nunito Sans'],
+        rules: ['c'],
+        why: 'The rules call Nunito legacy.',
+      },
+    ]);
+    assert.match(checksSystem, /bannedFonts: font families no text may be set in/);
+  });
+
+  it('fails text set in a family to avoid, and passes the rest', () => {
+    const s = script();
+    const spec = {
+      checks: [{ kind: 'bannedFonts', value: ['Nunito'], rules: [{ id: 'R171', key: 'n' }] }],
+    };
+    const text = (where: string, family: string) => ({
+      where,
+      text: where,
+      size: 16,
+      family,
+      colour: 'rgb(0, 0, 0)',
+      background: 'rgb(255, 255, 255)',
+    });
+    const r = s.evaluate(
+      spec,
+      [text('h1', 'Figtree'), text('button', 'nunito'), text('p', 'Nunito Sans')],
+      [],
+    );
+    assert.equal(r.failures.length, 1);
+    assert.match(
+      s.report(r),
+      /FAIL bannedFonts \(R171\) at button "button": nunito, needs a family other than Nunito/,
+    );
+  });
+
+  it('goes into checks.md and checks.json like the others', () => {
+    const c = withChecks(
+      library(),
+      [{ kind: 'bannedFonts', value: ['Nunito'], rules: ['c'], why: 'Legacy.' }],
+      'x',
+      'n',
+    );
+    const md = checksGuide(c, rulesOf(c), 'x');
+    assert.match(
+      md,
+      /\*\*Fonts to avoid\*\*: Nunito \(font families\)\. No visible text is set in one of these families\. Holds R3\./,
+    );
+    assert.deepEqual(checksManifest(c, rulesOf(c), 'x').checks[0].rules, [{ id: 'R3', key: 'c' }]);
   });
 });

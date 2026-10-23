@@ -97,7 +97,7 @@ export const TOOLS = [
     name: 'get_render_checks',
     title: 'Get render checks',
     description:
-      'Checks a script can hold on any rendered page, worked out by Pinch from this person’s rules (D109): the smallest text, text contrast, colours to avoid, the fonts allowed and how many type sizes, each with the rules it holds by number. The person didn’t set the numbers, and some are estimates (each check’s why says so), so read a failure as a likely break of the rules it names and look at the render before changing it. Returns the checks as JSON, and check-render.js: plain JavaScript to run them in a page (Playwright, Puppeteer, a browser console). Load the script, then pinchChecks.run(checks, { scale }) with scale the size the page is shown at over the size it is rendered at, and pinchChecks.report(result) for one line per failure.',
+      'Checks a script can hold on any rendered page, worked out by Pinch from this person’s rules (D109): the smallest text, text contrast, colours to avoid, the fonts allowed, fonts to avoid and how many type sizes, each with the rules it holds by number. The person didn’t set the numbers, and some are estimates (each check’s why says so), so read a failure as a likely break of the rules it names and look at the render before changing it. Returns the checks as JSON, and check-render.js: plain JavaScript to run them in a page (Playwright, Puppeteer, a browser console). Load the script, then pinchChecks.run(checks, { scale }) with scale the size the page is shown at over the size it is rendered at, and pinchChecks.report(result) for one line per failure.',
     inputSchema: {
       type: 'object',
       properties: {
