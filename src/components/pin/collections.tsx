@@ -31,6 +31,8 @@ import {
   applyReading,
   type Batch,
   type BatchNote,
+  batchLabel,
+  batchReach,
   byTopic,
   confirmRule,
   type Collection,
@@ -68,6 +70,7 @@ import {
   withScreenTags,
   withRule,
   withTitles,
+  withoutBatch,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
 import {
@@ -311,6 +314,8 @@ export function CollectionsView({
   const [connecting, setConnecting] = useState(false);
   // The rule the author asked to remove, waiting on "are you sure".
   const [removing, setRemoving] = useState<string | null>(null);
+  // The batch of notes the author asked to remove, waiting on "are you sure" (D115).
+  const [unbatching, setUnbatching] = useState<string | null>(null);
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
   // The taste check, open (D102).
@@ -921,6 +926,19 @@ export function CollectionsView({
       },
     });
   };
+  // Removed, a batch leaves the rules, and its zip goes once that is saved (D115). No undo: the
+  // zip is gone, so "are you sure" comes first.
+  const removeBatch = (id: string) => {
+    setUnbatching(null);
+    change((c) => withoutBatch(c, id, nowIso()), true);
+    const now = ref.current;
+    if (now)
+      backend
+        .save(now)
+        .then(() => backend.deleteBatch(id))
+        .catch(() => undefined);
+    onStatus({ tone: 'info', text: 'Batch removed.' });
+  };
   const openTaste = () => {
     opener.current = document.activeElement as HTMLElement | null;
     setTasting(true);
@@ -984,7 +1002,9 @@ export function CollectionsView({
   return (
     <>
       <main
-        inert={inert || connecting || removing !== null || asking || tasting}
+        inert={
+          inert || connecting || removing !== null || unbatching !== null || asking || tasting
+        }
         className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-7 px-6 py-8">
           <header className="space-y-3">
@@ -1151,6 +1171,20 @@ export function CollectionsView({
               ]}
             />
           )}
+
+          {!slice && c.batches.length > 0 && (
+            <Batches
+              batches={c.batches.map((b, i) => ({
+                id: b.id,
+                label: batchLabel(i, b),
+                notes: b.notes.length,
+              }))}
+              onRemove={(id) => {
+                opener.current = document.activeElement as HTMLElement | null;
+                setUnbatching(id);
+              }}
+            />
+          )}
         </div>
       </main>
 
@@ -1210,6 +1244,51 @@ export function CollectionsView({
           </div>
         </Dialog>
       )}
+      {unbatching !== null &&
+        (() => {
+          const i = c.batches.findIndex((b) => b.id === unbatching);
+          const b = c.batches[i];
+          if (!b) return null;
+          const reach = batchReach(c, b.id);
+          return (
+            <Dialog
+              id="remove-batch-title"
+              title="Remove this batch?"
+              opener={opener.current}
+              onClose={() => setUnbatching(null)}
+            >
+              <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
+                {batchLabel(i, b)}: {count(reach.notes, 'note')} on {count(reach.images, 'image')},
+                deleted from {backend.kind === 'account' ? 'your account' : 'this browser'}.
+                {reach.rules > 0 &&
+                  ` ${count(reach.rules, 'rule')} came from them alone and ${reach.rules === 1 ? 'goes' : 'go'} too.`}
+                {reach.fewer > 0 &&
+                  ` ${count(reach.fewer, 'rule')} ${reach.fewer === 1 ? 'keeps' : 'keep'} ${reach.fewer === 1 ? 'its' : 'their'} other notes.`}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  data-autofocus
+                  onClick={() => setUnbatching(null)}
+                  className={button}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeBatch(b.id)}
+                  className={cn(
+                    hit,
+                    'flex min-h-9 items-center gap-2 rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
+                  )}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Remove
+                </button>
+              </div>
+            </Dialog>
+          );
+        })()}
       {asking && (
         <Dialog
           id="close-ups-title"
@@ -1858,6 +1937,53 @@ function ScreenRoles({
                 </option>
               ))}
             </select>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The batches of notes the rules are read from (D115), each by its folder's name in the package
+ * and its count of notes, with Remove for one added by mistake or to test.
+ */
+function Batches({
+  batches,
+  onRemove,
+}: {
+  batches: { id: string; label: string; notes: number }[];
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <section aria-labelledby="batches" className="space-y-2.5">
+      <h3
+        id="batches"
+        className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
+      >
+        Batches
+      </h3>
+      <ul className="list-none divide-y divide-border rounded-xl border border-border px-4 py-1">
+        {batches.map((b) => (
+          <li key={b.id} className="flex items-center gap-3 py-1.5">
+            <span className="flex min-w-0 flex-1 items-baseline gap-2">
+              <span className="truncate text-sm text-foreground">{b.label}</span>
+              <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
+                {b.notes}
+              </span>
+            </span>
+            <button
+              type="button"
+              aria-label={`Remove ${b.label}`}
+              title="Remove"
+              onClick={() => onRemove(b.id)}
+              className={cn(
+                hit,
+                'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </button>
           </li>
         ))}
       </ul>

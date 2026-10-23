@@ -347,6 +347,60 @@ export function withBest(c: Collection, ref: NoteRef, best: boolean, now: string
 /** Whether the author marked any note as a best example, so the agent is told how to weigh one. */
 export const hasBest = (c: Collection) => c.batches.some((b) => b.notes.some((n) => n.best));
 
+/**
+ * The rules that came from a batch's notes alone (D115): they go with it. A taste-check pick
+ * a note strengthened stays, the author's own choice with no notes again.
+ */
+const onlyFrom = (c: Collection, batchId: string) =>
+  new Set(
+    c.rules
+      .filter((r) => !r.taste && r.evidence.length && r.evidence.every((e) => e.batchId === batchId))
+      .map((r) => r.id),
+  );
+
+/** What removing a batch takes with it, for the author to confirm (D115). */
+export function batchReach(c: Collection, batchId: string) {
+  const batch = c.batches.find((b) => b.id === batchId);
+  const gone = onlyFrom(c, batchId);
+  const live = (r: Rule) => r.status !== 'dismissed';
+  return {
+    notes: batch?.notes.length ?? 0,
+    images: batch?.images ?? 0,
+    /** Rules, not removed before, that go with it. */
+    rules: c.rules.filter((r) => live(r) && gone.has(r.id)).length,
+    /** Rules that keep other notes and lose these. */
+    fewer: c.rules.filter(
+      (r) => live(r) && !gone.has(r.id) && r.evidence.some((e) => e.batchId === batchId),
+    ).length,
+  };
+}
+
+/**
+ * The collection without one batch of notes (D115): its notes leave every rule that drew on
+ * them, a rule that came from them alone goes too (deleted, not dismissed: the author removed
+ * the notes, not the rule, so Pinch may write it again from others), a rule set against one of
+ * those loses the pull, and none of its notes waits to be read. Its zip is the caller's to
+ * delete, once this is saved.
+ */
+export function withoutBatch(c: Collection, batchId: string, now: string): Collection {
+  if (!c.batches.some((b) => b.id === batchId)) return c;
+  const gone = onlyFrom(c, batchId);
+  return {
+    ...c,
+    updatedAt: now,
+    batches: c.batches.filter((b) => b.id !== batchId),
+    read: c.read.filter((k) => !k.startsWith(`${batchId}/`)),
+    rules: c.rules.flatMap((r) => {
+      if (gone.has(r.id)) return [];
+      const evidence = r.evidence.filter((e) => e.batchId !== batchId);
+      const pullGone = r.conflict !== undefined && gone.has(r.conflict.ruleId);
+      if (evidence.length === r.evidence.length && !pullGone) return [r];
+      const { conflict, ...rest } = r;
+      return [{ ...rest, evidence, ...(conflict && !pullGone ? { conflict } : {}) }];
+    }),
+  };
+}
+
 /** Every note the AI hasn't read yet, oldest batch first. */
 export function unreadNotes(c: Collection): { batch: Batch; note: BatchNote }[] {
   const read = new Set(c.read);
@@ -815,9 +869,12 @@ export type PackageFile = { name: string; data: Uint8Array };
 export const packageRoot = (c: Collection, stamp: string) =>
   `pinch-rules-${collectionSlug(c.name)}-${stamp.slice(0, 10)}/`;
 
+/** A batch by its place and name, as its folder in the package is named: "02-pinch-2026-10-20". */
+export const batchLabel = (i: number, b: Batch) =>
+  `${String(i + 1).padStart(2, '0')}-${collectionSlug(b.name)}`;
+
 /** A batch's folder inside the package: "batches/02-pinch-2026-10-20/". */
-const batchFolder = (i: number, b: Batch) =>
-  `batches/${String(i + 1).padStart(2, '0')}-${collectionSlug(b.name)}/`;
+const batchFolder = (i: number, b: Batch) => `batches/${batchLabel(i, b)}/`;
 
 /**
  * The whole collection as a package to keep (D104): `design-rules.md` and `rules.json` to read,
