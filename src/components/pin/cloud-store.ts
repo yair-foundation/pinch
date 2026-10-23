@@ -1,5 +1,6 @@
 import { uploadPresigned } from '@vercel/blob/client';
 import type { Collection } from '@/lib/pin/learnings';
+import { saveQueue } from '@/lib/pin/save-queue';
 import type { CollectionsBackend } from './collections-backend';
 
 /*
@@ -23,6 +24,16 @@ const json = { 'Content-Type': 'application/json' };
 /** `folder` is the account's own folder in the store, as `/api/pin/me` gives it. */
 export function cloudBackend(folder: string, mode: 'blob' | 'memory'): CollectionsBackend {
   const route = (id: string) => `/api/pin/cloud/batches/${encodeURIComponent(id)}`;
+  // A collection's saves go one at a time, the newest waiting one only (D113).
+  const saves = saveQueue<Collection>(async (id, c) => {
+    await ok(
+      await fetch(`/api/pin/cloud/collections/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: json,
+        body: JSON.stringify(c),
+      }),
+    );
+  });
   return {
     kind: 'account',
     async list() {
@@ -30,16 +41,9 @@ export function cloudBackend(folder: string, mode: 'blob' | 'memory'): Collectio
       const { collections } = (await res.json()) as { collections: Collection[] };
       return collections.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     },
-    async save(c) {
-      await ok(
-        await fetch(`/api/pin/cloud/collections/${encodeURIComponent(c.id)}`, {
-          method: 'PUT',
-          headers: json,
-          body: JSON.stringify(c),
-        }),
-      );
-    },
+    save: (c) => saves.write(c.id, c),
     async remove(c) {
+      await saves.idle(c.id);
       await ok(
         await fetch(`/api/pin/cloud/collections/${encodeURIComponent(c.id)}`, {
           method: 'DELETE',
