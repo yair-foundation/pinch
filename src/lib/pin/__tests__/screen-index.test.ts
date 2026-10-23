@@ -9,6 +9,7 @@ import {
   rulesOf,
   rulesPackage,
 } from '../learnings';
+import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
 import { screenGroup, screenIndex, screenNames, seenOn, seenOnLine } from '../screen-index';
 import { unzip } from '../unzip';
 import { zip } from '../zip';
@@ -205,5 +206,66 @@ describe('the package with its index (D105)', () => {
       { source: 'ours', tags: ['Marketing Assets - Unified Inbox'] },
       { source: 'other', tags: [] },
     ]);
+  });
+});
+
+describe('the review sheets (D106)', () => {
+  const c = library();
+  const rules = rulesOf(c);
+  const cells = reviewCells(c.batches[0], rules, screenNames(c));
+
+  it('plans a cell for every note, with its words, its design and its rules', () => {
+    assert.equal(cells.length, 6);
+    assert.deepEqual(cells[0], {
+      ref: '01.1',
+      verdict: 'good',
+      about: 'Ours; Marketing Assets - Unified Inbox',
+      works: 'Clean.',
+      doesNot: '',
+      rules: ['R1'],
+      crop: 'crops/01.1.jpg',
+    });
+    assert.equal(cells[1].verdict, 'bad');
+    assert.deepEqual(cells[1].rules, ['R2']);
+    assert.equal(cells[5].about, 'Linear', 'a note with no source still says its tag');
+    assert.deepEqual(cells[5].rules, [], 'a note no rule draws on');
+  });
+
+  it('splits into sheets of nine, named in order', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ ...cells[0], ref: `${i + 1}.1` }));
+    assert.deepEqual(
+      reviewPages(many).map((p) => p.length),
+      [9, 9, 2],
+    );
+    assert.equal(reviewFile(0), 'review-01.jpg');
+    assert.equal(reviewFile(11), 'review-12.jpg');
+    assert.equal(reviewSpan(reviewPages(many)[0]), '1.1 to 9.1');
+    assert.equal(reviewSpan([cells[0]]), '01.1');
+  });
+
+  it('goes into the package and is listed in the index, only for a batch that has them', async () => {
+    const sheet = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1]);
+    const made = rulesPackage(
+      c,
+      new Map([['b1', new Map()]]),
+      '2026-10-22T09:00:00Z',
+      new Map([['b1', [sheet]]]),
+    );
+    const root = 'pinch-rules-my-rules-2026-10-22/';
+    const names = made.files.map((f) => f.name);
+    assert.ok(names.includes(`${root}batches/01-pinch-2026-10-21/review-01.jpg`));
+    const index = new TextDecoder().decode(
+      made.files.find((f) => f.name === `${root}index.md`)?.data,
+    );
+    assert.match(index, /## Review sheets/);
+    assert.match(index, /`batches\/01-pinch-2026-10-21\/review-01\.jpg`: notes 01\.1 to 05\.1/);
+    assert.match(index, /open a batch’s review sheets/);
+
+    const none = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-22T09:00:00Z');
+    assert.ok(!none.files.some((f) => f.name.includes('review-')));
+    const bare = new TextDecoder().decode(
+      none.files.find((f) => f.name === `${root}index.md`)?.data,
+    );
+    assert.doesNotMatch(bare, /Review sheets/);
   });
 });

@@ -9,6 +9,7 @@ import {
   type Topic,
   topicLabel,
 } from './model';
+import { type ReviewList, reviewCells, reviewFile, reviewPages, reviewSpan } from './review-sheets';
 import { screenIndex, screenNames, seenOn, seenOnLine } from './screen-index';
 
 /*
@@ -705,14 +706,19 @@ const batchFolder = (i: number, b: Batch) =>
  * removed, and every batch with its notes), and each batch's files (screenshots, marked copies,
  * close-ups, `notes.json`) in a folder of its own. `files` is each batch's export read back, by
  * batch id; a batch whose export can't be read is left out and counted in `missing`, with the
- * notes whose close-up isn't in it.
+ * notes whose close-up isn't in it. `sheets` is each batch's review sheets as drawn (D106), by
+ * batch id, written beside its other files and listed in the index.
  */
 export function rulesPackage(
   c: Collection,
   files: ReadonlyMap<string, ReadonlyMap<string, Uint8Array> | null>,
   stamp: string,
+  sheets: ReadonlyMap<string, Uint8Array[]> = new Map(),
 ): { files: PackageFile[]; rules: number; missing: number } {
   const root = packageRoot(c, stamp);
+  const rules = rulesOf(c);
+  const names = screenNames(c);
+  const reviews: ReviewList = [];
   const encode = (s: string) => new TextEncoder().encode(s);
   const out: PackageFile[] = [];
   const folders = new Map<string, string>();
@@ -731,12 +737,19 @@ export function rulesPackage(
         data,
       });
     missing += b.notes.filter((n) => !found.has(b.root + n.crop)).length;
+    const drawn = sheets.get(b.id) ?? [];
+    if (!drawn.length) continue;
+    const pages = reviewPages(reviewCells(b, rules, names));
+    const listed = drawn.slice(0, pages.length).map((data, p) => {
+      out.push({ name: root + folder + reviewFile(p), data });
+      return { file: reviewFile(p), notes: reviewSpan(pages[p]) };
+    });
+    reviews.push({ folder, batch: b.name, sheets: listed });
   }
   const fileOf = (n: ExportedNote) => (folders.get(n.batch.id) ?? '') + n.note.crop;
-  const rules = rulesOf(c);
   out.unshift(
     { name: `${root}README.md`, data: encode(packageReadme(c, rules.length, stamp)) },
-    { name: `${root}index.md`, data: encode(screenIndex(c, rules, stamp)) },
+    { name: `${root}index.md`, data: encode(screenIndex(c, rules, stamp, reviews)) },
     { name: `${root}design-rules.md`, data: encode(rulesMarkdown(c, rules, stamp, fileOf)) },
     {
       name: `${root}rules.json`,
@@ -757,7 +770,7 @@ function packageReadme(c: Collection, rules: number, stamp: string): string {
     '- `design-rules.md`: the rules to read, or to put where your agent reads its instructions. Each rule names its notes and their close-ups.',
     '- `rules.json`: the same rules as data.',
     '- `collection.json`: everything as Pinch keeps it, the rules waiting for you and the removed ones too.',
-    '- `batches/`: one folder for each batch of notes. Each has the screenshots, their marked copies, the close-ups in `crops/`, a contact sheet and `notes.json`. To open one again in Pinch, zip that folder and drop it in.',
+    '- `batches/`: one folder for each batch of notes. Each has the screenshots, their marked copies, the close-ups in `crops/`, a contact sheet, review sheets when they could be drawn (`review-01.jpg` and on: the close-ups with their notes, nine to a sheet) and `notes.json`. To open one again in Pinch, zip that folder and drop it in.',
   ].join('\n')}\n`;
 }
 

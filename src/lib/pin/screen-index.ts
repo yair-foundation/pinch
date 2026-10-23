@@ -1,5 +1,6 @@
 import type { Collection, ExportedNote, ExportedRule } from './learnings';
 import { cleanScreenTag, SOURCES, type SourceKind, sourceLabel } from './model';
+import type { ReviewList } from './review-sheets';
 
 /**
  * The index of a rules package (D105): the screenshots' notes sorted by source and screen tag,
@@ -98,7 +99,12 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  * Counts are of the notes in every batch, whether or not a rule draws on them, and of the
  * rules that draw on each set.
  */
-export function screenIndex(c: Collection, rules: ExportedRule[], stamp: string): string {
+export function screenIndex(
+  c: Collection,
+  rules: ExportedRule[],
+  stamp: string,
+  reviews: ReviewList = [],
+): string {
   const names = screenNames(c);
   const sources = new Map<SourceKind | null, Map<string, Cell>>();
   const cellOf = (source: SourceKind | null, tag: string | undefined) => {
@@ -147,7 +153,9 @@ export function screenIndex(c: Collection, rules: ExportedRule[], stamp: string)
     '1. Read `design-rules.md`. The rules are the author’s taste, and each one names the notes it comes from.',
     '2. Find the sets below that match your task: its product or feature in the tag, and the kind of design in the Source. Several tags often apply, such as the product itself, the kind of feature, and a general pool of the author’s own work.',
     '3. Read each matching set’s notes in `batches/`, the larger sets first. A set whose notes mostly say what works shows the author’s taste; one whose notes mostly say what doesn’t shows what to avoid.',
-    '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw.',
+    reviews.length
+      ? '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw. To look at many at once, open a batch’s review sheets (listed at the end): its close-ups with their notes beside them, nine to a sheet.'
+      : '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw.',
     '5. Pinch doesn’t record which sets are the target style and which only show how something looks today. Where it matters, read the notes, or ask.',
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
@@ -176,6 +184,18 @@ export function screenIndex(c: Collection, rules: ExportedRule[], stamp: string)
       lines.push(
         `| ${cell(s.name)} | ${s.images.size} | ${s.notes} | ${s.works} | ${s.doesNot} | ${s.rules} | ${key ? cell(names.others(s.name).join(', ')) : ''} |`,
       );
+  }
+  if (reviews.length) {
+    lines.push(
+      '',
+      '## Review sheets',
+      '',
+      'Each batch’s close-ups with their notes, nine to a sheet, in note order. A cell shows the close-up, its note number, whose design it is and its screen tag, what works and what doesn’t, and the rules that draw on it (“No rule yet” if none). Long notes are cut; `notes.json` in the batch has them whole.',
+    );
+    for (const r of reviews) {
+      lines.push('', `**${r.batch}**`, '');
+      for (const s of r.sheets) lines.push(`- \`${r.folder}${s.file}\`: notes ${s.notes}`);
+    }
   }
   return `${lines.join('\n')}\n`;
 }

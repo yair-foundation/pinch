@@ -65,6 +65,8 @@ import {
   withTitles,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
+import { reviewCells } from '@/lib/pin/review-sheets';
+import { screenNames } from '@/lib/pin/screen-index';
 import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
 import { zip } from '@/lib/pin/zip';
@@ -72,7 +74,7 @@ import { cn } from '@/lib/utils';
 import type { CollectionsBackend } from './collections-backend';
 import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
-import { closeUpForReading, download } from './render';
+import { closeUpForReading, download, reviewSheets } from './render';
 import { RuleSkeleton, ShimmerText } from './shimmer';
 import { TasteCheck } from './taste-check';
 import { TopicPicker } from './topic-picker';
@@ -723,16 +725,31 @@ export function CollectionsView({
     setBusy('export');
     try {
       const found = new Map<string, Map<string, Uint8Array> | null>();
+      const sheets = new Map<string, Uint8Array[]>();
+      const rules = rulesOf(now);
+      const names = screenNames(now);
+      let unsheeted = 0;
       for (const [i, b] of now.batches.entries()) {
         onStatus({
           tone: 'info',
           text: `Preparing ${Math.min(i + 1, now.batches.length)} of ${now.batches.length}…`,
           sticky: true,
         });
-        found.set(b.id, await filesOf(b.id));
+        const files = await filesOf(b.id);
+        found.set(b.id, files);
+        if (!files || !b.notes.length) continue;
+        // The review sheets (D106): a batch whose sheets can't be drawn still exports.
+        try {
+          sheets.set(
+            b.id,
+            await reviewSheets(reviewCells(b, rules, names), (cell) => files.get(b.root + cell.crop)),
+          );
+        } catch {
+          unsheeted++;
+        }
       }
       const stamp = nowIso();
-      const made = rulesPackage(now, found, stamp);
+      const made = rulesPackage(now, found, stamp, sheets);
       download(
         new Blob(zip(made.files) as BlobPart[], { type: 'application/zip' }),
         `${packageRoot(now, stamp).slice(0, -1)}.zip`,
@@ -741,7 +758,9 @@ export function CollectionsView({
         tone: made.missing ? 'error' : 'info',
         text: made.missing
           ? `Exported ${count(made.rules, 'rule')}, but ${count(made.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
-          : `Exported ${count(made.rules, 'rule')} with their screenshots and close-ups.`,
+          : unsheeted
+            ? `Exported ${count(made.rules, 'rule')} with their screenshots and close-ups, but ${count(unsheeted, 'batch', 'batches')} couldn’t get review sheets.`
+            : `Exported ${count(made.rules, 'rule')} with their screenshots, close-ups and review sheets.`,
       });
     } catch {
       onStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });

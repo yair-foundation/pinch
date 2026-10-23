@@ -18,6 +18,7 @@ import {
   type Shape,
   verdictOf,
 } from '@/lib/pin/model';
+import { REVIEW, type ReviewCell, reviewPages } from '@/lib/pin/review-sheets';
 import { layoutSheet } from '@/lib/pin/sheet';
 import { zip, type ZipEntry } from '@/lib/pin/zip';
 
@@ -759,6 +760,181 @@ function contactSheet(sizes: { width: number; height: number }[]) {
 }
 
 const bytes = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer());
+
+const SANS = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+const REVIEW_LINES = 6;
+
+/** `text` cut to fit `maxW` on one line, with an ellipsis if it was cut. */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let end = text.length;
+  while (end > 0 && ctx.measureText(`${text.slice(0, end).trimEnd()}…`).width > maxW) end--;
+  return `${text.slice(0, end).trimEnd()}…`;
+}
+
+/** `text` broken into lines of at most `maxW`, at spaces; a word wider than a line is broken. */
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (ctx.measureText(next).width <= maxW) {
+      line = next;
+      continue;
+    }
+    if (line) lines.push(line);
+    line = word;
+    while (ctx.measureText(line).width > maxW && line.length > 1) {
+      let end = line.length - 1;
+      while (end > 1 && ctx.measureText(line.slice(0, end)).width > maxW) end--;
+      lines.push(line.slice(0, end));
+      line = line.slice(end);
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** One cell of a review sheet (D106): the close-up, then the note's number, whose design, and what the author wrote. */
+function drawReviewCell(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  cell: ReviewCell,
+  crop: ImageBitmap | null,
+) {
+  const h = REVIEW.cropH + REVIEW.textH;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 10);
+  ctx.clip();
+  ctx.fillStyle = '#26272d';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#111216';
+  ctx.fillRect(x, y, w, REVIEW.cropH);
+  if (crop) {
+    const pad = 8;
+    const s = Math.min((w - 2 * pad) / crop.width, (REVIEW.cropH - 2 * pad) / crop.height, 2);
+    const dw = Math.max(1, Math.round(crop.width * s));
+    const dh = Math.max(1, Math.round(crop.height * s));
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(
+      crop,
+      x + Math.round((w - dw) / 2),
+      y + Math.round((REVIEW.cropH - dh) / 2),
+      dw,
+      dh,
+    );
+  } else {
+    ctx.fillStyle = '#71717a';
+    ctx.font = `15px ${SANS}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Close-up missing', x + w / 2, y + REVIEW.cropH / 2);
+  }
+  ctx.fillStyle = VERDICT_COLOR[cell.verdict];
+  ctx.fillRect(x, y, w, 5);
+  ctx.restore();
+
+  const pad = 14;
+  const textW = w - 2 * pad;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  let ty = y + REVIEW.cropH + 26;
+  ctx.font = `600 18px ${MONO}`;
+  ctx.fillStyle = '#f4f4f5';
+  ctx.fillText(cell.ref, x + pad, ty);
+  const refW = ctx.measureText(`${cell.ref}  `).width;
+  if (cell.about) {
+    ctx.font = `14px ${SANS}`;
+    ctx.fillStyle = '#a1a1aa';
+    ctx.fillText(fitText(ctx, cell.about, textW - refW), x + pad + refW, ty);
+  }
+  ctx.font = `16px ${SANS}`;
+  const said = [
+    { label: 'Works', text: cell.works, color: VERDICT_COLOR.good },
+    { label: "Doesn't", text: cell.doesNot, color: VERDICT_COLOR.bad },
+  ]
+    .filter((p) => p.text)
+    .map((p) => ({ ...p, lines: wrapLines(ctx, `${p.label}: ${p.text}`, textW) }));
+  // Two kinds of words share the lines: each keeps its first three, the shorter gives the rest back.
+  const used = said.map((p) => p.lines.length);
+  const room =
+    used.length === 2
+      ? [
+          Math.min(used[0], Math.max(3, REVIEW_LINES - used[1])),
+          Math.min(used[1], REVIEW_LINES - Math.min(used[0], Math.max(3, REVIEW_LINES - used[1]))),
+        ]
+      : [Math.min(used[0] ?? 0, REVIEW_LINES)];
+  ty += 8;
+  for (const [i, p] of said.entries()) {
+    const shown = p.lines.slice(0, room[i]);
+    if (shown.length < p.lines.length) {
+      const last = shown.length - 1;
+      shown[last] = fitText(ctx, `${shown[last]} …`, textW);
+    }
+    for (const [j, line] of shown.entries()) {
+      ty += 22;
+      if (j === 0 && line.startsWith(`${p.label}:`)) {
+        ctx.fillStyle = p.color;
+        ctx.font = `600 16px ${SANS}`;
+        ctx.fillText(`${p.label}:`, x + pad, ty);
+        const labelW = ctx.measureText(`${p.label}: `).width;
+        ctx.font = `16px ${SANS}`;
+        ctx.fillStyle = '#e4e4e7';
+        ctx.fillText(line.slice(p.label.length + 2), x + pad + labelW, ty);
+      } else {
+        ctx.fillStyle = '#e4e4e7';
+        ctx.fillText(line, x + pad, ty);
+      }
+    }
+  }
+  ctx.font = `14px ${SANS}`;
+  ctx.fillStyle = cell.rules.length ? '#a1a1aa' : '#71717a';
+  ctx.fillText(
+    fitText(ctx, cell.rules.length ? `Rules: ${cell.rules.join(', ')}` : 'No rule yet', textW),
+    x + pad,
+    y + REVIEW.cropH + REVIEW.textH - 12,
+  );
+}
+
+/**
+ * A batch's review sheets (D106), as JPEG bytes, one for each nine notes: every close-up with its
+ * note under it. `cropOf` reads a close-up from the batch's export; one that can't be read or
+ * decoded leaves its cell saying so.
+ */
+export async function reviewSheets(
+  cells: ReviewCell[],
+  cropOf: (cell: ReviewCell) => Uint8Array | undefined,
+): Promise<Uint8Array[]> {
+  const out: Uint8Array[] = [];
+  const cellW = Math.floor((REVIEW.width - REVIEW.gap * (REVIEW.cols + 1)) / REVIEW.cols);
+  const cellH = REVIEW.cropH + REVIEW.textH;
+  for (const page of reviewPages(cells)) {
+    const rows = Math.ceil(page.length / REVIEW.cols);
+    const { canvas, ctx } = canvasOf(REVIEW.width, REVIEW.gap * (rows + 1) + cellH * rows);
+    ctx.fillStyle = SHEET_BG;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (const [i, cell] of page.entries()) {
+      const data = cropOf(cell);
+      const crop = data
+        ? await bitmapOf(new Blob([data as BlobPart], { type: 'image/jpeg' })).catch(() => null)
+        : null;
+      drawReviewCell(
+        ctx,
+        REVIEW.gap + (i % REVIEW.cols) * (cellW + REVIEW.gap),
+        REVIEW.gap + Math.floor(i / REVIEW.cols) * (cellH + REVIEW.gap),
+        cellW,
+        cell,
+        crop,
+      );
+      crop?.close();
+    }
+    out.push(await bytes(await toBlob(canvas, 'image/jpeg', 0.86)));
+  }
+  return out;
+}
 
 /**
  * The export: README.md, AGENTS.md, notes.json, the contact sheet, and
