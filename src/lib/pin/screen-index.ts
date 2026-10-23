@@ -156,7 +156,7 @@ export function screenIndex(
     reviews.length
       ? '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw. To look at many at once, open a batch’s review sheets (listed at the end): its close-ups with their notes beside them, nine to a sheet.'
       : '4. Before you apply a rule, open the close-up behind it. A rule is one line; the close-up shows what the author saw.',
-    '5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source; what their notes say doesn’t work is what to avoid. Works and Doesn’t count them for each set. A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.',
+    '5. The author’s target style is the sum of everything their notes say works, in every set and whatever its source. A note on what doesn’t work says what is wrong in its screenshot, and a few say it as what the author would prefer instead (“I prefer a white border”): look at the close-up, avoid what the screenshot does there and follow what the words ask for. Works and Doesn’t count the notes of each kind for each set. A design from someone else’s product (Competitor, Other product, Concept) gives a principle, never a copy.',
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];
@@ -193,7 +193,7 @@ export function screenIndex(
       'Each batch’s close-ups with their notes, nine to a sheet, in note order. A cell shows the close-up, its note number, whose design it is and its screen tag, what works and what doesn’t, and the rules that draw on it (“No rule yet” if none). Long notes are cut; `notes.json` in the batch has them whole.',
     );
     for (const r of reviews) {
-      lines.push('', `**${r.batch}**`, '');
+      lines.push('', `**${r.folder.replace(/^batches\//, '').replace(/\/$/, '')}**`, '');
       for (const s of r.sheets) lines.push(`- \`${r.folder}${s.file}\`: notes ${s.notes}`);
     }
   }
