@@ -1,3 +1,4 @@
+import { checksOf } from './checks';
 import type { Collection, ExportedNote, ExportedRule } from './learnings';
 import { cleanScreenTag, SOURCES, type SourceKind, sourceLabel } from './model';
 import type { ReviewList } from './review-sheets';
@@ -309,7 +310,10 @@ export function screenIndex(
             : `6. The author marked ${best.length} notes as best examples: the ones they hold up to follow. Weigh them above the others, and start from them (listed under Best examples).`,
         ]
       : []),
-    `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
+    // The checks Pinch worked out come first, when there are any (D114).
+    checksOf(c).length
+      ? `${best.length ? 7 : 6}. Run the checks Pinch worked out from the rules on every render: \`checks.json\`, with \`check-render.js\` (\`checks.md\` shows how). Then turn the other rules a rendered page can decide into checks in your own project: \`checks.md\` says how, and lists every rule to sort.`
+      : `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];

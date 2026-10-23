@@ -18,6 +18,7 @@ import {
   withBest,
   withOpenBest,
 } from '../learnings';
+import { withChecks } from '../checks';
 import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
 import {
@@ -623,7 +624,7 @@ describe('a role for every screenshot of a source (D111)', () => {
       new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
     assert.match(
       read('design-rules.md'),
-      /\n- Screenshots of someone else’s product that the author made the target style/,
+      /\n- A rule drawn from someone else's product \(Competitor, Other product, Concept\) carries a principle, never a copy, unless the author made it the target style\. Screenshots of someone else’s product that the author made the target style/,
     );
     assert.match(
       read('design-rules.md'),
@@ -638,5 +639,61 @@ describe('a role for every screenshot of a source (D111)', () => {
       plainIndex,
       /\(Competitor, Other product, Concept\) gives a principle, never a copy\./,
     );
+  });
+});
+
+describe('the guides follow the author’s roles, marks and checks (D114)', () => {
+  const packaged = (c: Collection) => {
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-22T09:00:00Z');
+    return (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+  };
+
+  it('says “never copy” only where no outside product is the target style', () => {
+    const plain = packaged(library());
+    assert.match(
+      plain('design-rules.md'),
+      /- A rule drawn from someone else's product \(Competitor, Other product, Concept\) carries a principle; never copy that design\./,
+    );
+    assert.match(plain('checks.md'), /A rule drawn from someone else’s product is a principle: check the principle/);
+
+    const read = packaged(withSourceRole(library(), 'other', 'target', 'now'));
+    const rules = read('design-rules.md');
+    assert.doesNotMatch(rules, /never copy that design/);
+    assert.equal(rules.split('match their quality and look').length - 1, 1, 'said once');
+    assert.doesNotMatch(read('checks.md'), /is a principle: check the principle/);
+    assert.match(
+      read('checks.md'),
+      /that the author made the target style may hold its look \(sizes, spacing, colours\), never its product, brand or content/,
+    );
+  });
+
+  it('speaks of best examples only when the author marked one', () => {
+    const c = library();
+    const plain = packaged(c);
+    assert.doesNotMatch(plain('design-rules.md'), /best example/);
+    assert.doesNotMatch(plain('checks.md'), /best examples/);
+    assert.doesNotMatch(rulesText(c, rulesOf(c)), /best example/);
+
+    const marked = withBest(c, { batchId: 'b1', note: '01.1' }, true, 'now');
+    const read = packaged(marked);
+    assert.match(read('design-rules.md'), /best example" is one they hold up/);
+    assert.match(read('checks.md'), /marked as their best examples are the strongest evidence/);
+    assert.match(rulesText(marked, rulesOf(marked)), /weigh it above the others/);
+  });
+
+  it('sends the agent to the ready checks first, when there are any', () => {
+    const c = withChecks(
+      library(),
+      [{ kind: 'bannedFonts', value: ['Nunito'], rules: ['a'], why: 'Named.' }],
+      'basis',
+      'now',
+    );
+    const index = screenIndex(c, rulesOf(c), '2026-10-22T09:00:00Z');
+    assert.match(
+      index,
+      /\n6\. Run the checks Pinch worked out from the rules on every render: `checks\.json`, with `check-render\.js`/,
+    );
+    assert.match(index, /Then turn the other rules a rendered page can decide into checks/);
   });
 });

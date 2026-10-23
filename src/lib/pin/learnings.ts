@@ -344,6 +344,9 @@ export function withBest(c: Collection, ref: NoteRef, best: boolean, now: string
   };
 }
 
+/** Whether the author marked any note as a best example, so the agent is told how to weigh one. */
+export const hasBest = (c: Collection) => c.batches.some((b) => b.notes.some((n) => n.best));
+
 /** Every note the AI hasn't read yet, oldest batch first. */
 export function unreadNotes(c: Collection): { batch: Batch; note: BatchNote }[] {
   const read = new Set(c.read);
@@ -760,7 +763,7 @@ const said = (n: BatchNote) =>
 export function rulesText(c: Collection, rules: ExportedRule[]): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside. A note marked the author's best example is one they hold up to follow: weigh it above the others. Refer to rules by number.`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number.`,
     ...(rolesLine(c) ? [rolesLine(c)] : []),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
@@ -907,17 +910,22 @@ function packageReadme(c: Collection, rules: number, stamp: string): string {
   ].join('\n')}\n`;
 }
 
+const BEST_LINE =
+  'A note marked "the author\'s best example" is one they hold up as the one to follow: weigh it above the others. `index.md` lists them all.';
+const OUTSIDE_LINE =
+  "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.";
+
 const HOW_TO_USE = [
   'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
   'The author\'s own taste comes before any general design guidance or design skill you also follow: where they say otherwise, these rules win.',
   'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
   '"Seen on" says whose design the rule\'s notes are on (Ours, Competitor, Other product, Concept) and the screen tags of those screenshots. `index.md` sorts all the notes the same way, with a reading order.',
-  'A note marked "the author\'s best example" is one they hold up as the one to follow: weigh it above the others. `index.md` lists them all.',
+  BEST_LINE,
   'A screen tag in "Seen on" may carry the role the author gave its set: target style is the look to aim for; how it looks today shows the product as it is, so take what exists from it, not its look; principle only gives the idea, never the look.',
   '"Explained by" names the design principles Pinch read the notes with. They explain the rule; the author\'s notes are what make it their preference, so never apply a principle further than its rule.',
   'Refer to rules by number ("R4"), so the author can find them.',
   'Each rule lists the notes it comes from and their close-ups. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
-  "A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle; never copy that design.",
+  OUTSIDE_LINE,
   "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its notes and close-ups first.",
 ];
 
@@ -935,9 +943,16 @@ export function rulesMarkdown(
     '',
     '## How to use these',
     '',
-    ...HOW_TO_USE.map((l) => `- ${l}`),
-    // The author made someone else's product the target style (D111): say how far that goes.
-    ...(outsideTarget(c) ? [`- ${OUTSIDE_TARGET}`] : []),
+    // Best examples only when there are some; never copy, unless the author made someone else's
+    // product the target style (D111), and then how far that goes (D114).
+    ...HOW_TO_USE.flatMap((l) => {
+      if (l === BEST_LINE) return hasBest(c) ? [`- ${l}`] : [];
+      if (l === OUTSIDE_LINE && outsideTarget(c))
+        return [
+          `- A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle, never a copy, unless the author made it the target style. ${OUTSIDE_TARGET}`,
+        ];
+      return [`- ${l}`];
+    }),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   const names = screenNames(c);

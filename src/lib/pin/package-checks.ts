@@ -1,5 +1,6 @@
 import { CHECK_INFO, CHECK_SCRIPT_FILE, CHECKS_DATA_FILE, checksOf, valueText } from './checks';
-import type { Collection, ExportedRule } from './learnings';
+import { type Collection, type ExportedRule, hasBest } from './learnings';
+import { outsideTarget } from './screen-index';
 
 /**
  * `checks.md` in the rules package (D108): how an agent turns the rules a rendered page can
@@ -56,8 +57,11 @@ export function checksGuide(c: Collection, rules: ExportedRule[], stamp: string)
     '',
     '1. **Sort every rule.** Mark it *check* if a render can decide it by measuring or reading the page: sizes, colours, contrast, spacing, counts, fonts, whether an element or its wrapper is there, the cursor’s shape, a colour or element the rule bans. Mark it *review* if it takes judgment: hierarchy, mood, what reads as clean. When unsure, mark it review.',
     '2. **Write one check per *check* rule** that fails when a render breaks it. Name it by the rule’s `key` (from `rules.json`), which stays the same from one export to the next; the R-number doesn’t. Put the R-number in the failure message so the author can find the rule.',
-    '3. **Take every number from the author.** Use the rule’s own words, or measure its close-ups and the notes’ screenshots, and write down where the number came from. Never make a check stricter than the notes support. Notes the author marked as their best examples are the strongest evidence.',
-    '4. **Keep each rule to its scope.** A rule with “Where” is checked only there. A rule drawn from someone else’s product is a principle: check the principle, never that product’s look.',
+    `3. **Take every number from the author.** Use the rule’s own words, or measure its close-ups and the notes’ screenshots, and write down where the number came from. Never make a check stricter than the notes support.${hasBest(c) ? ' Notes the author marked as their best examples are the strongest evidence.' : ''}`,
+    // Someone else's product: a principle, unless the author made it the target style (D114).
+    outsideTarget(c)
+      ? '4. **Keep each rule to its scope.** A rule with “Where” is checked only there. A rule drawn from someone else’s product that the author made the target style may hold its look (sizes, spacing, colours), never its product, brand or content; from any other, check the principle, never that product’s look.'
+      : '4. **Keep each rule to its scope.** A rule with “Where” is checked only there. A rule drawn from someone else’s product is a principle: check the principle, never that product’s look.',
     '5. **Prove each check.** Run it on a copy you broke on purpose and see it fail, before you rely on it passing.',
     '6. **Keep the worklist below in your project, filled in:** for each rule, check or review, the check’s name, and what it measures. When a new export comes, compare its `rules.json` with your list by `key`: add checks for new rules, revise those whose words changed, and remove those whose rule is gone.',
     '7. **Run the checks on every render, and look at the review rules yourself.** A passing check is not a design review.',
