@@ -18,6 +18,14 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { applyAgentReading } from '@/lib/pin/agent-reading';
+import {
+  type Reference,
+  referenceReach,
+  referencesOf,
+  withoutReference,
+  withReferenceTag,
+  zipWithout,
+} from '@/lib/pin/library';
 import { beyondFree, freeProductOf, withFreeProduct } from '@/lib/pin/plan';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
@@ -106,6 +114,7 @@ import { unzip } from '@/lib/pin/unzip';
 import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import { AgentRuns } from './agent-runs';
+import { Library } from './library';
 import type { CollectionsBackend } from './collections-backend';
 import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
@@ -335,6 +344,8 @@ export function CollectionsView({
   const [proposals, setProposals] = useState<Proposal[]>([]);
   // What the agent's runs did with the rules (D120).
   const [runs, setRuns] = useState<Run[]>([]);
+  // The rules, or the library of references they come from (D124).
+  const [tab, setTab] = useState<'rules' | 'references'>('rules');
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
   // The taste check, open (D102).
@@ -574,16 +585,16 @@ export function CollectionsView({
   }, [backend, moveFrom, moveIn, onStatus]);
 
   // Each batch's export, read once while the view is open: its close-ups are the evidence.
-  const files = useRef(new Map<string, Promise<Map<string, Uint8Array> | null>>());
+  const filesRef = useRef(new Map<string, Promise<Map<string, Uint8Array> | null>>());
   const filesOf = useCallback(
     (batchId: string) => {
-      let found = files.current.get(batchId);
+      let found = filesRef.current.get(batchId);
       if (!found) {
         found = backend
           .getBatch(batchId)
           .then(async (blob) => (blob ? unzip(await blob.arrayBuffer()) : null))
           .catch(() => null);
-        files.current.set(batchId, found);
+        filesRef.current.set(batchId, found);
       }
       return found;
     },
@@ -642,7 +653,7 @@ export function CollectionsView({
         });
         return;
       }
-      files.current.set(id, Promise.resolve(found));
+      filesRef.current.set(id, Promise.resolve(found));
       const batch: Batch = {
         id,
         name: exp.root.replace(/\/$/, '') || made.name.replace(/\.zip$/i, ''),
@@ -1048,6 +1059,38 @@ export function CollectionsView({
         .catch(() => undefined);
     onStatus({ tone: 'info', text: 'Batch removed.' });
   };
+  /** A reference's screen tag, written on all its notes (D124). */
+  const tagReference = (r: Reference, tag: string) =>
+    change((x) => withReferenceTag(x, r.batch.id, r.number, tag, nowIso()), true);
+  /**
+   * A reference removed (D124): its notes and the rules from them alone leave the rules, and its
+   * files leave its batch's zip once that is saved; the batch's last takes the batch.
+   */
+  const removeReference = (r: Reference) => {
+    const now0 = ref.current;
+    if (!now0) return;
+    const { last } = referenceReach(now0, r.batch.id, r.number);
+    change((x) => withoutReference(x, r.batch.id, r.number, nowIso()), true);
+    const now = ref.current;
+    if (now)
+      backend
+        .save(now)
+        .then(async () => {
+          if (last) return backend.deleteBatch(r.batch.id);
+          const files = await filesOf(r.batch.id);
+          if (!files) return;
+          const entries = zipWithout(files, r.batch.root, r.number);
+          await backend.putBatch(
+            r.batch.id,
+            new Blob(zip(entries) as BlobPart[], { type: 'application/zip' }),
+          );
+          filesRef.current.set(r.batch.id, Promise.resolve(new Map(entries.map((e) => [e.name, e.data]))));
+        })
+        .catch(() =>
+          onStatus({ tone: 'error', text: 'The image stayed in its batch’s zip. Try again later.' }),
+        );
+    onStatus({ tone: 'info', text: last ? 'Reference and its batch removed.' : 'Reference removed.' });
+  };
   // Kept, a proposal becomes a rule, and leaves the account's list once the rule is saved (D116).
   const keepProposed = (p: Proposal) => {
     setProposals((x) => x.filter((y) => y.id !== p.id));
@@ -1258,6 +1301,46 @@ export function CollectionsView({
             )}
           </header>
 
+          {c.batches.length > 0 && (
+            <fieldset className="m-0 flex min-w-0 gap-1 rounded-lg border-0 bg-muted p-1">
+              <legend className="sr-only">Show</legend>
+              {(
+                [
+                  ['rules', 'Rules', rulesOf(c).length],
+                  ['references', 'References', referencesOf(c).length],
+                ] as const
+              ).map(([key, label, n]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={tab === key}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    hit,
+                    'flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors duration-150 motion-reduce:transition-none',
+                    tab === key
+                      ? 'bg-background font-medium text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {label}
+                  <span className="font-mono opacity-70">{n}</span>
+                </button>
+              ))}
+            </fieldset>
+          )}
+
+          {tab === 'references' && c.batches.length > 0 ? (
+            <Library
+              collection={c}
+              filesOf={filesOf}
+              crops={crops}
+              onTag={tagReference}
+              onRemove={removeReference}
+              onAdd={onBack}
+            />
+          ) : (
+            <>
           {proposals.length > 0 && (
             <Proposed proposals={proposals} onKeep={keepProposed} onDrop={dropProposed} />
           )}
@@ -1354,6 +1437,8 @@ export function CollectionsView({
                 setUnbatching(id);
               }}
             />
+          )}
+            </>
           )}
         </div>
       </main>
