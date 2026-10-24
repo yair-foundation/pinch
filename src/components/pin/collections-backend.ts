@@ -1,5 +1,6 @@
 import type { Collection } from '@/lib/pin/learnings';
 import type { Proposal } from '@/lib/pin/proposals';
+import type { Run, Verdict } from '@/lib/pin/runs';
 
 /*
  * Where collections are kept: in this browser (`collections-store.ts`), or in
@@ -19,4 +20,8 @@ export type CollectionsBackend = {
   /** The rules the agent proposed, waiting (D116): only an account has an agent to propose. */
   proposals?(): Promise<Proposal[]>;
   dropProposal?(id: string): Promise<void>;
+  /** What the agent's runs did with the rules (D120), the person's verdicts, and removing one. */
+  runs?(): Promise<Run[]>;
+  judge?(run: string, report: string, verdict: Verdict | null): Promise<void>;
+  dropRun?(id: string): Promise<void>;
 };

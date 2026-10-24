@@ -1,6 +1,16 @@
 import { del, issueSignedToken, list, presignUrl } from '@vercel/blob';
 import { userFolder } from './account';
 import { type Proposal, proposalsIn, withProposal } from './pin/proposals';
+import {
+  type RunEvent,
+  type RunsDoc,
+  runsDocIn,
+  type Verdict,
+  withEvents,
+  withoutRun,
+  withStart,
+  withVerdict,
+} from './pin/runs';
 import { readZipEntries, TAIL_BYTES } from './pin/zip-range';
 import {
   deleteDocuments,
@@ -19,7 +29,8 @@ import {
  * moves them straight to and from the store on short-lived presigned URLs,
  * scoped to one path. Without Blob credentials (local runs) the zips live in
  * this process's memory and go through the route instead. The rules the
- * agent proposes wait in one more document beside them (D116).
+ * agent proposes wait in one more document beside them (D116), and what
+ * each of its runs did with the rules in another (D120).
  */
 
 export const MAX_COLLECTION_BYTES = 3_000_000;
@@ -89,6 +100,39 @@ export const dropProposal = (user: string, id: string) =>
   updateDocument<Proposals, void>(proposalsKey(user), { proposals: [] }, (doc) => {
     doc.proposals = proposalsIn(doc).filter((p) => p.id !== id);
   });
+
+/**
+ * What the agent's runs did with the rules (D120): `pinch-users/<account>/runs.json`, changed by
+ * compare-and-swap, since the agent's calls add to it and the page judges and removes.
+ */
+const runsKey = (user: string) => `${userFolder(user)}runs.json`;
+const noRuns = (): RunsDoc => ({ runs: [], agents: [] });
+
+export async function listRuns(user: string) {
+  return runsDocIn((await readDocument<unknown>(runsKey(user), noRuns())).doc).runs;
+}
+
+const changeRuns = (user: string, fn: (doc: RunsDoc) => RunsDoc) =>
+  updateDocument<RunsDoc, void>(runsKey(user), noRuns(), (doc) => {
+    const next = fn(runsDocIn(doc));
+    doc.runs = next.runs;
+    doc.agents = next.agents;
+  });
+
+/** A run's calls, and the agent's name when this is it connecting. */
+export const recordRun = (
+  user: string,
+  id: string,
+  events: RunEvent[],
+  now: string,
+  agent = '',
+) => changeRuns(user, (doc) => withEvents(withStart(doc, id, agent, now), id, events, now));
+
+export const judgeWork = (user: string, run: string, report: string, verdict: Verdict | null) =>
+  changeRuns(user, (doc) => withVerdict(doc, run, report, verdict));
+
+export const dropRun = (user: string, id: string) =>
+  changeRuns(user, (doc) => withoutRun(doc, id));
 
 const memory = new Map<string, Uint8Array>();
 

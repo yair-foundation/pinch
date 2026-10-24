@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import { after } from 'next/server';
 import { userOfAgentKey } from '@/lib/agent-keys';
-import { addProposal, batchFiles, listCollections } from '@/lib/cloud';
+import { addProposal, batchFiles, listCollections, recordRun, validId } from '@/lib/cloud';
 import { answer, type RpcMessage } from '@/lib/pin/agent';
 import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/learnings';
+import { agentName, type RunEvent } from '@/lib/pin/runs';
 
 /*
  * Pinch for agents (D89): an MCP server on the Streamable HTTP transport, one
@@ -11,8 +13,11 @@ import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/l
  * free, at any balance (D98). Its tools hand over the account's rules, read from the store
  * at each call, so the agent always has the current ones, and a rule's
  * close-ups from the account's own batch zips (D94); a rule the agent proposes
- * waits in the account for the person (D116). No AI runs here, and nothing
- * about the call is logged but its method.
+ * waits in the account for the person (D116). Each connection is a run
+ * (D120): `initialize` hands out an `Mcp-Session-Id` the agent sends back,
+ * and what its calls asked for and got goes into the account's record of
+ * runs once the reply is out. No AI runs here, and nothing about the call is
+ * logged but its method.
  */
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +53,15 @@ export async function POST(request: Request) {
     return rpcError(400, -32700, 'Parse error');
   }
   const messages = (Array.isArray(parsed) ? parsed : [parsed]) as RpcMessage[];
+  // The run: the session this agent was given, or a new one as it connects. An agent that keeps
+  // no session gets one run a day.
+  const opening = messages.find((m) => m?.method === 'initialize');
+  const given = request.headers.get('mcp-session-id') ?? '';
+  const session = validId(given) ? given : opening ? newId() : '';
+  const now = new Date().toISOString();
+  const runId = session || `d${now.slice(0, 10).replace(/-/g, '')}`;
+  const events: RunEvent[] = [];
+  const log = { id: newId, add: (e: RunEvent) => void events.push(e) };
   let cached: Promise<Collection | null> | null = null;
   const rules = () => {
     cached ??= rulesOf(user);
@@ -62,12 +76,23 @@ export async function POST(request: Request) {
       rules,
       (id, paths) => batchFiles(user, id, paths),
       { id: newId, save: (p) => addProposal(user, p) },
+      log,
     );
     if (r) replies.push(r);
   }
+  const agent = agentName(
+    (opening?.params as { clientInfo?: { name?: unknown } } | undefined)?.clientInfo?.name,
+  );
+  if (events.length || agent)
+    after(() =>
+      recordRun(user, runId, events, now, agent).catch(() =>
+        console.log('[pin] mcp run not recorded'),
+      ),
+    );
+  const out = session && session !== given ? { ...headers, 'Mcp-Session-Id': session } : headers;
   // Notifications only: accepted, nothing to say.
-  if (!replies.length) return new Response(null, { status: 202, headers });
-  return Response.json(Array.isArray(parsed) ? replies : replies[0], { headers });
+  if (!replies.length) return new Response(null, { status: 202, headers: out });
+  return Response.json(Array.isArray(parsed) ? replies : replies[0], { headers: out });
 }
 
 /** No server-sent stream: every answer comes back on its POST. */

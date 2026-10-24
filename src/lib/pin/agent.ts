@@ -21,6 +21,7 @@ import {
   type Topic,
 } from './model';
 import { type Proposal, proposalOf } from './proposals';
+import { reportOf, type RunEvent } from './runs';
 import { OPEN_CALLS, WORKING_LINES } from './screen-index';
 
 /*
@@ -35,14 +36,15 @@ import { OPEN_CALLS, WORKING_LINES } from './screen-index';
  * the crop's pixels and in the screenshot's. Asked for `whole`, the answer
  * also carries each screenshot once, its marked copy (D99). What the person
  * settles with the agent in conversation comes back as a proposed rule, to
- * wait for them on Your rules (D116).
+ * wait for them on Your rules (D116). What each call asked for and got, and the agent's report
+ * of what it made with the rules, go into the run's record for the person to judge (D120).
  */
 
 /** The protocol versions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS =
-  `Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render, and on all your earlier work again whenever the rules, a check or a shared part changes. When the person settles something about their taste with you that their rules don’t hold, or holds otherwise (a correction, a choice between two rules), ask whether to keep it, and on a yes call propose_rule: it waits in Pinch for them to keep or drop. Do this even when you also write it into your own notes or files: Pinch is where their rules live, so every agent and session gets it. For the same reason, where your own notes of a rule differ from what get_design_rules returns now, the rule as returned wins: update your notes. ${OPEN_CALLS} ${WORKING_LINES.join(' ')}`;
+  `Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render, and on all your earlier work again whenever the rules, a check or a shared part changes. When the person settles something about their taste with you that their rules don’t hold, or holds otherwise (a correction, a choice between two rules), ask whether to keep it, and on a yes call propose_rule: it waits in Pinch for them to keep or drop. Do this even when you also write it into your own notes or files: Pinch is where their rules live, so every agent and session gets it. For the same reason, where your own notes of a rule differ from what get_design_rules returns now, the rule as returned wins: update your notes. ${OPEN_CALLS} Each time you report a piece of work, also call report_work with what you made, the rules you followed and set aside, the checks that failed and those decisions: the person sees it on Your rules beside what you asked Pinch for, and judges it. ${WORKING_LINES.join(' ')}`;
 
 export const TOOLS = [
   {
@@ -152,6 +154,73 @@ export const TOOLS = [
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'report_work',
+    title: 'Report a piece of work',
+    description:
+      'Tell Pinch what you made with the person’s rules, each time you report a piece of work to them: what it is, the rules you followed and the ones you set aside with why, the render checks that failed, and the decisions that need their call. It goes on Your rules in Pinch beside what this session asked Pinch for, where the person judges the work, so they see which rules do the work, which get set aside and which never come up. Give rules by their numbers as get_design_rules shows them (R3). Write no file names, links or customer data. It changes no rules.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        work: {
+          type: 'string',
+          description: 'What you made, a few words ("Agent Hub, feature focus").',
+        },
+        followed: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'The rules the work follows, by number: R3.',
+        },
+        setAside: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              rule: { type: 'string', description: 'Its number: R3.' },
+              why: { type: 'string', description: 'Why, in a sentence.' },
+            },
+            required: ['rule', 'why'],
+            additionalProperties: false,
+          },
+          description: 'The rules you set aside, each with why.',
+        },
+        checksRun: {
+          type: 'integer',
+          description: 'How many render checks you ran on it. Leave out when you ran none.',
+        },
+        failedChecks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              check: { type: 'string', description: 'The check’s name.' },
+              rules: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'The rules it holds, by number.',
+              },
+            },
+            required: ['check'],
+            additionalProperties: false,
+          },
+          description: 'The checks that still fail on it.',
+        },
+        openCalls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'The decisions that need the person’s call, one line each with the options.',
+        },
+      },
+      required: ['work'],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
       openWorldHint: false,
     },
   },
@@ -534,11 +603,20 @@ export function topicsText(c: Collection | null): string {
 /** Where a proposed rule goes to wait (D116): a fresh id for it, and the store's write. */
 export type ProposalStore = { id: () => string; save: (p: Proposal) => Promise<void> };
 
+/** Where a run's calls go (D120): a fresh id for a report, and what each call adds. */
+export type RunLog = { id: () => string; add: (e: RunEvent) => void };
+
 /** A rule proposed by the agent, checked and stored to wait for the person (D116). */
-async function proposeContent(c: Collection | null, args: unknown, store: ProposalStore) {
+async function proposeContent(
+  c: Collection | null,
+  args: unknown,
+  store: ProposalStore,
+  log?: RunLog,
+) {
   const out = proposalOf(args, c, new Date().toISOString(), store.id());
   if ('error' in out) return text(out.error, true);
   await store.save(out.proposal);
+  log?.add({ kind: 'proposal', id: out.proposal.id });
   const number = out.proposal.rule
     ? rulesOf(c as Collection).find((r) => r.rule.id === out.proposal.rule)?.id
     : undefined;
@@ -549,16 +627,27 @@ async function proposeContent(c: Collection | null, args: unknown, store: Propos
   );
 }
 
+/** The agent's report of a piece of work, checked and added to its run (D120). */
+function reportContent(c: Collection | null, args: unknown, log: RunLog) {
+  const out = reportOf(args, c, new Date().toISOString(), log.id());
+  if ('error' in out) return text(out.error, true);
+  log.add({ kind: 'report', report: out.report });
+  return text(
+    `Reported. It shows on Your rules in Pinch for the person to judge.${out.unknown.length ? ` Left out, not rules: ${out.unknown.join(', ')}.` : ''}`,
+  );
+}
+
 /**
  * One JSON-RPC message answered: a reply for a request, nothing for a notification. `rules`
  * reads the person's one collection when a tool needs it, `files` its batches' close-ups,
- * `proposals` where a rule the agent proposes waits.
+ * `proposals` where a rule the agent proposes waits, `log` the run's record.
  */
 export async function answer(
   m: RpcMessage,
   rules: () => Promise<Collection | null>,
   files?: BatchFiles,
   proposals?: ProposalStore,
+  log?: RunLog,
 ): Promise<RpcReply | null> {
   const id = m.id ?? null;
   if (m.id === undefined) return null;
@@ -590,10 +679,15 @@ export async function answer(
       if (params.name === 'list_rule_topics') return reply(id, text(topicsText(await rules())));
       if (params.name === 'propose_rule') {
         if (!proposals) return reply(id, text('Proposing rules isn’t available here.', true));
-        return reply(id, await proposeContent(await rules(), params.arguments, proposals));
+        return reply(id, await proposeContent(await rules(), params.arguments, proposals, log));
+      }
+      if (params.name === 'report_work') {
+        if (!log) return reply(id, text('Reporting work isn’t available here.', true));
+        return reply(id, reportContent(await rules(), params.arguments, log));
       }
       if (params.name === 'get_render_checks') {
         const c = await rules();
+        log?.add({ kind: 'checks' });
         const args = (params.arguments ?? {}) as { script?: unknown };
         return reply(id, renderChecksContent(c, args.script !== false));
       }
@@ -602,12 +696,24 @@ export async function answer(
         if (!c || !files)
           return reply(id, text(c ? 'Close-ups aren’t available here.' : 'No rules yet.', true));
         const args = (params.arguments ?? {}) as { rule?: unknown; whole?: unknown };
-        return reply(id, await evidenceContent(c, args.rule, files, args.whole === true));
+        const shown = await evidenceContent(c, args.rule, files, args.whole === true);
+        const n = Number(String(args.rule ?? '').trim().replace(/^r/i, ''));
+        const r = !shown.isError && Number.isInteger(n) ? rulesOf(c)[n - 1] : undefined;
+        if (r) log?.add({ kind: 'evidence', rule: r.rule.id });
+        return reply(id, shown);
       }
       if (params.name !== 'get_design_rules')
         return failure(id, -32602, `Unknown tool: ${String(params.name)}`);
       const c = await rules();
-      const picked = c ? numberedRules(c, pickOf(params.arguments)) : [];
+      const pick = pickOf(params.arguments);
+      const picked = c ? numberedRules(c, pick) : [];
+      log?.add({
+        kind: 'rules',
+        topics: (pick.topics ?? []).filter((t): t is Topic => t !== null),
+        tags: (pick.tags ?? []).filter((t): t is string => t !== null),
+        screen: [...(pick.screen ?? [])],
+        rules: picked.map((r) => r.rule.id),
+      });
       if (!c || !picked.length)
         return reply(
           id,

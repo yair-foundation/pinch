@@ -82,6 +82,7 @@ import {
   withChecks,
 } from '@/lib/pin/checks';
 import { keepProposal, type Proposal } from '@/lib/pin/proposals';
+import { type Report, type Run, type Verdict, withVerdict } from '@/lib/pin/runs';
 import { reviewCells } from '@/lib/pin/review-sheets';
 import {
   roleOf,
@@ -98,6 +99,7 @@ import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
 import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
+import { AgentRuns } from './agent-runs';
 import type { CollectionsBackend } from './collections-backend';
 import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
@@ -319,6 +321,8 @@ export function CollectionsView({
   const [unbatching, setUnbatching] = useState<string | null>(null);
   // The rules the agent proposed, waiting to be kept or dropped (D116).
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  // What the agent's runs did with the rules (D120).
+  const [runs, setRuns] = useState<Run[]>([]);
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
   // The taste check, open (D102).
@@ -382,7 +386,7 @@ export function CollectionsView({
     };
   }, [save]);
 
-  // The agent may propose while the page is open: read again whenever the page comes back.
+  // The agent may propose and work while the page is open: read again when the page comes back.
   useEffect(() => {
     const read = backend.proposals;
     if (!read) return;
@@ -391,6 +395,12 @@ export function CollectionsView({
       read()
         .then((p) => {
           if (live) setProposals(p);
+        })
+        .catch(() => undefined);
+      backend
+        .runs?.()
+        .then((r) => {
+          if (live) setRuns(r);
         })
         .catch(() => undefined);
     };
@@ -988,6 +998,19 @@ export function CollectionsView({
       onStatus({ tone: 'error', text: 'That didn’t reach your account, so it may show again.' }),
     );
   };
+  /** The person's verdict on a piece of the agent's work (D120), or taken back. */
+  const judgeWork = (run: Run, report: Report, verdict: Verdict | null) => {
+    setRuns((x) => withVerdict({ runs: x, agents: [] }, run.id, report.id, verdict).runs);
+    backend.judge?.(run.id, report.id, verdict).catch(() =>
+      onStatus({ tone: 'error', text: 'Your verdict didn’t reach your account. Try again.' }),
+    );
+  };
+  const removeRun = (run: Run) => {
+    setRuns((x) => x.filter((r) => r.id !== run.id));
+    backend.dropRun?.(run.id).catch(() =>
+      onStatus({ tone: 'error', text: 'That didn’t reach your account, so it may show again.' }),
+    );
+  };
   const openTaste = () => {
     opener.current = document.activeElement as HTMLElement | null;
     setTasting(true);
@@ -1223,6 +1246,10 @@ export function CollectionsView({
                 })),
               ]}
             />
+          )}
+
+          {!slice && runs.length > 0 && (
+            <AgentRuns collection={c} runs={runs} onJudge={judgeWork} onRemove={removeRun} />
           )}
 
           {!slice && c.batches.length > 0 && (

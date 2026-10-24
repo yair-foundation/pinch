@@ -8,6 +8,7 @@ import {
   MAX_EVIDENCE,
   MAX_EVIDENCE_BYTES,
   markedOf,
+  numberedRules,
   PROTOCOL_VERSIONS,
   pickOf,
   placeOf,
@@ -15,6 +16,7 @@ import {
   topicsText,
 } from '../agent';
 import { type Collection, newCollection, type Rule, rulesOf } from '../learnings';
+import type { RunEvent } from '../runs';
 
 const rule = (id: string, text: string, extra: Partial<Rule> = {}): Rule => ({
   id,
@@ -127,6 +129,7 @@ describe('Pinch for agents (MCP)', () => {
         'get_rule_evidence',
         'get_render_checks',
         'propose_rule',
+        'report_work',
         'list_rule_topics',
       ],
     );
@@ -513,5 +516,85 @@ describe('a rule the agent proposes (D116)', () => {
       result: { isError?: boolean };
     };
     assert.equal(off.result.isError, true);
+  });
+});
+
+describe('a run of the agent, recorded (D120)', () => {
+  const call = (name: string, args: unknown, events: RunEvent[], log = true) =>
+    answer(
+      { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name, arguments: args } },
+      async () => library(),
+      async () => new Map(),
+      { id: () => 'p1', save: async () => undefined },
+      log ? { id: () => 'w1', add: (e) => void events.push(e) } : undefined,
+    );
+
+  it('writes down what each call asked for and got, by the rules’ lasting keys', async () => {
+    const events: RunEvent[] = [];
+    await call('get_design_rules', { topics: ['copy'], tags: ['Acme'] }, events);
+    await call('get_rule_evidence', { rule: 'R1' }, events);
+    await call('get_rule_evidence', { rule: 'R40' }, events);
+    await call('get_render_checks', {}, events);
+    await call('propose_rule', { text: 'AI boxes are white.', why: 'Agreed.' }, events);
+    await call('list_rule_topics', {}, events);
+    const served = numberedRules(library(), pickOf({ topics: ['copy'], tags: ['Acme'] }));
+    assert.deepEqual(events, [
+      {
+        kind: 'rules',
+        topics: ['copy'],
+        tags: ['Acme'],
+        screen: [],
+        rules: served.map((r) => r.rule.id),
+      },
+      { kind: 'evidence', rule: rulesOf(library())[0].rule.id },
+      { kind: 'checks' },
+      { kind: 'proposal', id: 'p1' },
+    ]);
+  });
+
+  it('takes the agent’s report of a piece of work, rules by number, and says what wasn’t a rule', async () => {
+    const events: RunEvent[] = [];
+    const [r1, r2] = rulesOf(library());
+    const r = await call(
+      'report_work',
+      {
+        work: 'Inbox, fragment',
+        followed: ['R1', 'r2', 'R99'],
+        setAside: [{ rule: 'R2', why: 'The author asked for a dense list here.' }],
+        checksRun: 6,
+        failedChecks: [{ check: 'contrast', rules: ['R1'] }],
+        openCalls: ['Lavender or white ground: lavender keeps R138.'],
+      },
+      events,
+    );
+    assert.match(textOf(r), /^Reported\. .*Left out, not rules: R99\./);
+    assert.deepEqual(events, [
+      {
+        kind: 'report',
+        report: {
+          id: 'w1',
+          at: (events[0] as { report: { at: string } }).report.at,
+          work: 'Inbox, fragment',
+          followed: [r1.rule.id, r2.rule.id],
+          setAside: [{ rule: r2.rule.id, why: 'The author asked for a dense list here.' }],
+          failed: [{ check: 'contrast', rules: [r1.rule.id] }],
+          checksRun: 6,
+          open: ['Lavender or white ground: lavender keeps R138.'],
+        },
+      },
+    ]);
+  });
+
+  it('asks for what was made, and isn’t there without a record', async () => {
+    const events: RunEvent[] = [];
+    const none = (await call('report_work', { followed: ['R1'] }, events)) as {
+      result: { isError?: boolean };
+    };
+    assert.equal(none.result.isError, true);
+    const off = (await call('report_work', { work: 'x' }, events, false)) as {
+      result: { isError?: boolean };
+    };
+    assert.equal(off.result.isError, true);
+    assert.equal(events.length, 0);
   });
 });

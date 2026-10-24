@@ -1,6 +1,7 @@
 import { uploadPresigned } from '@vercel/blob/client';
 import type { Collection } from '@/lib/pin/learnings';
 import type { Proposal } from '@/lib/pin/proposals';
+import type { Run } from '@/lib/pin/runs';
 import { saveQueue } from '@/lib/pin/save-queue';
 import type { CollectionsBackend } from './collections-backend';
 
@@ -86,6 +87,22 @@ export function cloudBackend(folder: string, mode: 'blob' | 'memory'): Collectio
       await ok(
         await fetch(`/api/pin/cloud/proposals/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       );
+    },
+    async runs() {
+      const res = await ok(await fetch('/api/pin/cloud/runs', { cache: 'no-store' }));
+      return ((await res.json()) as { runs: Run[] }).runs;
+    },
+    async judge(run, report, verdict) {
+      await ok(
+        await fetch(`/api/pin/cloud/runs/${encodeURIComponent(run)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report, verdict }),
+        }),
+      );
+    },
+    async dropRun(id) {
+      await ok(await fetch(`/api/pin/cloud/runs/${encodeURIComponent(id)}`, { method: 'DELETE' }));
     },
   };
 }
