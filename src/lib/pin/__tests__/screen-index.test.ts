@@ -22,6 +22,7 @@ import { withChecks } from '../checks';
 import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
 import {
+  KEEP_IN_PINCH,
   outsideTarget,
   roleOf,
   screenGroup,
@@ -314,6 +315,19 @@ describe('a rule with no notes in design-rules.md', () => {
     assert.match(md, /Rule c\.\n\nThe designer's own pick in Pinch's taste check\./);
     assert.doesNotMatch(md, /From 0 notes/);
     assert.match(md, /From 2 notes:/, 'a rule with notes still lists them');
+  });
+});
+
+describe('taste settled in conversation goes back to Pinch (D117)', () => {
+  it('is said in the rules text, design-rules.md and index.md', () => {
+    const c = library();
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-22T09:00:00Z');
+    const read = (end: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(end))?.data);
+    for (const text of [rulesText(c, rulesOf(c)), read('/design-rules.md'), read('/index.md')])
+      assert.ok(text.includes(KEEP_IN_PINCH));
+    assert.match(read('/index.md'), /\n7\. When the author settles something about their taste/);
+    assert.match(KEEP_IN_PINCH, /propose_rule/);
   });
 });
 

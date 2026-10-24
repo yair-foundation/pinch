@@ -160,6 +160,14 @@ export const outsideTarget = (c: Pick<Collection, 'screenRoles'>) =>
 export const OUTSIDE_TARGET =
   'Screenshots of someone else’s product that the author made the target style show the look to aim for: match their quality and look, never their product, brand or content.';
 
+/**
+ * What the agent does with taste the author settles with it in conversation (D117): it goes back
+ * to Pinch, not only into the agent's own notes, so every agent and session gets it. Said in the
+ * rules text, `design-rules.md` and `index.md`, beside the MCP server's own instructions.
+ */
+export const KEEP_IN_PINCH =
+  "When the author settles something about their taste with you that these rules don't hold, or hold otherwise (a correction, a choice between two rules, a new preference), keep it in Pinch, not only in your own notes or files, so every agent and session gets it: ask whether to keep it, and on a yes call Pinch's propose_rule tool when you're connected to Pinch (it waits there for the author to keep or drop); otherwise ask them to add it in Pinch.";
+
 /** The roles given, as a sentence for an agent; '' when there are none. */
 export function rolesLine(c: Collection): string {
   const given = [
@@ -314,6 +322,7 @@ export function screenIndex(
     checksOf(c).length
       ? `${best.length ? 7 : 6}. Run the checks Pinch worked out from the rules on every render: \`checks.json\`, with \`check-render.js\` (\`checks.md\` shows how). Then turn the other rules a rendered page can decide into checks in your own project: \`checks.md\` says how, and lists every rule to sort.`
       : `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
+    `${best.length ? 8 : 7}. ${KEEP_IN_PINCH}`,
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];
