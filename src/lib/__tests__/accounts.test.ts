@@ -5,9 +5,11 @@ import { describe, it } from 'node:test';
 import { accessOf, accountGate, gate, paywallOn } from '../access';
 import {
   applyOrder,
+  applySubscription,
   deleteAccount,
   emailKeyOf,
   isPaid,
+  proOf,
   purchasesOf,
   readAccount,
   recordOrder,
@@ -478,5 +480,91 @@ describe('credits in the store (D98)', () => {
     const bought = await creditsOf(session, browser, config, now);
     assert.equal(bought.balance, PACK_CREDITS + 200 - updatePrice(4));
     assert.equal(bought.bought, true);
+  });
+});
+
+describe('plans (D123)', () => {
+  const env = {
+    LEMONSQUEEZY_STORE_ID: '11',
+    LEMONSQUEEZY_CREDITS_PRODUCT_ID: '22',
+    PINCH_BUY_URL: 'https://x.co/buy',
+    LEMONSQUEEZY_WEBHOOK_SECRET: 's',
+  };
+  const pro = {
+    LEMONSQUEEZY_PRO_PRODUCT_ID: '33',
+    PINCH_PRO_URL: 'https://x.co/pro',
+    PINCH_PLANS_SINCE: '2026-11-01',
+  };
+
+  it('are off until Pro’s product, link and start are all set', () => {
+    assert.equal(billingConfig(env)?.pro, undefined);
+    assert.deepEqual(billingConfig({ ...env, ...pro })?.pro, {
+      productId: '33',
+      url: 'https://x.co/pro',
+      price: '$29/month',
+      since: '2026-11-01T00:00:00.000Z',
+    });
+    assert.equal(billingConfig({ ...env, ...pro, PINCH_PLANS_SINCE: 'soon' })?.pro, undefined);
+    assert.equal(billingConfig({ ...env, ...pro, PINCH_PRO_URL: '' })?.pro, undefined);
+  });
+
+  it('keep each subscription’s state from its webhook, Pro’s product only', () => {
+    const config = billingConfig({ ...env, ...pro }) as BillingConfig;
+    const event = (name: string, attributes: Record<string, unknown>) => ({
+      meta: { event_name: name, custom_data: { user: 'g1' } },
+      data: {
+        id: 9,
+        type: 'subscriptions',
+        attributes: {
+          store_id: 11,
+          product_id: 33,
+          user_email: ' Ann@X.co ',
+          status: 'active',
+          ends_at: null,
+          updated_at: '2026-11-02T10:00:00Z',
+          ...attributes,
+        },
+      },
+    });
+    assert.deepEqual(webhookOutcome(event('subscription_created', {}), config), {
+      kind: 'subscription',
+      subscription: '9',
+      status: 'active',
+      email: 'ann@x.co',
+      user: 'g1',
+      at: '2026-11-02T10:00:00Z',
+    });
+    const cancelled = webhookOutcome(
+      event('subscription_cancelled', { status: 'cancelled', ends_at: '2026-12-02T10:00:00Z' }),
+      config,
+    );
+    assert.equal(cancelled.kind === 'subscription' && cancelled.endsAt, '2026-12-02T10:00:00Z');
+    assert.equal(webhookOutcome(event('subscription_created', { product_id: 22 }), config).kind, 'ignore');
+    assert.equal(
+      webhookOutcome(event('subscription_created', {}), billingConfig(env) as BillingConfig).kind,
+      'ignore',
+    );
+  });
+
+  it('give Pro to a live subscription, a cancelled one until it ends, and anyone who paid before', () => {
+    const since = '2026-11-01T00:00:00.000Z';
+    const now = '2026-11-15T00:00:00.000Z';
+    let p = applySubscription({ orders: {} }, 's1', { status: 'active', at: '2026-11-02' });
+    assert.equal(proOf(p, since, now), true);
+    p = applySubscription(p, 's1', { status: 'cancelled', at: '2026-11-10', endsAt: '2026-12-02' });
+    assert.equal(proOf(p, since, now), true);
+    assert.equal(proOf(p, since, '2026-12-03T00:00:00.000Z'), false);
+    assert.deepEqual(
+      applySubscription(p, 's1', { status: 'active', at: '2026-11-03' }),
+      p,
+      'an older report is ignored',
+    );
+    p = applySubscription(p, 's1', { status: 'expired', at: '2026-12-02' });
+    assert.equal(proOf(p, since, now), false);
+    const before = applyOrder({ orders: {} }, 'o1', 'paid', '2026-10-20T10:00:00Z', '22');
+    assert.equal(proOf(before, since, now), true);
+    const after = applyOrder({ orders: {} }, 'o2', 'paid', '2026-11-05T10:00:00Z', '22');
+    assert.equal(proOf(after, since, now), false);
+    assert.equal(proOf(null, since, now), false);
   });
 });

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { applyAgentReading } from '@/lib/pin/agent-reading';
+import { beyondFree, freeProductOf, withFreeProduct } from '@/lib/pin/plan';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
 import { updatePrice } from '@/lib/pin/credits';
@@ -285,6 +286,7 @@ export function CollectionsView({
   batchZip,
   account,
   credits,
+  plan,
   onPay,
   onCredits,
   onBack,
@@ -309,6 +311,8 @@ export function CollectionsView({
   account: 'in' | 'out' | 'none';
   /** Credits left, and whether this browser's moved into an account; null when none are counted. */
   credits: { balance: number; closed: boolean } | null;
+  /** The account's plan (D123): Pro, or free with Pro's price and checkout; null until plans are on. */
+  plan: { pro: boolean; price: string; url?: string } | null;
   /** Ask for credits: this update needs more, or they are in the account. */
   onPay: () => void;
   /** An update took credits: read them again. */
@@ -1227,6 +1231,16 @@ export function CollectionsView({
                 Pinch writes rules with AI, which is off right now. Your {count(unread, 'note')}{' '}
                 {unread === 1 ? 'waits' : 'wait'} and will be read once it is back.
               </p>
+            )}
+            {plan && !plan.pro && screenSets(c).length > 1 && (
+              <FreePlan
+                products={screenSets(c).map((s) => s.name)}
+                free={freeProductOf(c) ?? ''}
+                beyond={beyondFree(c, rulesOf(c).map((r) => r.rule))}
+                price={plan.price}
+                url={plan.url}
+                onPick={(name) => change((x) => withFreeProduct(x, name, nowIso()), true)}
+              />
             )}
             {movable.length > 0 && (
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px] text-muted-foreground">
@@ -2163,6 +2177,53 @@ function ScreenRoles({
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * The free plan's one product (D123): which one the agent gets, picked here, and what Pro adds.
+ */
+function FreePlan({
+  products,
+  free,
+  beyond,
+  price,
+  url,
+  onPick,
+}: {
+  products: string[];
+  free: string;
+  beyond: number;
+  price: string;
+  url?: string;
+  onPick: (name: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px]">
+      <label htmlFor="free-product" className="text-muted-foreground">
+        Your agent gets
+      </label>
+      <select
+        id="free-product"
+        value={free}
+        onChange={(e) => onPick(e.target.value)}
+        className={cn(field, 'w-auto py-1.5 text-[13px]')}
+      >
+        {products.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
+      <p className="m-0 flex-1 text-muted-foreground">
+        {beyond > 0 ? `${count(beyond, 'rule')} more with Pro.` : 'Pro gives it every product.'}
+      </p>
+      {url && (
+        <a href={url} className={primary}>
+          Get Pro · {price}
+        </a>
+      )}
+    </div>
   );
 }
 

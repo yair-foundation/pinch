@@ -7,6 +7,7 @@ import {
   MAX_RUNS,
   MIN_RUNS,
   neverServed,
+  pilotRow,
   type Report,
   type RunsDoc,
   reportOf,
@@ -215,5 +216,36 @@ describe('what the runs say about the rules (D120)', () => {
       neverServed(library(), more).map((r) => r.rule.id),
       [ccc],
     );
+  });
+});
+
+describe('the pilot’s view of an account (D123)', () => {
+  it('counts runs, pieces, verdicts, notes read and proposals, never what was made', () => {
+    let doc = withEvents(
+      empty(),
+      's1',
+      [
+        { kind: 'reading', notes: 12 },
+        { kind: 'reading', notes: 3 },
+        { kind: 'proposal', id: 'p1' },
+        { kind: 'report', report: piece({ verdict: 'good' }) },
+        { kind: 'report', report: piece({ id: 'w2', verdict: 'off' }) },
+      ],
+      '2026-10-24T10:00:00Z',
+    );
+    doc = withEvents(doc, 's0', [{ kind: 'checks' }], '2026-09-01T10:00:00Z');
+    assert.equal(doc.runs.find((r) => r.id === 's1')?.notesRead, 15);
+    assert.deepEqual(pilotRow(doc.runs, '2026-10-25T10:00:00Z'), {
+      runs7: 1,
+      runs30: 1,
+      pieces: 2,
+      good: 1,
+      close: 0,
+      off: 1,
+      notesRead: 15,
+      proposals: 1,
+      lastRun: '2026-10-24T10:00:00Z',
+    });
+    assert.equal(pilotRow([], 'x').lastRun, null);
   });
 });

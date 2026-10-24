@@ -1,4 +1,4 @@
-import { accessOf, paywallOn } from '@/lib/access';
+import { accessOf, paywallOn, plansOn } from '@/lib/access';
 import { userFolder } from '@/lib/account';
 import { billingConfig, checkoutUrl } from '@/lib/billing';
 import { hasBlob } from '@/lib/blob-doc';
@@ -10,7 +10,7 @@ import { sessionOf, testLoginOn } from '@/lib/session';
 /*
  * What the page needs to know about whoever is looking (D81, D98): whether
  * Pinch is paid here, who is signed in, their credits and the one offer,
- * where to buy, and where their rules are kept. Read fresh, so a purchase
+ * where to buy, their plan (D123), and where their rules are kept. Read fresh, so a purchase
  * shows the moment its webhook lands. Signed in, what this browser spent
  * before moves into the account, once. A browser gets its id cookie here.
  */
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     await mergeBrowser(ours.id, signedIn.email).catch((e) =>
       console.error('[pin] merge', (e as Error).message),
     );
-  const { paywall, session, browser, credits, allowed } = await accessOf(request, ours);
+  const { paywall, session, browser, credits, allowed, pro } = await accessOf(request, ours);
   const config = billingConfig();
   return Response.json(
     {
@@ -57,6 +57,17 @@ export async function GET(request: Request) {
           ? checkoutUrl(config.buyUrl, session.email, session.user)
           : undefined,
       restore: Boolean(paywall && config?.apiKey),
+      // Free covers one product, Pro every one (D123); null until plans are on.
+      plan:
+        plansOn() && config?.pro
+          ? {
+              pro,
+              price: config.pro.price,
+              ...(session && !pro
+                ? { url: checkoutUrl(config.pro.url, session.email, session.user) }
+                : {}),
+            }
+          : null,
       cloud: session ? (hasBlob() ? 'blob' : 'memory') : null,
       folder: session ? userFolder(session.user) : null,
     },

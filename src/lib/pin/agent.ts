@@ -644,8 +644,15 @@ export function topicsText(c: Collection | null): string {
 /** Where a proposed rule goes to wait (D116): a fresh id for it, and the store's write. */
 export type ProposalStore = { id: () => string; save: (p: Proposal) => Promise<void> };
 
-/** Where the agent's readings wait for the page (D122): a fresh id, and the store's write. */
-export type ReadingStore = { id: () => string; save: (r: AgentReading) => Promise<void> };
+/**
+ * Where the agent's readings wait for the page (D122): a fresh id, the store's write, and, when
+ * the agent gets fewer rules than there are (the free plan, D123), all of them to read against.
+ */
+export type ReadingStore = {
+  id: () => string;
+  save: (r: AgentReading) => Promise<void>;
+  rules?: () => Promise<Collection | null>;
+};
 
 /**
  * The next notes to read (D122): Pinch's method, the library and the notes as its own reading
@@ -697,11 +704,17 @@ export async function notesContent(
   return { content };
 }
 
-/** The agent's reading, checked and kept to wait for the page (D122). */
-async function readingContent(c: Collection | null, args: unknown, store: ReadingStore) {
+/** The agent's reading, checked and kept to wait for the page (D122), and counted in its run. */
+async function readingContent(
+  c: Collection | null,
+  args: unknown,
+  store: ReadingStore,
+  log?: RunLog,
+) {
   const out = agentReadingOf(args, c, new Date().toISOString(), store.id());
   if ('error' in out) return text(out.error, true);
   await store.save(out.reading);
+  log?.add({ kind: 'reading', notes: out.reading.read.length });
   const { read, reading } = out.reading;
   const left = c ? unreadNotes(c).length - read.length : 0;
   return text(
@@ -789,10 +802,11 @@ export async function answer(
         return reply(id, await proposeContent(await rules(), params.arguments, proposals, log));
       }
       if (params.name === 'get_notes_to_read')
-        return reply(id, await notesContent(await rules(), files));
+        return reply(id, await notesContent(await (readings?.rules ?? rules)(), files));
       if (params.name === 'submit_reading') {
         if (!readings) return reply(id, text('Reading notes isn’t available here.', true));
-        return reply(id, await readingContent(await rules(), params.arguments, readings));
+        const all = await (readings.rules ?? rules)();
+        return reply(id, await readingContent(all, params.arguments, readings, log));
       }
       if (params.name === 'report_work') {
         if (!log) return reply(id, text('Reporting work isn’t available here.', true));

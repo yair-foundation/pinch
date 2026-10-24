@@ -48,6 +48,8 @@ export type Run = {
   checks: boolean;
   /** The ids of the rules it proposed (D116). */
   proposals: string[];
+  /** Notes it read into rules itself (D122); absent in runs from before. */
+  notesRead?: number;
   reports: Report[];
 };
 
@@ -57,6 +59,7 @@ export type RunEvent =
   | { kind: 'evidence'; rule: string }
   | { kind: 'checks' }
   | { kind: 'proposal'; id: string }
+  | { kind: 'reading'; notes: number }
   | { kind: 'report'; report: Report };
 
 /**
@@ -193,6 +196,7 @@ export function withEvents(doc: RunsDoc, id: string, events: RunEvent[], now: st
     else if (e.kind === 'checks') run = { ...run, checks: true };
     else if (e.kind === 'proposal')
       run = { ...run, proposals: union(run.proposals, [e.id]) };
+    else if (e.kind === 'reading') run = { ...run, notesRead: (run.notesRead ?? 0) + e.notes };
     else run = { ...run, reports: [...run.reports, e.report].slice(-MAX_REPORTS) };
   }
   run = { ...run, updated: now };
@@ -321,4 +325,38 @@ export function neverServed(c: Collection, runs: Run[]): ExportedRule[] {
   if (asking.length < MIN_RUNS) return [];
   const served = new Set(asking.flatMap((r) => r.served));
   return rulesOf(c).filter((r) => !served.has(r.rule.id));
+}
+
+/** One account's use for the pilot (D123): counts only, never what was made or said. */
+export type PilotRow = {
+  runs7: number;
+  runs30: number;
+  pieces: number;
+  good: number;
+  close: number;
+  off: number;
+  notesRead: number;
+  proposals: number;
+  lastRun: string | null;
+};
+
+const DAY = 86_400_000;
+
+/** How one account used its agent with Pinch, over the runs it keeps. */
+export function pilotRow(runs: Run[], now: string): PilotRow {
+  const t = Date.parse(now);
+  const within = (days: number) => runs.filter((r) => t - Date.parse(r.updated) <= days * DAY);
+  const pieces = runs.flatMap((r) => r.reports);
+  const verdicts = (v: Verdict) => pieces.filter((p) => p.verdict === v).length;
+  return {
+    runs7: within(7).length,
+    runs30: within(30).length,
+    pieces: pieces.length,
+    good: verdicts('good'),
+    close: verdicts('close'),
+    off: verdicts('off'),
+    notesRead: runs.reduce((n, r) => n + (r.notesRead ?? 0), 0),
+    proposals: runs.reduce((n, r) => n + r.proposals.length, 0),
+    lastRun: runs.reduce<string | null>((x, r) => (!x || r.updated > x ? r.updated : x), null),
+  };
 }

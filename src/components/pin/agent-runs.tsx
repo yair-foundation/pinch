@@ -195,6 +195,9 @@ function RunCard({
                 ? `${run.evidence.length} ${run.evidence.length === 1 ? 'close-up' : 'close-ups'} opened`
                 : '',
               run.checks ? 'checks taken' : '',
+              run.notesRead
+                ? `${run.notesRead} ${run.notesRead === 1 ? 'note' : 'notes'} read into rules`
+                : '',
               run.proposals.length
                 ? `${run.proposals.length} ${run.proposals.length === 1 ? 'rule' : 'rules'} proposed`
                 : '',

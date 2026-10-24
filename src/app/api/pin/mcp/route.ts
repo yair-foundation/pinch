@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { after } from 'next/server';
+import { agentHasPro } from '@/lib/access';
 import { userOfAgentKey } from '@/lib/agent-keys';
 import {
   addProposal,
@@ -11,6 +12,7 @@ import {
 } from '@/lib/cloud';
 import { answer, type RpcMessage } from '@/lib/pin/agent';
 import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/learnings';
+import { freePlan } from '@/lib/pin/plan';
 import { agentName, type RunEvent } from '@/lib/pin/runs';
 
 /*
@@ -24,7 +26,8 @@ import { agentName, type RunEvent } from '@/lib/pin/runs';
  * (D120): `initialize` hands out an `Mcp-Session-Id` the agent sends back,
  * and what its calls asked for and got goes into the account's record of
  * runs once the reply is out. The agent may read the person's notes into
- * rules itself (D122); its reading waits in the account for the page. No AI
+ * rules itself (D122); its reading waits in the account for the page. On the
+ * free plan the agent gets the rules of one product (D123). No AI
  * runs here, and nothing about the call is logged but its method.
  */
 
@@ -70,9 +73,16 @@ export async function POST(request: Request) {
   const runId = session || `d${now.slice(0, 10).replace(/-/g, '')}`;
   const events: RunEvent[] = [];
   const log = { id: newId, add: (e: RunEvent) => void events.push(e) };
+  let whole: Promise<Collection | null> | null = null;
   let cached: Promise<Collection | null> | null = null;
+  const all = () => {
+    whole ??= rulesOf(user);
+    return whole;
+  };
   const rules = () => {
-    cached ??= rulesOf(user);
+    cached ??= Promise.all([all(), agentHasPro(user)]).then(([c, pro]) =>
+      c && !pro ? freePlan(c) : c,
+    );
     return cached;
   };
   const replies = [];
@@ -85,7 +95,7 @@ export async function POST(request: Request) {
       (id, paths) => batchFiles(user, id, paths),
       { id: newId, save: (p) => addProposal(user, p) },
       log,
-      { id: newId, save: (r) => addReading(user, r) },
+      { id: newId, save: (r) => addReading(user, r), rules: all },
     );
     if (r) replies.push(r);
   }

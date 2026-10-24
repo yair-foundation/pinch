@@ -17,6 +17,12 @@ import { z } from 'zod';
  * old checkout. LEMONSQUEEZY_PRODUCT_ID keeps naming the original offer (D81's
  * $19 once): its orders, and those kept before D98 with no product, keep what
  * that offer said (D98).
+ *
+ * Plans (D123): Pro is a monthly subscription, LEMONSQUEEZY_PRO_PRODUCT_ID
+ * bought through PINCH_PRO_URL at PINCH_PRO_PRICE. Plans are on only when
+ * those and PINCH_PLANS_SINCE are set: everyone who paid before that date
+ * keeps Pro, and credits stay for reading with Pinch's AI. Its webhook events
+ * (`subscription_*`) keep each subscription's state under the buyer's email.
  */
 
 export type BillingConfig = {
@@ -29,6 +35,8 @@ export type BillingConfig = {
   webhookSecret: string;
   apiKey?: string;
   price: string;
+  /** Pro (D123), when plans are on: the product, its checkout link and price, and when plans began. */
+  pro?: { productId: string; url: string; price: string; since: string };
 };
 
 export function billingConfig(
@@ -47,6 +55,23 @@ export function billingConfig(
     webhookSecret,
     apiKey: env.LEMONSQUEEZY_API_KEY?.trim() || undefined,
     price: env.PINCH_PRICE?.trim() || '$19.99',
+    ...proConfig(env),
+  };
+}
+
+/** Pro's settings (D123), all four or none: plans stay off until each is set. */
+function proConfig(env: Record<string, string | undefined>): Pick<BillingConfig, 'pro'> {
+  const productId = env.LEMONSQUEEZY_PRO_PRODUCT_ID?.trim();
+  const url = env.PINCH_PRO_URL?.trim();
+  const since = env.PINCH_PLANS_SINCE?.trim();
+  if (!productId || !url || !since || Number.isNaN(Date.parse(since))) return {};
+  return {
+    pro: {
+      productId,
+      url,
+      price: env.PINCH_PRO_PRICE?.trim() || '$29/month',
+      since: new Date(since).toISOString(),
+    },
   };
 }
 
@@ -67,6 +92,27 @@ export function signatureOk(raw: string, signature: string | null, secret: strin
 }
 
 const id = z.union([z.string(), z.number()]).transform(String);
+
+/** A subscription's state as Lemon Squeezy reports it (D123). */
+const subscriptionSchema = z.object({
+  meta: z.object({
+    event_name: z.string().startsWith('subscription_'),
+    custom_data: z.object({ user: z.string().max(60).optional() }).nullish(),
+  }),
+  data: z.object({
+    id,
+    type: z.literal('subscriptions'),
+    attributes: z.object({
+      store_id: id,
+      product_id: id,
+      user_email: z.string().max(320),
+      status: z.string().max(40),
+      ends_at: z.string().nullish(),
+      updated_at: z.string().optional(),
+      created_at: z.string().optional(),
+    }),
+  }),
+});
 const webhookSchema = z.object({
   meta: z.object({
     event_name: z.string(),
@@ -96,6 +142,16 @@ export type WebhookOutcome =
       user?: string;
       at: string;
     }
+  | {
+      kind: 'subscription';
+      subscription: string;
+      status: string;
+      /** When a cancelled one stops: it keeps Pro until then. */
+      endsAt?: string;
+      email: string;
+      user?: string;
+      at: string;
+    }
   | { kind: 'ignore'; reason: string };
 
 /** The products Pinch knows: the credits pack, and the original offer when there is one. */
@@ -104,6 +160,23 @@ const productsOf = (config: BillingConfig) =>
 
 /** What an order webhook means for Pinch: a paid or refunded order of its products, or nothing. */
 export function webhookOutcome(body: unknown, config: BillingConfig): WebhookOutcome {
+  const sub = subscriptionSchema.safeParse(body);
+  if (sub.success) {
+    const { meta, data } = sub.data;
+    const a = data.attributes;
+    if (!config.pro) return { kind: 'ignore', reason: 'plans are off' };
+    if (a.store_id !== config.storeId) return { kind: 'ignore', reason: 'another store' };
+    if (a.product_id !== config.pro.productId) return { kind: 'ignore', reason: 'another product' };
+    return {
+      kind: 'subscription',
+      subscription: data.id,
+      status: a.status,
+      ...(a.ends_at ? { endsAt: a.ends_at } : {}),
+      email: a.user_email.trim().toLowerCase(),
+      ...(meta.custom_data?.user ? { user: meta.custom_data.user } : {}),
+      at: a.updated_at ?? a.created_at ?? new Date().toISOString(),
+    };
+  }
   const parsed = webhookSchema.safeParse(body);
   if (!parsed.success) return { kind: 'ignore', reason: 'not an order' };
   const { meta, data } = parsed.data;
@@ -173,5 +246,50 @@ export async function paidOrdersFor(
       ...(o.attributes.first_order_item
         ? { product: o.attributes.first_order_item.product_id }
         : {}),
+    }));
+}
+
+const subscriptionsSchema = z.object({
+  data: z.array(
+    z.object({
+      id,
+      attributes: z.object({
+        product_id: id,
+        status: z.string(),
+        ends_at: z.string().nullish(),
+        updated_at: z.string().optional(),
+      }),
+    }),
+  ),
+});
+
+/** Every Pro subscription for this email, asked of Lemon Squeezy's API (D123). */
+export async function subscriptionsFor(
+  email: string,
+  config: BillingConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ subscription: string; status: string; endsAt?: string; at: string }[]> {
+  if (!config.apiKey || !config.pro) return [];
+  const url = new URL('https://api.lemonsqueezy.com/v1/subscriptions');
+  url.searchParams.set('filter[store_id]', config.storeId);
+  url.searchParams.set('filter[user_email]', email.trim().toLowerCase());
+  const res = await fetchImpl(url, {
+    headers: {
+      Accept: 'application/vnd.api+json',
+      'Content-Type': 'application/vnd.api+json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+  });
+  if (!res.ok) throw new Error('Lemon Squeezy didn’t answer. Try again in a minute.');
+  const parsed = subscriptionsSchema.safeParse(await res.json());
+  if (!parsed.success) return [];
+  const pro = config.pro.productId;
+  return parsed.data.data
+    .filter((x) => x.attributes.product_id === pro)
+    .map((x) => ({
+      subscription: x.id,
+      status: x.attributes.status,
+      ...(x.attributes.ends_at ? { endsAt: x.attributes.ends_at } : {}),
+      at: x.attributes.updated_at ?? new Date().toISOString(),
     }));
 }

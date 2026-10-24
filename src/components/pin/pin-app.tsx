@@ -1588,6 +1588,7 @@ function Workspace() {
           batchZip={batchZip}
           account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
           credits={credits}
+          plan={me?.plan ?? null}
           onPay={openPay}
           onCredits={refreshMe}
           onBack={() => setView('batch')}

@@ -45,6 +45,8 @@ export type Me = {
   price: string;
   buyUrl?: string;
   restore: boolean;
+  /** Free covers one product, Pro every one (D123); null until plans are on. */
+  plan: { pro: boolean; price: string; url?: string } | null;
   cloud: 'blob' | 'memory' | null;
   folder: string | null;
 };
@@ -58,6 +60,7 @@ const OPEN: Me = {
   credits: null,
   price: '$19.99',
   restore: false,
+  plan: null,
   cloud: null,
   folder: null,
 };
@@ -414,6 +417,21 @@ export function AccountMenu({
               )}
             </div>
           </div>
+          {user && me?.plan && (
+            <div className="flex items-center gap-2 px-3.5 pt-2.5 text-[13px]">
+              <span className="flex-1 text-muted-foreground">
+                {me.plan.pro ? 'Pro' : 'Free plan'}
+              </span>
+              {me.plan.url && (
+                <a
+                  href={me.plan.url}
+                  className="rounded-md px-1.5 py-0.5 font-medium text-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-background"
+                >
+                  Get Pro
+                </a>
+              )}
+            </div>
+          )}
           {me?.paywall && me.credits && !me.credits.original && (
             <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5 text-[13px]">
               <span className="flex-1 text-muted-foreground">

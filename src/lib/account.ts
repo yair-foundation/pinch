@@ -26,7 +26,9 @@ export type Account = { email: string; name: string; createdAt: string; seenAt: 
  * have neither: they are of the original offer, the only product then.
  */
 export type Order = { status: 'paid' | 'refunded'; at: string; product?: string; paidAt?: string };
-export type Purchases = { orders: Record<string, Order> };
+/** A Pro subscription as last reported (D123): its status, and when a cancelled one ends. */
+export type Subscription = { status: string; at: string; endsAt?: string };
+export type Purchases = { orders: Record<string, Order>; subscriptions?: Record<string, Subscription> };
 
 const accountKey = (user: string) => `pinch-accounts/${user}.json`;
 const purchaseKey = (email: string) => `pinch-purchases/${emailKeyOf(email)}.json`;
@@ -75,6 +77,41 @@ export function applyOrder(
   if (kept && (kept.at > at || (kept.at === at && kept.status === 'refunded')))
     return { orders: { ...p.orders, [order]: { ...kept, ...known } } };
   return { orders: { ...p.orders, [order]: { status, at, ...known } } };
+}
+
+/** One subscription's report applied: an older report than the one kept is ignored. Pure. */
+export function applySubscription(
+  p: Purchases,
+  id: string,
+  report: Subscription,
+): Purchases {
+  const kept = p.subscriptions?.[id];
+  if (kept && kept.at > report.at) return p;
+  return { ...p, subscriptions: { ...p.subscriptions, [id]: report } };
+}
+
+/** The statuses that keep Pro: a trial, paid, or a payment being retried. */
+const LIVE = new Set(['on_trial', 'active', 'past_due']);
+
+/**
+ * Whether an email has Pro (D123): a subscription that is live, or cancelled and not yet ended;
+ * or any order paid before plans began, which keeps everything it had then. Pure.
+ */
+export function proOf(p: Purchases | null, since: string, now = new Date().toISOString()): boolean {
+  if (!p) return false;
+  const subscribed = Object.values(p.subscriptions ?? {}).some(
+    (x) => LIVE.has(x.status) || (x.status === 'cancelled' && Boolean(x.endsAt && x.endsAt > now)),
+  );
+  const before = Object.values(p.orders).some(
+    (o) => o.status === 'paid' && (o.paidAt ?? o.at) < since,
+  );
+  return subscribed || before;
+}
+
+export async function recordSubscription(email: string, id: string, report: Subscription) {
+  await updateDocument<Purchases, void>(purchaseKey(email), { orders: {} }, (doc) => {
+    doc.subscriptions = applySubscription(doc, id, report).subscriptions;
+  });
 }
 
 export async function purchasesOf(email: string): Promise<Purchases | null> {

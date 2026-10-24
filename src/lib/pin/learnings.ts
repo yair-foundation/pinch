@@ -180,6 +180,8 @@ export type Collection = {
   screenRoles?: Record<string, ScreenRole>;
   /** What each product or feature is for and how it should feel, by the set's compared tag (D121). */
   briefs?: Record<string, string>;
+  /** The product the free plan's agent gets, by its compared tag (D123). */
+  freeProduct?: string;
 };
 
 /** The name of the one collection each person has (D86). */
@@ -324,6 +326,9 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
     ...(checks ? { checks } : {}),
     ...(Object.keys(screenRoles).length ? { screenRoles } : {}),
     ...(Object.keys(briefs).length ? { briefs } : {}),
+    ...((into.freeProduct ?? from.freeProduct)
+      ? { freeProduct: into.freeProduct ?? from.freeProduct }
+      : {}),
   };
 }
 

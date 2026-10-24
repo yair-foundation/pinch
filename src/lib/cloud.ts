@@ -3,6 +3,8 @@ import { userFolder } from './account';
 import { type AgentReading, agentReadingsIn, withAgentReading } from './pin/agent-reading';
 import { type Proposal, proposalsIn, withProposal } from './pin/proposals';
 import {
+  type PilotRow,
+  pilotRow,
   type RunEvent,
   type RunsDoc,
   runsDocIn,
@@ -135,6 +137,21 @@ export const judgeWork = (user: string, run: string, report: string, verdict: Ve
 
 export const dropRun = (user: string, id: string) =>
   changeRuns(user, (doc) => withoutRun(doc, id));
+
+/**
+ * Every account's use of its agent, for the pilot (D123): counts from each account's runs, by
+ * the account's hashed key, newest use first. Nothing an agent made or said.
+ */
+export async function pilotRows(now: string): Promise<({ user: string } & PilotRow)[]> {
+  const keys = (await listDocuments('pinch-users/')).filter((k) => k.endsWith('/runs.json'));
+  const rows = await Promise.all(
+    keys.map(async (k) => {
+      const user = k.slice('pinch-users/'.length, -'/runs.json'.length);
+      return { user, ...pilotRow(runsDocIn((await readDocument<unknown>(k, null)).doc).runs, now) };
+    }),
+  );
+  return rows.sort((a, b) => (b.lastRun ?? '').localeCompare(a.lastRun ?? ''));
+}
 
 /**
  * The agent's readings of notes (D122), waiting for the page to apply them:

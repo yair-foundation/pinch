@@ -1,3 +1,4 @@
+import { proOf, purchasesOf, readAccount } from './account';
 import { type BillingConfig, billingConfig } from './billing';
 import { keptBytes, STORAGE_BOUGHT_BYTES, STORAGE_FREE_BYTES } from './cloud';
 import { browserOf, type Credits, creditsOf } from './credits';
@@ -11,9 +12,16 @@ import { type Session, sessionOf } from './session';
  * agent need only a sign-in; suggestions are for buyers with credits left, and
  * for those who bought the original offer. Until both are set up, nothing is
  * gated and nothing is counted, as before.
+ *
+ * Plans (D123), once Pro is set up too: a free account's agent gets the rules
+ * of one product, and Pro every product, with the storage of a buyer. Until
+ * Pro is set up, everyone has what Pro gives.
  */
 
 export const paywallOn = () => googleConfigured() && billingConfig() !== null;
+
+/** Whether plans are on (D123): the paywall, and Pro set up in Lemon Squeezy. */
+export const plansOn = () => paywallOn() && Boolean(billingConfig()?.pro);
 
 export type Access = {
   paywall: boolean;
@@ -23,6 +31,8 @@ export type Access = {
   credits: Credits | null;
   /** Whether the buyers' extras (suggestions) are open to them. */
   allowed: boolean;
+  /** Whether they have what Pro gives (D123): always, until plans are on. */
+  pro: boolean;
 };
 
 /** Who is asking and what they may use; `browser` once worked out, so a new id is made once. */
@@ -32,11 +42,15 @@ export async function accessOf(
 ): Promise<Access> {
   const paywall = paywallOn();
   const session = sessionOf(request);
-  if (!paywall) return { paywall, session, browser, credits: null, allowed: true };
-  const credits = await creditsOf(session, browser.id, billingConfig() as BillingConfig);
+  if (!paywall) return { paywall, session, browser, credits: null, allowed: true, pro: true };
+  const config = billingConfig() as BillingConfig;
+  const credits = await creditsOf(session, browser.id, config);
   const allowed =
     Boolean(session) && (credits.original || (credits.bought && credits.balance > 0));
-  return { paywall, session, browser, credits, allowed };
+  const pro = config.pro
+    ? Boolean(session) && proOf(await purchasesOf(session?.email ?? ''), config.pro.since)
+    : true;
+  return { paywall, session, browser, credits, allowed, pro };
 }
 
 const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' };
@@ -71,8 +85,8 @@ export async function gate(request: Request): Promise<Response | null> {
 export async function storageRoom(request: Request, user: string, path: string) {
   const a = await accessOf(request);
   if (!a.credits) return Number.POSITIVE_INFINITY;
-  const cap =
-    a.credits.bought || a.credits.original ? STORAGE_BOUGHT_BYTES : STORAGE_FREE_BYTES;
+  const paid = billingConfig()?.pro ? a.pro : a.credits.bought || a.credits.original;
+  const cap = paid ? STORAGE_BOUGHT_BYTES : STORAGE_FREE_BYTES;
   return cap - (await keptBytes(user, path));
 }
 
@@ -80,4 +94,12 @@ export async function storageRoom(request: Request, user: string, path: string) 
 export function accountGate(request: Request): Response | null {
   if (!paywallOn() || sessionOf(request)) return null;
   return Response.json({ error: 'Sign in to use Pinch.' }, { status: 401, headers });
+}
+
+/** Whether an account's agent gets every product (D123): yes until plans are on, then Pro only. */
+export async function agentHasPro(user: string): Promise<boolean> {
+  const since = plansOn() ? billingConfig()?.pro?.since : undefined;
+  if (!since) return true;
+  const account = await readAccount(user);
+  return account ? proOf(await purchasesOf(account.email), since) : false;
 }

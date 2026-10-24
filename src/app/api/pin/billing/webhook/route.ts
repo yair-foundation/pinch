@@ -1,4 +1,4 @@
-import { readAccount, recordOrder } from '@/lib/account';
+import { readAccount, recordOrder, recordSubscription } from '@/lib/account';
 import { billingConfig, signatureOk, webhookOutcome } from '@/lib/billing';
 
 /*
@@ -8,8 +8,9 @@ import { billingConfig, signatureOk, webhookOutcome } from '@/lib/billing';
  * buyer's email (a paid credits pack is 2,000 credits, a refund takes back
  * what is left of it), and under the
  * signed-in account's email too when the checkout carried the account and the
- * buyer typed another address. Anything else is acknowledged and dropped.
- * No email is logged.
+ * buyer typed another address. A Pro subscription's events (D123) keep its
+ * state the same way. Anything else is acknowledged and dropped. No email is
+ * logged.
  */
 
 export const dynamic = 'force-dynamic';
@@ -37,8 +38,16 @@ export async function POST(request: Request) {
     if (account) emails.add(account.email);
   }
   for (const email of emails) {
-    await recordOrder(email, outcome.order, outcome.kind, outcome.at, outcome.product);
+    if (outcome.kind === 'subscription')
+      await recordSubscription(email, outcome.subscription, {
+        status: outcome.status,
+        at: outcome.at,
+        ...(outcome.endsAt ? { endsAt: outcome.endsAt } : {}),
+      });
+    else await recordOrder(email, outcome.order, outcome.kind, outcome.at, outcome.product);
   }
-  console.log(`[pin] order ${outcome.kind}`);
+  console.log(
+    `[pin] ${outcome.kind === 'subscription' ? `subscription ${outcome.status}` : `order ${outcome.kind}`}`,
+  );
   return Response.json({ ok: true });
 }
