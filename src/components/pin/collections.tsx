@@ -1270,10 +1270,19 @@ export function CollectionsView({
               </div>
             )}
             {learnAvailable === false && unread > 0 && (
-              <p className="rounded-xl border border-border px-4 py-3 text-[13px] text-muted-foreground">
-                Pinch writes rules with AI, which is off right now. Your {count(unread, 'note')}{' '}
-                {unread === 1 ? 'waits' : 'wait'} and will be read once it is back.
-              </p>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px] text-muted-foreground">
+                <p className="m-0 flex-1">
+                  {backend.readings
+                    ? `Pinch’s own reading is off right now. Your agent can read your ${count(unread, 'note')}.`
+                    : `Pinch writes rules with AI, which is off right now. Your ${count(unread, 'note')} ${unread === 1 ? 'waits' : 'wait'} and will be read once it is back.`}
+                </p>
+                {backend.readings && (
+                  <button type="button" onClick={copyReadPrompt} className={button}>
+                    <PlugZap className="size-4" aria-hidden />
+                    Read with your agent
+                  </button>
+                )}
+              </div>
             )}
             {plan && !plan.pro && screenSets(c).length > 1 && (
               <FreePlan

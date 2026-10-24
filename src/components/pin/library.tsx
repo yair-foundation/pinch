@@ -148,16 +148,10 @@ export function Library({
                     {r.best && (
                       <Star className="size-3.5 shrink-0 fill-foreground text-foreground" aria-label="Best example" />
                     )}
-                    <span className="shrink-0 font-mono text-muted-foreground">
-                      {r.notes.length}
-                      <span className="sr-only"> notes</span>
-                      {r.rules > 0 && (
-                        <>
-                          {' · '}
-                          {r.rules}
-                          <span className="sr-only"> rules</span>
-                        </>
-                      )}
+                    <span className="shrink-0 text-muted-foreground">
+                      {[count(r.notes.length, 'note'), r.rules ? count(r.rules, 'rule') : '']
+                        .filter(Boolean)
+                        .join(' · ')}
                     </span>
                   </span>
                 </button>
@@ -279,12 +273,16 @@ function ReferenceDialog({
             className="block h-auto max-h-[50vh] w-full rounded-lg bg-muted object-contain"
           />
         )}
-        <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-          {r.source && <span>{sourceLabel(r.source)}</span>}
-          <span>{count(r.notes.length, 'note')}</span>
-          <span>{r.rules ? `feeds ${count(r.rules, 'rule')}` : 'feeds no rule yet'}</span>
-          {r.unread > 0 && <span>{r.unread} not read</span>}
-        </div>
+        <p className="m-0 text-[13px] text-muted-foreground">
+          {[
+            r.source ? sourceLabel(r.source) : '',
+            count(r.notes.length, 'note'),
+            r.rules ? `feeds ${count(r.rules, 'rule')}` : 'feeds no rule yet',
+            r.unread ? `${r.unread} not read` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
         <div className="space-y-1">
           <label htmlFor="reference-tag" className="text-[13px] font-medium text-muted-foreground">
             Screen tag
