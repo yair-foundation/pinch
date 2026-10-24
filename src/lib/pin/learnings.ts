@@ -23,6 +23,7 @@ import { type ReviewList, reviewCells, reviewFile, reviewPages, reviewSpan } fro
 import {
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
+  OPEN_CALLS,
   OUTSIDE_TARGET,
   outsideTarget,
   rolesLine,
@@ -824,7 +825,7 @@ const said = (n: BatchNote) =>
 export function rulesText(c: Collection, rules: ExportedRule[]): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
     ...(rolesLine(c) ? [rolesLine(c)] : []),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
@@ -993,6 +994,7 @@ const HOW_TO_USE = [
   'Each rule lists the notes it comes from and their close-ups. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
   OUTSIDE_LINE,
   "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its notes and close-ups first.",
+  OPEN_CALLS,
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
 ];

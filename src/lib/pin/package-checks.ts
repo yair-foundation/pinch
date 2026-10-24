@@ -65,6 +65,7 @@ export function checksGuide(c: Collection, rules: ExportedRule[], stamp: string)
     '5. **Prove each check.** Run it on a copy you broke on purpose and see it fail, before you rely on it passing.',
     '6. **Keep the worklist below in your project, filled in:** for each rule, check or review, the check’s name, and what it measures. When a new export comes, compare its `rules.json` with your list by `key`: add checks for new rules, revise those whose words changed, and remove those whose rule is gone.',
     '7. **Run the checks on every render, and look at the review rules yourself.** A passing check is not a design review.',
+    '8. **Check earlier work again when anything shared changes.** Keep every piece of work you have made at the size it is shown, and run every check on all of them whenever the rules, a check or a shared part (components, styles) changes; put them on one sheet and look at them together. A check that passes on new work but fails or skips on earlier work held only the case it was written for.',
     '',
     '## Worklist',
     '',

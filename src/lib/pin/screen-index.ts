@@ -176,6 +176,22 @@ export const KEEP_IN_PINCH =
 export const LIVE_RULES_WIN =
   "Your own notes or copies of these rules go stale when the author changes a rule: where they differ, the rules as Pinch gives them now win (get_design_rules when you're connected, otherwise the newest export), so update your notes to match.";
 
+/**
+ * What the agent's report ends with (D119): the calls only the author can make, so their answers
+ * come back as rules through `KEEP_IN_PINCH`. Said wherever it is.
+ */
+export const OPEN_CALLS =
+  "When you report on your work, end with the decisions that need the author's call, one line each with the options, after the rules you set aside: their answers are what to keep in Pinch.";
+
+/**
+ * How several pieces of work stay in step (D119): one tracker, and one agent per piece, with shared
+ * parts changed one at a time. In `index.md` and the MCP server's instructions.
+ */
+export const WORKING_LINES = [
+  "Keep one tracker that every agent and the author read and write: a row for each piece of work, with its render, the state of its checks and the decisions that need the author's call. Update your row whenever your piece changes.",
+  'When several agents work at once, give each its own piece and folder. Change shared parts (components, styles, checks) one agent at a time, then check all earlier work again (`checks.md`, step 8).',
+];
+
 /** The roles given, as a sentence for an agent; '' when there are none. */
 export function rolesLine(c: Collection): string {
   const given = [
@@ -331,6 +347,11 @@ export function screenIndex(
       ? `${best.length ? 7 : 6}. Run the checks Pinch worked out from the rules on every render: \`checks.json\`, with \`check-render.js\` (\`checks.md\` shows how). Then turn the other rules a rendered page can decide into checks in your own project: \`checks.md\` says how, and lists every rule to sort.`
       : `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
     `${best.length ? 8 : 7}. ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
+    `${best.length ? 9 : 8}. ${OPEN_CALLS}`,
+    '',
+    '## Working on many pieces',
+    '',
+    ...WORKING_LINES.map((l) => `- ${l}`),
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];

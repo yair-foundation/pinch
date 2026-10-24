@@ -24,6 +24,7 @@ import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-shee
 import {
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
+  OPEN_CALLS,
   outsideTarget,
   roleOf,
   screenGroup,
@@ -36,6 +37,7 @@ import {
   sourceRoleOf,
   sourceSets,
   withScreenRole,
+  WORKING_LINES,
   withSourceRole,
 } from '../screen-index';
 import { unzip } from '../unzip';
@@ -341,6 +343,22 @@ describe('the rules as Pinch gives them now win over the agent’s notes (D118)'
     for (const text of [rulesText(c, rulesOf(c)), read('/design-rules.md'), read('/index.md')])
       assert.ok(text.includes(LIVE_RULES_WIN));
     assert.match(LIVE_RULES_WIN, /get_design_rules/);
+  });
+});
+
+describe('how the agent works over many pieces (D119)', () => {
+  it('ends reports with the open calls, keeps a tracker and lanes, and checks earlier work again', () => {
+    const c = library();
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-24T09:00:00Z');
+    const read = (end: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(end))?.data);
+    for (const text of [rulesText(c, rulesOf(c)), read('/design-rules.md'), read('/index.md')])
+      assert.ok(text.includes(OPEN_CALLS));
+    const index = read('/index.md');
+    assert.match(index, /\n8\. When you report on your work/);
+    assert.match(index, /## Working on many pieces\n\n- Keep one tracker/);
+    for (const l of WORKING_LINES) assert.ok(index.includes(l));
+    assert.match(read('/checks.md'), /\n8\. \*\*Check earlier work again when anything shared changes\.\*\*/);
   });
 });
 
