@@ -8,6 +8,7 @@ import {
   Download,
   Pencil,
   ListChecks,
+  NotebookPen,
   PlugZap,
   RefreshCw,
   Star,
@@ -85,6 +86,8 @@ import { keepProposal, type Proposal } from '@/lib/pin/proposals';
 import { type Report, type Run, type Verdict, withVerdict } from '@/lib/pin/runs';
 import { reviewCells } from '@/lib/pin/review-sheets';
 import {
+  briefOf,
+  MAX_BRIEF,
   roleOf,
   SCREEN_ROLES,
   type ScreenRole,
@@ -92,6 +95,7 @@ import {
   screenSets,
   sourceRoleOf,
   sourceSets,
+  withBrief,
   withScreenRole,
   withSourceRole,
 } from '@/lib/pin/screen-index';
@@ -1243,6 +1247,9 @@ export function CollectionsView({
                   role: roleOf(c, s.name),
                   onRole: (role: ScreenRole | null) =>
                     change((x) => withScreenRole(x, s.name, role, nowIso()), true),
+                  brief: briefOf(c, s.name),
+                  onBrief: (text: string) =>
+                    change((x) => withBrief(x, s.name, text, nowIso()), true),
                 })),
               ]}
             />
@@ -1986,25 +1993,56 @@ function ScreenRoles({
     notes: number;
     role?: ScreenRole;
     onRole: (role: ScreenRole | null) => void;
+    /** A screen tag's set has a brief (D121); a source doesn't. */
+    brief?: string;
+    onBrief?: (text: string) => void;
   }[];
 }) {
+  // The set whose brief is being written, and the words so far.
+  const [writing, setWriting] = useState<{ key: string; text: string } | null>(null);
+  const finish = (save: boolean) => {
+    const s = writing && sets.find((x) => x.key === writing.key);
+    if (save && s && writing.text.trim() !== (s.brief ?? '')) s.onBrief?.(writing.text);
+    setWriting(null);
+  };
   return (
     <section aria-labelledby="screen-roles" className="space-y-2.5">
       <h3
         id="screen-roles"
         className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
       >
-        Roles
+        Roles and briefs
       </h3>
       <ul className="list-none divide-y divide-border rounded-xl border border-border px-4 py-1">
         {sets.map((s, i) => (
-          <li key={s.key} className="flex items-center gap-3 py-2">
+          <li key={s.key} className="space-y-2 py-2">
+            <div className="flex items-center gap-3">
             <label htmlFor={`role-${i}`} className="flex min-w-0 flex-1 items-baseline gap-2">
               <span className="truncate text-sm text-foreground">{s.name}</span>
               <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
                 {s.notes}
               </span>
             </label>
+            {s.onBrief && (
+              <button
+                type="button"
+                aria-label={`Brief for ${s.name}`}
+                aria-expanded={writing?.key === s.key}
+                title="Brief"
+                onClick={() =>
+                  writing?.key === s.key
+                    ? finish(true)
+                    : setWriting({ key: s.key, text: s.brief ?? '' })
+                }
+                className={cn(
+                  hit,
+                  'flex size-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+                  s.brief ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                <NotebookPen className="size-4" aria-hidden />
+              </button>
+            )}
             <select
               id={`role-${i}`}
               value={s.role ?? ''}
@@ -2018,6 +2056,40 @@ function ScreenRoles({
                 </option>
               ))}
             </select>
+            </div>
+            {writing?.key === s.key ? (
+              <textarea
+                aria-label={`Brief for ${s.name}`}
+                // biome-ignore lint/a11y/noAutofocus: opening the brief is asking to write it
+                autoFocus
+                value={writing.text}
+                rows={3}
+                maxLength={MAX_BRIEF}
+                placeholder="What it’s for and how it should feel"
+                onChange={(e) => setWriting({ key: s.key, text: e.target.value })}
+                onBlur={() => finish(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    finish(true);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    finish(false);
+                  }
+                }}
+                className={cn(field, 'resize-y text-[13px]')}
+              />
+            ) : (
+              s.brief && (
+                <button
+                  type="button"
+                  onClick={() => setWriting({ key: s.key, text: s.brief ?? '' })}
+                  className="line-clamp-2 w-full rounded-sm text-left text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:text-foreground"
+                >
+                  {s.brief}
+                </button>
+              )
+            )}
           </li>
         ))}
       </ul>

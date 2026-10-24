@@ -195,7 +195,7 @@ describe('screen tags over MCP (D100)', () => {
     assert.doesNotMatch(some, /Rule a\.|Rule c\./);
     const all = (await call('get_design_rules')).result.content[0].text;
     assert.match(all, /Rule a\.[\s\S]*Rule b\.[\s\S]*Rule c\./);
-    assert.match(topicsText(library()), /\(screenTags\):\n- Linear: 2\n- Stripe: 1$/);
+    assert.match(topicsText(library()), /\(screenTags\), with a brief where the author wrote one:\n- Linear: 2\n- Stripe: 1$/);
   });
 
   it('names each note’s tag in get_rule_evidence too', async () => {

@@ -22,8 +22,11 @@ import { withChecks } from '../checks';
 import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
 import {
+  briefOf,
+  briefsOf,
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
+  MAX_BRIEF,
   OPEN_CALLS,
   outsideTarget,
   roleOf,
@@ -36,6 +39,7 @@ import {
   seenOnLine,
   sourceRoleOf,
   sourceSets,
+  withBrief,
   withScreenRole,
   WORKING_LINES,
   withSourceRole,
@@ -740,5 +744,78 @@ describe('the guides follow the author’s roles, marks and checks (D114)', () =
       /\n6\. Run the checks Pinch worked out from the rules on every render: `checks\.json`, with `check-render\.js`/,
     );
     assert.match(index, /Then turn the other rules a rendered page can decide into checks/);
+  });
+});
+
+describe('a brief for each product or feature (D121)', () => {
+  const INBOX = 'One place for every guest message.  It should feel calm and quick.';
+
+  it('is written once for a set, whatever its spelling, kept short, and taken away when emptied', () => {
+    const c = withBrief(library(), 'marketing asset – unified inbox', `  ${INBOX} `, 'now');
+    assert.equal(briefOf(c, 'Marketing Assets - Unified Inbox'), INBOX);
+    assert.equal(briefOf(c, 'Unified Inbox'), '');
+    assert.equal(withBrief(c, 'x', 'a'.repeat(MAX_BRIEF + 50), 'n').briefs?.x.length, MAX_BRIEF);
+    assert.deepEqual(withBrief(c, 'Marketing Assets - Unified Inbox', '   ', 'n').briefs, {});
+  });
+
+  it('lists the briefs by set, every one or the ones asked for', () => {
+    let c = withBrief(library(), 'Unified Inbox', 'Triage first.', 'n');
+    c = withBrief(c, 'Marketing Assets - Unified Inbox', INBOX, 'n');
+    c = withBrief(c, 'Gone', 'No notes carry this tag.', 'n');
+    assert.deepEqual(briefsOf(c), [
+      {
+        tag: 'Marketing Assets - Unified Inbox',
+        brief: 'One place for every guest message. It should feel calm and quick.',
+      },
+      { tag: 'Unified Inbox', brief: 'Triage first.' },
+    ]);
+    assert.deepEqual(
+      briefsOf(c, ['unified inbox']).map((b) => b.tag),
+      ['Unified Inbox'],
+    );
+  });
+
+  it('goes to the agent before the rules, the ones for the screen tags it asked for', () => {
+    const c = withBrief(
+      withBrief(library(), 'Unified Inbox', 'Triage first.', 'n'),
+      'Linear',
+      'Fast above all.',
+      'n',
+    );
+    const all = rulesText(c, rulesOf(c));
+    assert.match(all, /The author’s brief for each product or feature, what it is for and how it should feel\./);
+    assert.match(all, /- “Unified Inbox”: Triage first\.\n- “Linear”: Fast above all\.\n\nR1\./);
+    const one = rulesText(c, rulesOf(c), ['Linear']);
+    assert.match(one, /“Linear”: Fast above all\./);
+    assert.doesNotMatch(one, /Unified Inbox”: Triage/);
+    assert.doesNotMatch(rulesText(library(), rulesOf(library())), /brief/);
+  });
+
+  it('goes into design-rules.md and rules.json', () => {
+    const c = withBrief(library(), 'Unified Inbox', 'Triage first.', 'n');
+    const made = rulesPackage(c, new Map(), '2026-10-24T09:00:00Z');
+    const read = (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+    assert.match(read('design-rules.md'), /## Briefs\n\n.*\n\n- \*\*Unified Inbox\*\*: Triage first\./);
+    assert.deepEqual(JSON.parse(read('rules.json')).briefs, [
+      { tag: 'Unified Inbox', brief: 'Triage first.' },
+    ]);
+    const bare = rulesPackage(library(), new Map(), '2026-10-24T09:00:00Z');
+    const json = bare.files.find((f) => f.name.endsWith('/rules.json'))?.data;
+    assert.equal('briefs' in JSON.parse(new TextDecoder().decode(json)), false);
+  });
+
+  it('survives a merge, this one’s briefs first', () => {
+    const into = withBrief(library(), 'Unified Inbox', 'Ours.', 'n');
+    const from = withBrief(
+      withBrief({ ...library(), id: 'c2' }, 'Unified Inbox', 'Theirs.', 'n'),
+      'Linear',
+      'Fast.',
+      'n',
+    );
+    from.batches = from.batches.map((b) => ({ ...b, id: 'b2' }));
+    const merged = mergeCollection(into, from, 'later');
+    assert.equal(briefOf(merged, 'Unified Inbox'), 'Ours.');
+    assert.equal(briefOf(merged, 'Linear'), 'Fast.');
   });
 });

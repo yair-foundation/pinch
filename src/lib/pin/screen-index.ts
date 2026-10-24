@@ -114,6 +114,48 @@ export function screenSets(c: Collection): { name: string; notes: number }[] {
   return names.all().map((name) => ({ name, notes: counts.get(screenGroup(name)) ?? 0 }));
 }
 
+/** The longest brief: a few sentences, enough for what a product is for and how it should feel. */
+export const MAX_BRIEF = 600;
+
+/**
+ * The author's brief for a set of screenshots (D121): what the product or feature is for, who
+ * uses it and how it should feel, whatever the tag's spelling. Empty when there is none.
+ */
+export const briefOf = (c: Pick<Collection, 'briefs'>, tag: string): string =>
+  c.briefs?.[screenGroup(tag)] ?? '';
+
+/** The collection with a set's brief written, or taken away when it is empty. */
+export function withBrief(c: Collection, tag: string, brief: string, now: string): Collection {
+  const key = screenGroup(tag);
+  const text = brief.trim().slice(0, MAX_BRIEF);
+  const { [key]: _, ...rest } = c.briefs ?? {};
+  return { ...c, updatedAt: now, briefs: text ? { ...rest, [key]: text } : rest };
+}
+
+/**
+ * The briefs written, each under its set's name, the sets with the most notes first: every one,
+ * or the ones for the screen tags asked for. A brief for a set with no notes left stays out.
+ */
+export function briefsOf(c: Collection, tags?: readonly string[]): { tag: string; brief: string }[] {
+  const asked = tags?.length ? new Set(tags.map(screenGroup)) : null;
+  return screenSets(c).flatMap(({ name }) => {
+    const brief = briefOf(c, name);
+    return brief && (!asked || asked.has(screenGroup(name)))
+      ? [{ tag: name, brief: brief.replace(/\s+/g, ' ') }]
+      : [];
+  });
+}
+
+/** The briefs as lines for an agent, under one line on what they are; none when there are none. */
+export function briefsLines(c: Collection, tags?: readonly string[]): string[] {
+  const briefs = briefsOf(c, tags);
+  if (!briefs.length) return [];
+  return [
+    'The author’s brief for each product or feature, what it is for and how it should feel. Let it decide what the rules leave open; where a rule says otherwise, the rule wins:',
+    ...briefs.map((b) => `- “${b.tag}”: ${b.brief}`),
+  ];
+}
+
 /** A source's role is kept beside the tags' roles, under a key no tag can have (D111). */
 const sourceKey = (source: SourceKind) => `source:${source}`;
 

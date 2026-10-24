@@ -22,7 +22,7 @@ import {
 } from './model';
 import { type Proposal, proposalOf } from './proposals';
 import { reportOf, type RunEvent } from './runs';
-import { OPEN_CALLS, WORKING_LINES } from './screen-index';
+import { briefOf, briefsLines, OPEN_CALLS, WORKING_LINES } from './screen-index';
 
 /*
  * Your agent, connected (D89): Pinch as an MCP server an agent such as Claude
@@ -51,7 +51,7 @@ export const TOOLS = [
     name: 'get_design_rules',
     title: 'Get design rules',
     description:
-      'The design rules this person keeps in Pinch: their taste, drawn from notes they wrote on screenshots, to follow in design and front-end work. Pick the topics the task touches; leave them out for every rule. Give their own tags (a project, a client) when the task belongs to one, to get those rules along with their general ones. Each rule says where it holds and lists the notes it comes from, with the tag of each note’s screenshot (a product, a feature, a domain). To keep only the rules drawn from screenshots with a tag, give it in screenTags: a narrower list, not a different taste, so leave it out unless the task is about that one.',
+      'The design rules this person keeps in Pinch: their taste, drawn from notes they wrote on screenshots, to follow in design and front-end work. Pick the topics the task touches; leave them out for every rule. Give their own tags (a project, a client) when the task belongs to one, to get those rules along with their general ones. Each rule says where it holds and lists the notes it comes from, with the tag of each note’s screenshot (a product, a feature, a domain). To keep only the rules drawn from screenshots with a tag, give it in screenTags: a narrower list, not a different taste, so leave it out unless the task is about that one. The author’s brief for a product or feature (what it is for and how it should feel) comes first: for the screen tags given, or every one.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -594,8 +594,11 @@ export function topicsText(c: Collection | null): string {
   }
   const screens = c ? screenTagsIn(c, live) : [];
   if (screens.length) {
-    lines.push('Screen tags, the tags of the screenshots rules are drawn from (screenTags):');
-    for (const v of screens) lines.push(`- ${v.value}: ${v.n}`);
+    lines.push(
+      'Screen tags, the tags of the screenshots rules are drawn from (screenTags), with a brief where the author wrote one:',
+    );
+    for (const v of screens)
+      lines.push(`- ${v.value}: ${v.n}${c && briefOf(c, v.value) ? ', with a brief' : ''}`);
   }
   return lines.join('\n');
 }
@@ -714,19 +717,25 @@ export async function answer(
         screen: [...(pick.screen ?? [])],
         rules: picked.map((r) => r.rule.id),
       });
-      if (!c || !picked.length)
+      if (!c || !picked.length) {
+        // A product with no rules yet may still have its brief (D121).
+        const briefs = c && pick.screen ? briefsLines(c, pick.screen) : [];
         return reply(
           id,
           text(
-            c?.rules.length
-              ? 'No rules about that. Call list_rule_topics to see what the rules cover, or ask again without topics for every rule.'
-              : 'No rules yet. They come from the notes this person writes on screenshots in Pinch.',
+            [
+              c?.rules.length
+                ? 'No rules about that. Call list_rule_topics to see what the rules cover, or ask again without topics for every rule.'
+                : 'No rules yet. They come from the notes this person writes on screenshots in Pinch.',
+              ...briefs,
+            ].join('\n'),
           ),
         );
+      }
       return reply(
         id,
         text(
-          `${rulesText(c, picked)}\nTo see the notes a rule comes from, with their close-ups and where each spot is, call get_rule_evidence with its number.\n`,
+          `${rulesText(c, picked, pick.screen)}\nTo see the notes a rule comes from, with their close-ups and where each spot is, call get_rule_evidence with its number.\n`,
         ),
       );
     }

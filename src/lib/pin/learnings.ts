@@ -21,6 +21,8 @@ import {
 import { checksGuide, CHECKS_FILE } from './package-checks';
 import { type ReviewList, reviewCells, reviewFile, reviewPages, reviewSpan } from './review-sheets';
 import {
+  briefsLines,
+  briefsOf,
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
   OPEN_CALLS,
@@ -176,6 +178,8 @@ export type Collection = {
   checks?: Checks;
   /** What each set of screenshots is for, by the set's compared tag (`screenGroup`, D110). */
   screenRoles?: Record<string, ScreenRole>;
+  /** What each product or feature is for and how it should feel, by the set's compared tag (D121). */
+  briefs?: Record<string, string>;
 };
 
 /** The name of the one collection each person has (D86). */
@@ -309,6 +313,8 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
   const checks = into.checks ?? from.checks;
   // A role this one gives a set stays; the other's fill in the sets this one hasn't given (D110).
   const screenRoles = { ...from.screenRoles, ...into.screenRoles };
+  // The same for briefs (D121).
+  const briefs = { ...from.briefs, ...into.briefs };
   return {
     ...into,
     updatedAt: now,
@@ -317,6 +323,7 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
     read: [...read],
     ...(checks ? { checks } : {}),
     ...(Object.keys(screenRoles).length ? { screenRoles } : {}),
+    ...(Object.keys(briefs).length ? { briefs } : {}),
   };
 }
 
@@ -820,13 +827,19 @@ const said = (n: BatchNote) =>
 
 /**
  * The rules as text for an agent: what Copy as text puts on the clipboard and get_design_rules
- * answers. Each rule with where it holds, what it is about, and the notes it draws on.
+ * answers. Each rule with where it holds, what it is about, and the notes it draws on; before
+ * them, the briefs (D121): for the screen tags asked for, or every one.
  */
-export function rulesText(c: Collection, rules: ExportedRule[]): string {
+export function rulesText(
+  c: Collection,
+  rules: ExportedRule[],
+  screen?: readonly string[],
+): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
     `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
     ...(rolesLine(c) ? [rolesLine(c)] : []),
+    ...briefsLines(c, screen),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   for (const r of rules) {
@@ -1023,6 +1036,17 @@ export function rulesMarkdown(
         ];
       return [`- ${l}`];
     }),
+    // What each product or feature is for, as the author wrote it (D121).
+    ...(briefsOf(c).length
+      ? [
+          '',
+          '## Briefs',
+          '',
+          'What the author says each product or feature is for and how it should feel. Let it decide what the rules leave open; where a rule says otherwise, the rule wins.',
+          '',
+          ...briefsOf(c).map((b) => `- **${b.tag}**: ${b.brief}`),
+        ]
+      : []),
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   const names = screenNames(c);
@@ -1092,6 +1116,7 @@ export function rulesManifest(
           ],
         }
       : {}),
+    ...(briefsOf(c).length ? { briefs: briefsOf(c) } : {}),
     rules: rules.map((r) => ({
       id: r.id,
       // The same from one export to the next, where the number isn't: for checks kept by rule (D108).

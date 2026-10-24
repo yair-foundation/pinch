@@ -17,6 +17,7 @@ import {
 } from '../agent';
 import { type Collection, newCollection, type Rule, rulesOf } from '../learnings';
 import type { RunEvent } from '../runs';
+import { withBrief } from '../screen-index';
 
 const rule = (id: string, text: string, extra: Partial<Rule> = {}): Rule => ({
   id,
@@ -596,5 +597,36 @@ describe('a run of the agent, recorded (D120)', () => {
     };
     assert.equal(off.result.isError, true);
     assert.equal(events.length, 0);
+  });
+});
+
+describe('the author’s brief for a product, over MCP (D121)', () => {
+  const ask = (name: string, args: unknown, c: Collection) =>
+    answer(
+      { jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name, arguments: args } },
+      async () => c,
+    );
+  const briefed = (): Collection => {
+    const c = library();
+    c.batches[0].notes[0] = { ...c.batches[0].notes[0], screenTag: 'Agent Hub' };
+    return withBrief(c, 'Agent Hub', 'A calm control room for AI agents.', 'n');
+  };
+
+  it('comes with the rules, and alone for a product with no rules about the topic', async () => {
+    assert.match(
+      textOf(await ask('get_design_rules', { screenTags: ['agent hub'] }, briefed())),
+      /- “Agent Hub”: A calm control room for AI agents\./,
+    );
+    const none = textOf(
+      await ask('get_design_rules', { topics: ['flow'], screenTags: ['Agent Hub'] }, briefed()),
+    );
+    assert.match(none, /^No rules about that\./);
+    assert.match(none, /“Agent Hub”: A calm control room/);
+  });
+
+  it('is named in the topics list', async () => {
+    const c = briefed();
+    c.rules[0] = { ...c.rules[0], evidence: [{ batchId: 'b1', note: '01.1' }] };
+    assert.match(textOf(await ask('list_rule_topics', {}, c)), /- Agent Hub: \d+, with a brief/);
   });
 });
