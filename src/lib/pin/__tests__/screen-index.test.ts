@@ -23,6 +23,7 @@ import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
 import {
   KEEP_IN_PINCH,
+  LIVE_RULES_WIN,
   outsideTarget,
   roleOf,
   screenGroup,
@@ -328,6 +329,18 @@ describe('taste settled in conversation goes back to Pinch (D117)', () => {
       assert.ok(text.includes(KEEP_IN_PINCH));
     assert.match(read('/index.md'), /\n7\. When the author settles something about their taste/);
     assert.match(KEEP_IN_PINCH, /propose_rule/);
+  });
+});
+
+describe('the rules as Pinch gives them now win over the agent’s notes (D118)', () => {
+  it('is said in the rules text, design-rules.md and index.md', () => {
+    const c = library();
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-24T09:00:00Z');
+    const read = (end: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(end))?.data);
+    for (const text of [rulesText(c, rulesOf(c)), read('/design-rules.md'), read('/index.md')])
+      assert.ok(text.includes(LIVE_RULES_WIN));
+    assert.match(LIVE_RULES_WIN, /get_design_rules/);
   });
 });
 

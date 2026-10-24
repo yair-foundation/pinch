@@ -168,6 +168,14 @@ export const OUTSIDE_TARGET =
 export const KEEP_IN_PINCH =
   "When the author settles something about their taste with you that these rules don't hold, or hold otherwise (a correction, a choice between two rules, a new preference), keep it in Pinch, not only in your own notes or files, so every agent and session gets it: ask whether to keep it, and on a yes call Pinch's propose_rule tool when you're connected to Pinch (it waits there for the author to keep or drop); otherwise ask them to add it in Pinch.";
 
+/**
+ * The rules as Pinch gives them now win over the agent's own notes of them (D118): an agent that
+ * copies a rule into its notes or files keeps an old version when the author changes it. Said
+ * wherever `KEEP_IN_PINCH` is.
+ */
+export const LIVE_RULES_WIN =
+  "Your own notes or copies of these rules go stale when the author changes a rule: where they differ, the rules as Pinch gives them now win (get_design_rules when you're connected, otherwise the newest export), so update your notes to match.";
+
 /** The roles given, as a sentence for an agent; '' when there are none. */
 export function rolesLine(c: Collection): string {
   const given = [
@@ -322,7 +330,7 @@ export function screenIndex(
     checksOf(c).length
       ? `${best.length ? 7 : 6}. Run the checks Pinch worked out from the rules on every render: \`checks.json\`, with \`check-render.js\` (\`checks.md\` shows how). Then turn the other rules a rendered page can decide into checks in your own project: \`checks.md\` says how, and lists every rule to sort.`
       : `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
-    `${best.length ? 8 : 7}. ${KEEP_IN_PINCH}`,
+    `${best.length ? 8 : 7}. ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
     '',
     'A tag is one set whatever its case, spacing, punctuation or plural, so “Marketing Asset - Inbox” and “Marketing Assets - inbox” are counted together under the spelling used most. A tag that is a longer form of another (“Marketing Assets” and “Marketing Assets - Inbox”) is a set of its own.',
   ];
