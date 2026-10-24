@@ -1,3 +1,4 @@
+import type { AgentReading } from '@/lib/pin/agent-reading';
 import type { Collection } from '@/lib/pin/learnings';
 import type { Proposal } from '@/lib/pin/proposals';
 import type { Run, Verdict } from '@/lib/pin/runs';
@@ -24,4 +25,7 @@ export type CollectionsBackend = {
   runs?(): Promise<Run[]>;
   judge?(run: string, report: string, verdict: Verdict | null): Promise<void>;
   dropRun?(id: string): Promise<void>;
+  /** The readings of notes the agent made itself, waiting to be applied (D122). */
+  readings?(): Promise<AgentReading[]>;
+  dropReading?(id: string): Promise<void>;
 };

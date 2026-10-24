@@ -1,4 +1,5 @@
 import { uploadPresigned } from '@vercel/blob/client';
+import type { AgentReading } from '@/lib/pin/agent-reading';
 import type { Collection } from '@/lib/pin/learnings';
 import type { Proposal } from '@/lib/pin/proposals';
 import type { Run } from '@/lib/pin/runs';
@@ -103,6 +104,15 @@ export function cloudBackend(folder: string, mode: 'blob' | 'memory'): Collectio
     },
     async dropRun(id) {
       await ok(await fetch(`/api/pin/cloud/runs/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+    },
+    async readings() {
+      const res = await ok(await fetch('/api/pin/cloud/readings', { cache: 'no-store' }));
+      return ((await res.json()) as { readings: AgentReading[] }).readings;
+    },
+    async dropReading(id) {
+      await ok(
+        await fetch(`/api/pin/cloud/readings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      );
     },
   };
 }

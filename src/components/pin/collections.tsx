@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { applyAgentReading } from '@/lib/pin/agent-reading';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
 import { updatePrice } from '@/lib/pin/credits';
@@ -143,6 +144,9 @@ const nowIso = () => new Date().toISOString();
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** The collection is written this long after its last change, so typing a rule isn't a write per key. */
 const SAVE_PAUSE = 600;
+/** What the person pastes to their connected agent to have it read their notes (D122). */
+const READ_PROMPT = 'Read my new notes in Pinch into rules.';
+
 /** The render checks are worked out this long after the rules last changed (D109). */
 const CHECKS_PAUSE = 8000;
 
@@ -420,6 +424,55 @@ export function CollectionsView({
       window.removeEventListener('focus', load);
     };
   }, [backend]);
+
+  // What the agent read itself joins the rules as Pinch's own reading does (D122): once the
+  // rules are here, and whenever the page comes back into view.
+  const taking = useRef(false);
+  const loaded = c !== null;
+  useEffect(() => {
+    const read = backend.readings;
+    if (!read || !loaded) return;
+    let live = true;
+    const take = async () => {
+      if (taking.current || !ref.current) return;
+      taking.current = true;
+      try {
+        const list = await read();
+        if (!live || !list.length || !ref.current) return;
+        change((x) => list.reduce((y, r) => applyAgentReading(y, r, nowIso(), newId), x), true);
+        const now = ref.current;
+        if (now) await backend.save(now);
+        await Promise.all(list.map((r) => backend.dropReading?.(r.id)));
+        const notes = list.reduce((n, r) => n + r.read.length, 0);
+        const made = list.reduce((n, r) => n + r.reading.propose.length, 0);
+        const strengthened = new Set(list.flatMap((r) => r.reading.strengthen.map((x) => x.rule)))
+          .size;
+        const said = [
+          made ? count(made, 'new rule') : '',
+          strengthened ? `${count(strengthened, 'rule')} strengthened` : '',
+        ].filter(Boolean);
+        onStatus({
+          tone: 'info',
+          text: `Your agent read ${count(notes, 'note')}${said.length ? `: ${said.join(', ')}` : ''}.`,
+        });
+      } catch {
+        // It waits in the account and is taken next time.
+      } finally {
+        taking.current = false;
+      }
+    };
+    const back = () => {
+      if (document.visibilityState === 'visible') void take();
+    };
+    void take();
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', take);
+    return () => {
+      live = false;
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', take);
+    };
+  }, [backend, loaded, change, onStatus]);
 
   /** One collection of this browser's moved into the account's: its new notes' zips, then it. */
   const moveIn = useCallback(
@@ -911,6 +964,16 @@ export function CollectionsView({
     }
   };
 
+  /** What to ask the connected agent, so it reads the new notes on its own allowance (D122). */
+  const copyReadPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(READ_PROMPT);
+      onStatus({ tone: 'info', text: 'Copied. Paste it to your agent connected to Pinch.' });
+    } catch {
+      onStatus({ tone: 'error', text: "The browser didn't allow copying." });
+    }
+  };
+
   /** A move that stopped, tried again: this browser's rules into the account's. */
   const moveHere = async () => {
     if (!moveFrom || !movable.length || !ref.current) return;
@@ -1142,6 +1205,12 @@ export function CollectionsView({
                       ? ' Your credits are in your account: sign in to use them.'
                       : ` ${count(credits.balance, 'credit')} left.`)}
                 </p>
+                {backend.readings && (
+                  <button type="button" onClick={copyReadPrompt} className={button}>
+                    <PlugZap className="size-4" aria-hidden />
+                    Read with your agent
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={update}

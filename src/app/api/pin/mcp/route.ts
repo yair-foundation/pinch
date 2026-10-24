@@ -1,7 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import { after } from 'next/server';
 import { userOfAgentKey } from '@/lib/agent-keys';
-import { addProposal, batchFiles, listCollections, recordRun, validId } from '@/lib/cloud';
+import {
+  addProposal,
+  addReading,
+  batchFiles,
+  listCollections,
+  recordRun,
+  validId,
+} from '@/lib/cloud';
 import { answer, type RpcMessage } from '@/lib/pin/agent';
 import { type Collection, mergeCollection, upgradeCollection } from '@/lib/pin/learnings';
 import { agentName, type RunEvent } from '@/lib/pin/runs';
@@ -16,8 +23,9 @@ import { agentName, type RunEvent } from '@/lib/pin/runs';
  * waits in the account for the person (D116). Each connection is a run
  * (D120): `initialize` hands out an `Mcp-Session-Id` the agent sends back,
  * and what its calls asked for and got goes into the account's record of
- * runs once the reply is out. No AI runs here, and nothing about the call is
- * logged but its method.
+ * runs once the reply is out. The agent may read the person's notes into
+ * rules itself (D122); its reading waits in the account for the page. No AI
+ * runs here, and nothing about the call is logged but its method.
  */
 
 export const dynamic = 'force-dynamic';
@@ -77,6 +85,7 @@ export async function POST(request: Request) {
       (id, paths) => batchFiles(user, id, paths),
       { id: newId, save: (p) => addProposal(user, p) },
       log,
+      { id: newId, save: (r) => addReading(user, r) },
     );
     if (r) replies.push(r);
   }

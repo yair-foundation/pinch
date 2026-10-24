@@ -1,5 +1,6 @@
 import { del, issueSignedToken, list, presignUrl } from '@vercel/blob';
 import { userFolder } from './account';
+import { type AgentReading, agentReadingsIn, withAgentReading } from './pin/agent-reading';
 import { type Proposal, proposalsIn, withProposal } from './pin/proposals';
 import {
   type RunEvent,
@@ -30,7 +31,8 @@ import {
  * scoped to one path. Without Blob credentials (local runs) the zips live in
  * this process's memory and go through the route instead. The rules the
  * agent proposes wait in one more document beside them (D116), and what
- * each of its runs did with the rules in another (D120).
+ * each of its runs did with the rules in another (D120), and the readings
+ * of notes it made itself in a third (D122).
  */
 
 export const MAX_COLLECTION_BYTES = 3_000_000;
@@ -133,6 +135,28 @@ export const judgeWork = (user: string, run: string, report: string, verdict: Ve
 
 export const dropRun = (user: string, id: string) =>
   changeRuns(user, (doc) => withoutRun(doc, id));
+
+/**
+ * The agent's readings of notes (D122), waiting for the page to apply them:
+ * `pinch-users/<account>/readings.json`, changed by compare-and-swap, since the agent adds and
+ * the page takes.
+ */
+const readingsKey = (user: string) => `${userFolder(user)}readings.json`;
+type Readings = { readings: AgentReading[] };
+
+export async function listReadings(user: string): Promise<AgentReading[]> {
+  return agentReadingsIn((await readDocument<Readings>(readingsKey(user), { readings: [] })).doc);
+}
+
+export const addReading = (user: string, r: AgentReading) =>
+  updateDocument<Readings, void>(readingsKey(user), { readings: [] }, (doc) => {
+    doc.readings = withAgentReading(agentReadingsIn(doc), r);
+  });
+
+export const dropReading = (user: string, id: string) =>
+  updateDocument<Readings, void>(readingsKey(user), { readings: [] }, (doc) => {
+    doc.readings = agentReadingsIn(doc).filter((r) => r.id !== id);
+  });
 
 const memory = new Map<string, Uint8Array>();
 

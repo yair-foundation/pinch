@@ -1,6 +1,15 @@
 import { jpegSize } from '@/lib/image';
+import {
+  type AgentReading,
+  agentReadingOf,
+  notesToRead,
+  READING_GUIDE,
+  readingInputSchema,
+  readingPrompt,
+} from './agent-reading';
 import { CHECK_SCRIPT } from './check-script';
 import { CHECK_SCRIPT_FILE, checksManifest, checksOf } from './checks';
+import { CLOSE_UPS } from './learn';
 import {
   type Collection,
   type ExportedNote,
@@ -10,6 +19,7 @@ import {
   rulesText,
   screenTagsIn,
   tagsOf,
+  unreadNotes,
   waiting,
 } from './learnings';
 import {
@@ -37,14 +47,15 @@ import { briefOf, briefsLines, OPEN_CALLS, WORKING_LINES } from './screen-index'
  * also carries each screenshot once, its marked copy (D99). What the person
  * settles with the agent in conversation comes back as a proposed rule, to
  * wait for them on Your rules (D116). What each call asked for and got, and the agent's report
- * of what it made with the rules, go into the run's record for the person to judge (D120).
+ * of what it made with the rules, go into the run's record for the person to judge (D120). The
+ * agent can also read the person's new notes into rules itself, on its own allowance (D122).
  */
 
 /** The protocol versions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS =
-  `Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render, and on all your earlier work again whenever the rules, a check or a shared part changes. When the person settles something about their taste with you that their rules don’t hold, or holds otherwise (a correction, a choice between two rules), ask whether to keep it, and on a yes call propose_rule: it waits in Pinch for them to keep or drop. Do this even when you also write it into your own notes or files: Pinch is where their rules live, so every agent and session gets it. For the same reason, where your own notes of a rule differ from what get_design_rules returns now, the rule as returned wins: update your notes. ${OPEN_CALLS} Each time you report a piece of work, also call report_work with what you made, the rules you followed and set aside, the checks that failed and those decisions: the person sees it on Your rules beside what you asked Pinch for, and judges it. ${WORKING_LINES.join(' ')}`;
+  `Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render, and on all your earlier work again whenever the rules, a check or a shared part changes. When the person settles something about their taste with you that their rules don’t hold, or holds otherwise (a correction, a choice between two rules), ask whether to keep it, and on a yes call propose_rule: it waits in Pinch for them to keep or drop. Do this even when you also write it into your own notes or files: Pinch is where their rules live, so every agent and session gets it. For the same reason, where your own notes of a rule differ from what get_design_rules returns now, the rule as returned wins: update your notes. ${OPEN_CALLS} Each time you report a piece of work, also call report_work with what you made, the rules you followed and set aside, the checks that failed and those decisions: the person sees it on Your rules beside what you asked Pinch for, and judges it. When the person asks you to read their notes into rules, or list_rule_topics says notes are waiting, call get_notes_to_read and follow it: you read them as Pinch would, and submit_reading hands your reading back. ${WORKING_LINES.join(' ')}`;
 
 export const TOOLS = [
   {
@@ -225,6 +236,27 @@ export const TOOLS = [
     },
   },
   {
+    name: 'get_notes_to_read',
+    title: 'Get notes to read into rules',
+    description:
+      'The person’s notes that haven’t been read into rules yet, up to 30 at a time, each with its close-up, the rules they have so far, and the method Pinch’s own reading follows, so you can read them into rules on your own allowance instead of Pinch’s credits. Read them as it says, then call submit_reading. Call it when the person asks you to read their notes, or list_rule_topics says notes are waiting.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'submit_reading',
+    title: 'Submit a reading of notes',
+    description:
+      'Your reading of the notes get_notes_to_read gave you, in the shape it describes: every note you read, the rules they strengthen and the new rules they teach. It waits in Pinch and becomes part of the person’s rules when they next open Your rules, as Pinch’s own reading does; rules read from vague words, or with a question, wait for them to confirm. Use the ids exactly as given.',
+    inputSchema: readingInputSchema(),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
     name: 'list_rule_topics',
     title: 'List rule topics',
     description:
@@ -232,7 +264,7 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
-] as const;
+];
 
 type Id = string | number | null;
 export type RpcMessage = { jsonrpc?: string; id?: Id; method?: unknown; params?: unknown };
@@ -581,7 +613,12 @@ export function topicsText(c: Collection | null): string {
   const live = (c?.rules ?? []).filter(
     (r) => r.status === 'approved' && !r.locked && !waiting(r) && r.text,
   );
-  if (!live.length) return 'No rules yet.';
+  // Notes not read into rules yet can be read by the agent (D122).
+  const unread = c ? unreadNotes(c).length : 0;
+  const waitingLine = unread
+    ? `${unread} ${unread === 1 ? 'note waits' : 'notes wait'} to be read into rules: call get_notes_to_read when the person asks you to read them.`
+    : '';
+  if (!live.length) return ['No rules yet.', waitingLine].filter(Boolean).join('\n');
   const lines = [`${live.length} ${live.length === 1 ? 'rule' : 'rules'}.`, 'Topics:'];
   for (const t of TOPICS) {
     const n = live.filter((r) => r.topics.includes(t.kind)).length;
@@ -600,11 +637,77 @@ export function topicsText(c: Collection | null): string {
     for (const v of screens)
       lines.push(`- ${v.value}: ${v.n}${c && briefOf(c, v.value) ? ', with a brief' : ''}`);
   }
+  if (waitingLine) lines.push(waitingLine);
   return lines.join('\n');
 }
 
 /** Where a proposed rule goes to wait (D116): a fresh id for it, and the store's write. */
 export type ProposalStore = { id: () => string; save: (p: Proposal) => Promise<void> };
+
+/** Where the agent's readings wait for the page (D122): a fresh id, and the store's write. */
+export type ReadingStore = { id: () => string; save: (r: AgentReading) => Promise<void> };
+
+/**
+ * The next notes to read (D122): Pinch's method, the library and the notes as its own reading
+ * gets them, then each close-up after its note's id, within what one answer carries.
+ */
+export async function notesContent(
+  c: Collection | null,
+  files?: BatchFiles,
+): Promise<{ content: Content[] }> {
+  const todo = c ? notesToRead(c) : [];
+  if (!c || !todo.length) return text('No notes are waiting to be read.') as { content: Content[] };
+  const left = unreadNotes(c).length;
+  const content: Content[] = [
+    {
+      type: 'text',
+      text: `${READING_GUIDE}\n\n${todo.length} of ${left} ${left === 1 ? 'note' : 'notes'} waiting.\n\n${readingPrompt(c, todo)}\n\n${CLOSE_UPS}`,
+    },
+  ];
+  const byBatch = new Map<string, typeof todo>();
+  for (const x of todo) byBatch.set(x.batch.id, [...(byBatch.get(x.batch.id) ?? []), x]);
+  const got = new Map<string, Map<string, Uint8Array>>();
+  if (files)
+    await Promise.all(
+      [...byBatch.entries()].map(async ([id, xs]) =>
+        got.set(
+          id,
+          await files(
+            id,
+            xs.map((x) => x.batch.root + x.note.crop),
+          ).catch(() => new Map<string, Uint8Array>()),
+        ),
+      ),
+    );
+  let budget = MAX_EVIDENCE_BYTES;
+  for (const x of todo) {
+    const crop = got.get(x.batch.id)?.get(x.batch.root + x.note.crop);
+    if (crop && crop.length <= budget) {
+      budget -= crop.length;
+      content.push(
+        { type: 'text', text: `${x.key}:` },
+        { type: 'image', data: Buffer.from(crop).toString('base64'), mimeType: 'image/jpeg' },
+      );
+    } else
+      content.push({
+        type: 'text',
+        text: `${x.key}: ${crop ? 'close-up left out to keep this answer small' : 'no close-up'}; read it from its words.`,
+      });
+  }
+  return { content };
+}
+
+/** The agent's reading, checked and kept to wait for the page (D122). */
+async function readingContent(c: Collection | null, args: unknown, store: ReadingStore) {
+  const out = agentReadingOf(args, c, new Date().toISOString(), store.id());
+  if ('error' in out) return text(out.error, true);
+  await store.save(out.reading);
+  const { read, reading } = out.reading;
+  const left = c ? unreadNotes(c).length - read.length : 0;
+  return text(
+    `Kept: ${read.length} ${read.length === 1 ? 'note' : 'notes'} read, ${reading.propose.length} new ${reading.propose.length === 1 ? 'rule' : 'rules'}, ${reading.strengthen.length} strengthened. It joins the person’s rules when they next open Your rules.${left > 0 ? ` ${left} more ${left === 1 ? 'note waits' : 'notes wait'}: call get_notes_to_read again.` : ''}`,
+  );
+}
 
 /** Where a run's calls go (D120): a fresh id for a report, and what each call adds. */
 export type RunLog = { id: () => string; add: (e: RunEvent) => void };
@@ -651,6 +754,7 @@ export async function answer(
   files?: BatchFiles,
   proposals?: ProposalStore,
   log?: RunLog,
+  readings?: ReadingStore,
 ): Promise<RpcReply | null> {
   const id = m.id ?? null;
   if (m.id === undefined) return null;
@@ -683,6 +787,12 @@ export async function answer(
       if (params.name === 'propose_rule') {
         if (!proposals) return reply(id, text('Proposing rules isn’t available here.', true));
         return reply(id, await proposeContent(await rules(), params.arguments, proposals, log));
+      }
+      if (params.name === 'get_notes_to_read')
+        return reply(id, await notesContent(await rules(), files));
+      if (params.name === 'submit_reading') {
+        if (!readings) return reply(id, text('Reading notes isn’t available here.', true));
+        return reply(id, await readingContent(await rules(), params.arguments, readings));
       }
       if (params.name === 'report_work') {
         if (!log) return reply(id, text('Reporting work isn’t available here.', true));

@@ -131,6 +131,8 @@ describe('Pinch for agents (MCP)', () => {
         'get_render_checks',
         'propose_rule',
         'report_work',
+        'get_notes_to_read',
+        'submit_reading',
         'list_rule_topics',
       ],
     );
