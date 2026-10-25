@@ -226,6 +226,14 @@ export const OPEN_CALLS =
   "When you report on your work, end with the decisions that need the author's call, one line each with the options, after the rules you set aside: their answers are what to keep in Pinch.";
 
 /**
+ * How the agent reviews its own render (D126): what it shows first, then the rules against that,
+ * so it doesn't see what the rules lead it to expect. In `checks.md` step 7, `index.md`'s reading
+ * order and the MCP server's instructions.
+ */
+export const REVIEW_LINE =
+  'Review each render in two passes. First write what it shows, without the rules: what is there, what draws the eye first, the sizes, colours and spacing as they are. Then go through the rules against that description, naming each rule a part keeps or breaks. Judged straight from the rules, a render shows what the rules lead you to expect.';
+
+/**
  * How several pieces of work stay in step (D119): one tracker, and one agent per piece, with shared
  * parts changed one at a time. In `index.md` and the MCP server's instructions.
  */
@@ -386,8 +394,8 @@ export function screenIndex(
       : []),
     // The checks Pinch worked out come first, when there are any (D114).
     checksOf(c).length
-      ? `${best.length ? 7 : 6}. Run the checks Pinch worked out from the rules on every render: \`checks.json\`, with \`check-render.js\` (\`checks.md\` shows how). Then turn the other rules a rendered page can decide into checks in your own project: \`checks.md\` says how, and lists every rule to sort.`
-      : `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort.`,
+      ? `${best.length ? 7 : 6}. Run the checks Pinch worked out from the rules on every render: \`checks.json\`, with \`check-render.js\` (\`checks.md\` shows how). Then turn the other rules a rendered page can decide into checks in your own project: \`checks.md\` says how, and lists every rule to sort. ${REVIEW_LINE}`
+      : `${best.length ? 7 : 6}. Turn the rules a rendered page can decide into checks in your own project, so they hold on every render: \`checks.md\` says how, and lists every rule to sort. ${REVIEW_LINE}`,
     `${best.length ? 8 : 7}. ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
     `${best.length ? 9 : 8}. ${OPEN_CALLS}`,
     '',

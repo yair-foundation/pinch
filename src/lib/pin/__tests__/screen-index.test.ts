@@ -18,6 +18,7 @@ import {
   withBest,
   withOpenBest,
 } from '../learnings';
+import { answer } from '../agent';
 import { withChecks } from '../checks';
 import { CHECKS_FILE, checksGuide } from '../package-checks';
 import { reviewCells, reviewFile, reviewPages, reviewSpan } from '../review-sheets';
@@ -29,6 +30,7 @@ import {
   MAX_BRIEF,
   OPEN_CALLS,
   outsideTarget,
+  REVIEW_LINE,
   roleOf,
   screenGroup,
   screenIndex,
@@ -363,6 +365,20 @@ describe('how the agent works over many pieces (D119)', () => {
     assert.match(index, /## Working on many pieces\n\n- Keep one tracker/);
     for (const l of WORKING_LINES) assert.ok(index.includes(l));
     assert.match(read('/checks.md'), /\n8\. \*\*Check earlier work again when anything shared changes\.\*\*/);
+  });
+
+  it('reviews each render in two passes: what it shows, then the rules (D126)', async () => {
+    const c = library();
+    const made = rulesPackage(c, new Map([['b1', new Map()]]), '2026-10-25T09:00:00Z');
+    const read = (end: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(end))?.data);
+    assert.ok(read('/checks.md').includes(`A passing check is not a design review. ${REVIEW_LINE}`));
+    assert.ok(read('/index.md').includes(REVIEW_LINE));
+    const init = (await answer(
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+      async () => null,
+    )) as { result: { instructions: string } };
+    assert.ok(init.result.instructions.includes(REVIEW_LINE));
   });
 });
 
