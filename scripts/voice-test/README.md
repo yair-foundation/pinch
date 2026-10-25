@@ -1,6 +1,6 @@
 # The narration test (D131)
 
-Before the walkthrough is built, this tests whether spoken notes are as good as typed ones. The author talks through screenshots they've already noted by typing, while pointing at what they mean. Their words and the pointer's path are then turned into notes, as the walkthrough would make them, and compared with the typed notes on the same screens.
+Before the walkthrough is built, this tests whether spoken notes are as good as typed ones. The author talks through screenshots, on the same reel the walkthrough will have, they've already noted by typing, while pointing at what they mean. Their words and the pointer's path are then turned into notes, as the walkthrough would make them, and compared with the typed notes on the same screens.
 
 ## Recording
 
@@ -13,7 +13,7 @@ Before the walkthrough is built, this tests whether spoken notes are as good as 
 
 3. In Chrome, open http://localhost:3120, pick about ten files from the export's `images/` folder (screens with several notes work best), and Start.
 4. Talk through each screen as you would to a designer beside you: what works, what doesn't, why, and whose product it is. Point at what you mean, and rest the pointer on it while you say "this". Don't look at your typed notes first.
-5. Use the down arrow, Space or a scroll for the next screen, and the up arrow to go back. Finish saves `pinch-voice-<time>.json` to Downloads.
+5. The screens sit on a reel, as on a View-Master: the one on show in the middle, the one before and after at the edges. The right arrow, Space, a scroll or a swipe turns to the next, and the left arrow goes back; clicking an edge card turns to it. Finish saves `pinch-voice-<time>.json` to Downloads.
 
 The file holds the audio, when each screen was shown, every click, and the pointer's path as fractions of the screenshot (`[ms, screen, x, y]`, with `null` when it's off the image). Nothing leaves the browser.
 

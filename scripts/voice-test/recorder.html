@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Pinch voice test</title>
 <!--
-  The narration test (D131): show screenshots one at a time on a stack, record the microphone and
+  The narration test (D131): show screenshots one at a time on a wheel, after a View-Master reel (the
+  one before and the one after tilted at the edges), record the microphone and
   the pointer while the author talks about each, and save one JSON file with the audio, the
   pointer's path and when each screen was shown. Nothing leaves the browser; the words are
   transcribed afterwards, on this machine. Serve it from localhost (the microphone needs a secure
@@ -15,7 +16,7 @@
   :root { color-scheme: light dark; --bg: #f4f4f4; --card: #fff; --fg: #121212; --muted: #6b6b6b; --line: #00000014; }
   @media (prefers-color-scheme: dark) { :root { --bg: #0e0e0e; --card: #1b1b1b; --fg: #f2f2f2; --muted: #9a9a9a; --line: #ffffff1a; } }
   * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
+  html { overscroll-behavior-x: none; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
   button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; min-height: 36px; padding: 0 14px; cursor: pointer; }
   button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
@@ -27,21 +28,27 @@
   .bar .level i { display: block; height: 100%; width: 0; background: var(--fg); }
   .bar .rec { width: 8px; height: 8px; border-radius: 50%; background: #d33; }
   .bar .end { margin-left: auto; }
-  .stage { position: fixed; inset: 56px 0 40px; display: grid; place-items: center; overflow: hidden; }
-  .card { position: absolute; display: grid; place-items: center; width: calc(100% - 80px); height: calc(100% - 40px); transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s; }
-  .card img { max-width: 100%; max-height: 100%; border-radius: 14px; background: var(--card); display: block; user-select: none; -webkit-user-drag: none; }
-  .card.back { transform: translateY(18px) scale(0.94); opacity: 0.4; }
-  .card.gone { transform: translateY(-120%); opacity: 0; }
+  .stage { position: fixed; inset: 56px 0 0; overflow: hidden; --w: min(48vw, 80vh); }
+  /* The reel: the screen on show in the middle, the one before and after tilted at the edges. */
+  .card { position: absolute; left: 50%; top: 46%; width: var(--w); height: calc(var(--w) * 0.75); display: grid; place-items: center; transform: translate(-50%, -50%); transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s; }
+  .card img { max-width: var(--w); max-height: calc(var(--w) * 0.75); object-fit: contain; border-radius: 14px; background: var(--card); display: block; user-select: none; -webkit-user-drag: none; }
+  .card[data-slot="-1"], .card[data-slot="1"] { cursor: pointer; -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 92%); mask-image: linear-gradient(to bottom, #000 30%, transparent 92%); }
+  .card[data-slot="-1"] { transform: translate(calc(-50% - 41vw), calc(-50% + 20vh)) rotate(-15deg) scale(0.72); }
+  .card[data-slot="1"] { transform: translate(calc(-50% + 41vw), calc(-50% + 20vh)) rotate(15deg) scale(0.72); }
+  .card[data-slot="-2"] { transform: translate(calc(-50% - 85vw), calc(-50% + 55vh)) rotate(-30deg) scale(0.6); opacity: 0; pointer-events: none; }
+  .card[data-slot="2"] { transform: translate(calc(-50% + 85vw), calc(-50% + 55vh)) rotate(30deg) scale(0.6); opacity: 0; pointer-events: none; }
+  .card.last:not([data-slot="0"]) { opacity: 0; pointer-events: none; }
   .hint { position: fixed; inset: auto 0 0; text-align: center; padding: 10px; color: var(--muted); font-size: 12px; }
   .done { display: grid; gap: 12px; justify-items: center; text-align: center; }
   @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+  [hidden] { display: none; }
 </style>
 </head>
 <body>
 <main class="setup" id="setup">
   <h1>Pinch voice test</h1>
   <p>Pick about ten screenshots you already noted by typing, from the <code>images/</code> folder of an export of Your rules. Then talk through each one as you would to a designer beside you, pointing at what you mean.</p>
-  <p>Scroll, swipe or press the down arrow for the next screen, the up arrow to go back. The recording stays on this computer.</p>
+  <p>Scroll, swipe or press the right arrow for the next screen, the left arrow to go back. The recording stays on this computer.</p>
   <input type="file" id="files" accept="image/*" multiple />
   <div><button type="button" class="primary" id="start" disabled>Start</button></div>
 </main>
@@ -56,7 +63,7 @@
     <button type="button" class="end" id="end">Finish</button>
   </div>
   <div class="stage" id="stage"></div>
-  <div class="hint">Down arrow or scroll for the next screen · Up arrow to go back</div>
+  <div class="hint">Right arrow, scroll or swipe for the next screen · Left arrow to go back</div>
 </div>
 
 <script>
@@ -107,7 +114,8 @@
       t0 = performance.now();
       $('setup').hidden = true;
       $('session').hidden = false;
-      show(0, 0);
+      build();
+      show(0);
       setInterval(tick, 500);
     };
     recorder.start(1000);
@@ -134,54 +142,48 @@
     $('clock').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
-  function card(i, cls) {
-    const el = document.createElement('div');
-    el.className = `card ${cls}`;
-    const img = document.createElement('img');
-    img.src = screens[i].url;
-    img.alt = screens[i].name;
-    img.draggable = false;
-    el.append(img);
-    return el;
+  // Every card is made once; turning the reel only changes each card's slot (-2 to 2).
+  function build() {
+    const stage = $('stage');
+    screens.forEach((sc, i) => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      const img = document.createElement('img');
+      img.src = sc.url;
+      img.alt = sc.name;
+      img.draggable = false;
+      el.append(img);
+      el.addEventListener('click', () => el.dataset.slot !== '0' && show(i, Math.sign(i - index)));
+      stage.append(el);
+    });
+    // Past the last screen: a card to finish on, so a stray scroll never ends the recording.
+    const last = document.createElement('div');
+    last.className = 'card last';
+    last.innerHTML = '<div class="done"><strong>That was the last screen</strong><span>Go back with the left arrow, or finish.</span></div>';
+    const finish = document.createElement('button');
+    finish.type = 'button';
+    finish.className = 'primary';
+    finish.textContent = 'Finish';
+    finish.addEventListener('click', end);
+    last.firstChild.append(finish);
+    stage.append(last);
   }
 
-  function show(i, dir) {
+  function show(i) {
     if (finished) return;
     if (i < 0 || i > screens.length) return;
-    const stage = $('stage');
-    const old = stage.querySelector('.card.current');
     index = i;
-    // Past the last screen: a card to finish on, so a stray scroll never ends the recording.
     shown.push({ t: now(), screen: i < screens.length ? i : null });
-    const next = () => {
-      stage.innerHTML = '';
-      if (i === screens.length) {
-        stage.innerHTML = '<div class="done"><strong>That was the last screen</strong><span>Go back with the up arrow, or finish.</span></div>';
-        const finish = document.createElement('button');
-        finish.type = 'button';
-        finish.className = 'primary';
-        finish.textContent = 'Finish';
-        finish.addEventListener('click', end);
-        stage.firstChild.append(finish);
-        $('count').textContent = '';
-        return;
-      }
-      if (i + 1 < screens.length) stage.append(card(i + 1, 'back'));
-      stage.append(card(i, 'current'));
-      $('count').textContent = `${i + 1} of ${screens.length}`;
-    };
-    if (old && dir > 0) {
-      old.classList.add('gone');
-      const back = stage.querySelector('.card.back');
-      if (back) back.className = 'card current';
-      setTimeout(next, 450);
-    } else next();
+    $('stage').querySelectorAll('.card').forEach((el, k) => {
+      el.dataset.slot = String(Math.max(-2, Math.min(2, k - i)));
+    });
+    $('count').textContent = i < screens.length ? `${i + 1} of ${screens.length}` : '';
   }
 
   // Where the pointer is, as fractions of the screenshot on show (0–1), or null when it's off it.
   window.addEventListener('pointermove', (e) => {
     if (!t0 || finished) return;
-    const img = $('stage').querySelector('.card.current img');
+    const img = $('stage').querySelector('.card[data-slot="0"] img');
     if (!img) return;
     const r = img.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width;
@@ -193,28 +195,29 @@
   });
   window.addEventListener('pointerdown', (e) => {
     if (!t0 || finished || e.target.closest('button')) return;
-    const img = $('stage').querySelector('.card.current img');
-    if (!img) return;
+    const img = $('stage').querySelector('.card[data-slot="0"] img');
+    if (!img?.contains(e.target)) return;
     const r = img.getBoundingClientRect();
     shown.push({ t: now(), screen: index, click: [+((e.clientX - r.left) / r.width).toFixed(4), +((e.clientY - r.top) / r.height).toFixed(4)] });
   });
 
   window.addEventListener('keydown', (e) => {
     if (!t0 || finished) return;
-    if (['ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); show(index + 1, 1); }
-    if (['ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); show(index - 1, -1); }
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); show(index + 1); }
+    if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); show(index - 1); }
   });
   window.addEventListener('wheel', (e) => {
     if (!t0 || finished) return;
     e.preventDefault();
     const at = performance.now();
     if (at - wheelAt < 700) return;
-    wheel += e.deltaY;
+    // A scroll down or a swipe left turns the reel on, like the View-Master's lever.
+    wheel += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (Math.abs(wheel) > 80) {
       wheelAt = at;
       const dir = Math.sign(wheel);
       wheel = 0;
-      show(index + dir, dir);
+      show(index + dir);
     }
   }, { passive: false });
 
