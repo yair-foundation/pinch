@@ -34,7 +34,7 @@ import {
 import { type Proposal, proposalOf } from './proposals';
 import { gapsLines, readinessLine, readinessOf } from './readiness';
 import { correctionsLines, reportOf, type Run, type RunEvent } from './runs';
-import { briefsLines, OPEN_CALLS, REVIEW_LINE, WORKING_LINES } from './screen-index';
+import { briefsLines, linkedTags, OPEN_CALLS, REVIEW_LINE, WORKING_LINES } from './screen-index';
 
 /*
  * Your agent, connected (D89): Pinch as an MCP server an agent such as Claude
@@ -64,7 +64,7 @@ export const TOOLS = [
     name: 'get_design_rules',
     title: 'Get design rules',
     description:
-      'The design rules this person keeps in Pinch: their taste, drawn from notes they wrote on screenshots, to follow in design and front-end work. Pick the topics the task touches; leave them out for every rule. Give their own tags (a project, a client) when the task belongs to one, to get those rules along with their general ones. Each rule says where it holds and lists the notes it comes from, with the tag of each note’s screenshot (a product, a feature, a domain). To keep only the rules drawn from screenshots with a tag, give it in screenTags: a narrower list, not a different taste, so leave it out unless the task is about that one. The author’s brief for a product or feature (what it is for and how it should feel) comes first: for the screen tags given, or every one.',
+      'The design rules this person keeps in Pinch: their taste, drawn from notes they wrote on screenshots, to follow in design and front-end work. Pick the topics the task touches; leave them out for every rule. Give their own tags (a project, a client) when the task belongs to one, to get those rules along with their general ones. Each rule says where it holds and lists the notes it comes from, with the tag of each note’s screenshot (a product, a feature, a domain). To keep only the rules drawn from screenshots with a tag, give it in screenTags: a narrower list, not a different taste, so leave it out unless the task is about that one. A tag brings the other sets of its product too (its screens as they are today and its target style), each with the role the author gave it. The author’s brief for a product or feature (what it is for and how it should feel) comes first: for the screen tags given, or every one.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -893,7 +893,10 @@ export async function answer(
         return failure(id, -32602, `Unknown tool: ${String(params.name)}`);
       const c = await rules();
       const pick = pickOf(params.arguments);
-      const picked = c ? numberedRules(c, pick) : [];
+      // A product asked for comes with all its sets, its target style beside its screens today (D130).
+      const linked =
+        c && pick.screen ? { ...pick, screen: linkedTags(c, pick.screen) } : pick;
+      const picked = c ? numberedRules(c, linked) : [];
       log?.add({
         kind: 'rules',
         topics: (pick.topics ?? []).filter((t): t is Topic => t !== null),
@@ -923,7 +926,7 @@ export async function answer(
       return reply(
         id,
         text(
-          `${rulesText(c, picked, pick.screen, more)}\nTo see the notes a rule comes from, with their close-ups and where each spot is, call get_rule_evidence with its number.\n`,
+          `${rulesText(c, picked, linked.screen, more)}\nTo see the notes a rule comes from, with their close-ups and where each spot is, call get_rule_evidence with its number.\n`,
         ),
       );
     }

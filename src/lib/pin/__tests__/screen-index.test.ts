@@ -785,9 +785,14 @@ describe('a brief for each product or feature (D121)', () => {
       },
       { tag: 'Unified Inbox', brief: 'Triage first.' },
     ]);
+    // One product under two sets, its target style and its screens today: both briefs (D130).
     assert.deepEqual(
       briefsOf(c, ['unified inbox']).map((b) => b.tag),
-      ['Unified Inbox'],
+      ['Marketing Assets - Unified Inbox', 'Unified Inbox'],
+    );
+    assert.deepEqual(
+      briefsOf(c, ['Linear']).map((b) => b.tag),
+      [],
     );
   });
 

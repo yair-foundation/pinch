@@ -1,6 +1,6 @@
 import { type Collection, noteAt, type Rule } from './learnings';
 import { cleanScreenTag } from './model';
-import { screenGroup, screenSets } from './screen-index';
+import { productOf, screenGroup, screenSets } from './screen-index';
 
 /*
  * The free plan covers one product (D123). Pinch is free to use whole (marking, reading, Your
@@ -25,12 +25,15 @@ export const withFreeProduct = (c: Collection, tag: string, now: string): Collec
   freeProduct: screenGroup(tag),
 });
 
-/** The products a rule is drawn from, by their compared tags; none when no note of it is tagged. */
+/**
+ * The products a rule is drawn from; none when no note of it is tagged. A product's screens
+ * today and its target style are one product (D130).
+ */
 export function productsOf(c: Collection, r: Rule): Set<string> {
   const out = new Set<string>();
   for (const e of r.evidence) {
     const tag = cleanScreenTag(noteAt(c, e)?.note.screenTag);
-    if (tag) out.add(screenGroup(tag));
+    if (tag) out.add(productOf(tag));
   }
   return out;
 }
@@ -39,7 +42,7 @@ export function productsOf(c: Collection, r: Rule): Set<string> {
 export function inFreePlan(c: Collection, r: Rule): boolean {
   const free = freeProductOf(c);
   const products = productsOf(c, r);
-  return !free || !products.size || products.has(screenGroup(free));
+  return !free || !products.size || products.has(productOf(free));
 }
 
 /** The collection as a free account's agent gets it: only the free product's rules. */

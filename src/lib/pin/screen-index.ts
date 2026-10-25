@@ -28,6 +28,35 @@ export function screenGroup(tag: string): string {
   return words.join('') || tag.trim().toLowerCase();
 }
 
+/**
+ * The product a screen tag belongs to (D130): its last part after a spaced dash or colon,
+ * compared as a set is, with "-ise" read as "-ize". So "Marketing Asset - Multi-Calendar" and
+ * "Multi-Calendar" are one product, and "Marketing Asset - Price Optimiser" and "PriceOptimizer"
+ * too, while each set keeps its own role and brief. Used only to compare.
+ */
+export function productOf(tag: string): string {
+  const parts = cleanScreenTag(tag).split(/\s+[-–—:]\s+/);
+  return screenGroup(parts[parts.length - 1] || tag).replace(/is(e|er|ation|ing)/g, 'iz$1');
+}
+
+/**
+ * The tags asked for with every set of the same products (D130): asking for a product's
+ * screens as they are today brings its target style too, each with its own role.
+ */
+export function linkedTags(c: Collection, tags: readonly string[]): string[] {
+  const want = new Set(tags.map(productOf));
+  const more = screenNames(c)
+    .all()
+    .filter((t) => want.has(productOf(t)));
+  return [...tags, ...more.filter((t) => !tags.some((x) => screenGroup(x) === screenGroup(t)))];
+}
+
+/** The other sets of a tag's product: "Marketing Asset - Multi-Calendar" for "Multi-Calendar". */
+export const linksOf = (c: Collection, tag: string): string[] =>
+  screenNames(c)
+    .all()
+    .filter((t) => productOf(t) === productOf(tag) && screenGroup(t) !== screenGroup(tag));
+
 export type ScreenNames = {
   /** The name a set goes by: the spelling the author used most, the first met on a tie. */
   name: (tag: string) => string;
@@ -169,13 +198,14 @@ export function withBrief(c: Collection, tag: string, brief: string, now: string
 
 /**
  * The briefs written, each under its set's name, the sets with the most notes first: every one,
- * or the ones for the screen tags asked for. A brief for a set with no notes left stays out.
+ * or the ones for the products of the screen tags asked for, so one brief serves a product's
+ * screens today and its target style alike (D130). A brief for a set with no notes left stays out.
  */
 export function briefsOf(c: Collection, tags?: readonly string[]): { tag: string; brief: string }[] {
-  const asked = tags?.length ? new Set(tags.map(screenGroup)) : null;
+  const asked = tags?.length ? new Set(tags.map(productOf)) : null;
   return screenSets(c).flatMap(({ name }) => {
     const brief = briefOf(c, name);
-    return brief && (!asked || asked.has(screenGroup(name)))
+    return brief && (!asked || asked.has(productOf(name)))
       ? [{ tag: name, brief: brief.replace(/\s+/g, ' ') }]
       : [];
   });

@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D129.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D130.
 
 ## Open (need the user)
 
@@ -12,6 +12,10 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-10-25 — D130 A product's screens today and its target style are linked, not merged (the user, once Roles and briefs showed every plain tag set to How it looks today and every "Marketing Asset - " tag to Target style: "Don't merge. Build a link: asking for a product gets both its today screens and its marketing target style, and one brief serves both"). Amends D105, D121, D123, D125 and D129.** The pairs aren't two names for one set: each is one product seen two ways, with two roles. Merging (D129) would have made today's screens the look to aim for. But kept apart, an agent asking for "Multi-Calendar" got only today's screens, and the brief written on "Marketing Asset - Multi-Calendar" reached only that set.
+  - **One product, read from the tag.** A tag's product is its last part after a spaced dash or colon, compared as a set is (D105), with "-ise" read as "-ize" (`productOf`). On the author's tags this links all ten pairs, Reservations and Price Optimiser among them, and nothing else: "Agent Hub Activity" and "Marketing Assets" stay on their own. Nothing is stored; the sets, their roles and briefs stay as they are, and Your rules still shows and filters each.
+  - **For the agent, a product is both sets.** `get_design_rules` with a screen tag brings the other sets of its product too (`linkedTags`), each rule still naming its tag and each tag its role, so the agent takes the target style's look and today's facts. A brief written on either set serves the product. `list_rule_topics` says which sets are one product, and what a product lacks counts across its sets (D125). The free plan's one product (D123) is both sets.
+  - **Merge (D129) stays,** for a product that really is under two names.
 - **2026-10-25 — D129 One screen tag can be merged into another on Your rules (the user, of products tagged under two names such as "Multi-Calendar" and "Marketing Asset - Multi-Calendar": "They're the same product under two names. Build a way to merge one screen tag into another"). Amends D105, D110 and D121.** Spellings of one tag already count as one set (D105), but two names for one product don't, so its rules, brief, readiness (D125) and the free plan's product (D123) split in two: the Agent Hub brief sat on a three-rule tag while seven rules sat on another. Retagging one reference at a time (D124) is too slow for ten pairs.
   - **Merge, on Roles and briefs.** Each screen tag's row has Merge: choose the set it goes into, then Merge. Every note with any spelling of it takes the other's name; its brief and role move there where the other has none (the other's own win); the free plan's product follows. The rules come along through their notes.
   - **The open images follow.** Tags typed on the images open in the browser are carried to their notes (D100), which would put the old name back; so the merge renames them too, in the same step.

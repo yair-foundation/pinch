@@ -1,7 +1,7 @@
 import { checksOf } from './checks';
 import { type Collection, type Rule, screenOf, screenTagsIn } from './learnings';
 import { cleanScreenTag } from './model';
-import { briefOf, screenGroup, screenNames } from './screen-index';
+import { briefsOf, linksOf, productOf, screenGroup, screenNames } from './screen-index';
 
 /*
  * How ready each product is for an agent's work (D125): for every screen tag the rules are drawn
@@ -18,7 +18,10 @@ export type Readiness = {
   checked: number;
   /** Notes on its screenshots the author marked as best examples (D108). */
   best: number;
+  /** Whether its product has a brief, on this set or a linked one (D130). */
   brief: boolean;
+  /** The other sets of its product, such as its marketing target style (D130). */
+  links: string[];
 };
 
 /** Each product's readiness, the one with the most rules first. */
@@ -39,7 +42,8 @@ export function readinessOf(c: Collection, rules: readonly Rule[]): Readiness[] 
       rules: n,
       checked: own.filter((r) => held.has(r.id)).length,
       best: best.get(key) ?? 0,
-      brief: Boolean(briefOf(c, value)),
+      brief: briefsOf(c, [value]).length > 0,
+      links: linksOf(c, value),
     };
   });
 }
@@ -53,7 +57,7 @@ export const readinessLine = (r: Readiness) =>
     `${r.checked} checked`,
     r.best ? plural(r.best, 'best example', 'best examples') : 'no best example',
     r.brief ? 'a brief' : 'no brief',
-  ].join(', ')}`;
+  ].join(', ')}${r.links.length ? `; one product with ${r.links.join(', ')}` : ''}`;
 
 /**
  * What the products asked for lack, for get_design_rules: a brief, a best example, or any rule
@@ -69,9 +73,13 @@ export function gapsLines(
   const gaps = screen.flatMap((asked) => {
     const r = ready.find((x) => screenGroup(x.tag) === screenGroup(asked));
     const name = r?.tag ?? cleanScreenTag(asked);
+    // A product's best examples count across its linked sets (D130).
+    const best = ready
+      .filter((x) => productOf(x.tag) === productOf(asked))
+      .reduce((n, x) => n + x.best, 0);
     const lacks = r
-      ? [r.brief ? '' : 'no brief', r.best ? '' : 'no best example'].filter(Boolean)
-      : ['no rules of its own', ...(briefOf(c, asked) ? [] : ['no brief'])];
+      ? [r.brief ? '' : 'no brief', best ? '' : 'no best example'].filter(Boolean)
+      : ['no rules of its own', ...(briefsOf(c, [asked]).length ? [] : ['no brief'])];
     return lacks.length && name ? [`- “${name}”: ${lacks.join(', ')}`] : [];
   });
   if (!gaps.length) return [];

@@ -82,8 +82,8 @@ describe('how ready each product is (D125)', () => {
   it('counts its rules, the checked ones, its best examples and its brief', () => {
     const c = library();
     assert.deepEqual(readinessOf(c, live(c)), [
-      { tag: 'Inbox', rules: 2, checked: 1, best: 1, brief: true },
-      { tag: 'Business Model', rules: 1, checked: 0, best: 0, brief: false },
+      { tag: 'Inbox', rules: 2, checked: 1, best: 1, brief: true, links: [] },
+      { tag: 'Business Model', rules: 1, checked: 0, best: 0, brief: false, links: [] },
     ]);
   });
 
