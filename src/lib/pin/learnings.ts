@@ -7,6 +7,7 @@ import {
   checksOf,
 } from './checks';
 import { principleName } from './foundation';
+import { type ExportedVersion, mergeExports } from './changes';
 import { fingerprint } from './hash';
 import {
   itemsLine,
@@ -184,6 +185,8 @@ export type Collection = {
   briefs?: Record<string, string>;
   /** The product the free plan's agent gets, by its compared tag (D123). */
   freeProduct?: string;
+  /** The rules as each recent export had them, to tell an agent what changed since its copy (D128). */
+  exports?: ExportedVersion[];
 };
 
 /** The name of the one collection each person has (D86). */
@@ -319,6 +322,8 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
   const screenRoles = { ...from.screenRoles, ...into.screenRoles };
   // The same for briefs (D121).
   const briefs = { ...from.briefs, ...into.briefs };
+  // Both one's exports, so a copy from either can be compared (D128).
+  const exports = mergeExports(into.exports, from.exports);
   return {
     ...into,
     updatedAt: now,
@@ -331,6 +336,7 @@ export function mergeCollection(into: Collection, from: Collection, now: string)
     ...((into.freeProduct ?? from.freeProduct)
       ? { freeProduct: into.freeProduct ?? from.freeProduct }
       : {}),
+    ...(exports.length ? { exports } : {}),
   };
 }
 
@@ -1048,7 +1054,7 @@ export function rulesMarkdown(
     `Exported from Pinch on ${exportedAt.slice(0, 10)}: ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}, version ${rulesVersion(c)}.`,
     '',
     // A copy goes stale when the author changes a rule; the version tells (D125).
-    `When you're connected to Pinch, call list_rule_topics with version "${rulesVersion(c)}": it says whether this copy is current. If it isn't, the rules get_design_rules gives win over this file.`,
+    `When you're connected to Pinch, call list_rule_topics with version "${rulesVersion(c)}": it says whether this copy is current and, if it isn't, which rules are new, changed or gone since. Those win over this file.`,
     '',
     '## How to use these',
     '',

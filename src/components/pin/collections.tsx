@@ -93,6 +93,7 @@ import {
   withChecks,
 } from '@/lib/pin/checks';
 import { keepProposal, type Proposal } from '@/lib/pin/proposals';
+import { withExported } from '@/lib/pin/changes';
 import {
   type Report,
   type Run,
@@ -916,6 +917,8 @@ export function CollectionsView({
       }
       const stamp = nowIso();
       const made = rulesPackage(ref.current ?? now, found, stamp, sheets);
+      // The version this copy carries is kept, so an agent can be told what changed since (D128).
+      change((x) => withExported(x, stamp), true);
       download(
         new Blob(zip(made.files) as BlobPart[], { type: 'application/zip' }),
         `${packageRoot(now, stamp).slice(0, -1)}.zip`,
