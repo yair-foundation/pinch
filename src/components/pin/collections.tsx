@@ -93,7 +93,13 @@ import {
   withChecks,
 } from '@/lib/pin/checks';
 import { keepProposal, type Proposal } from '@/lib/pin/proposals';
-import { type Report, type Run, type Verdict, withVerdict } from '@/lib/pin/runs';
+import {
+  type Report,
+  type Run,
+  type Verdict,
+  withCorrection,
+  withVerdict,
+} from '@/lib/pin/runs';
 import { reviewCells } from '@/lib/pin/review-sheets';
 import {
   briefOf,
@@ -1125,6 +1131,13 @@ export function CollectionsView({
       onStatus({ tone: 'error', text: 'Your verdict didn’t reach your account. Try again.' }),
     );
   };
+  /** What was wrong with a piece of work judged close or off (D125): your agent gets it next. */
+  const correctWork = (run: Run, report: Report, correction: string) => {
+    setRuns((x) => withCorrection({ runs: x, agents: [] }, run.id, report.id, correction).runs);
+    backend.correct?.(run.id, report.id, correction).catch(() =>
+      onStatus({ tone: 'error', text: 'That didn’t reach your account. Try again.' }),
+    );
+  };
   const removeRun = (run: Run) => {
     setRuns((x) => x.filter((r) => r.id !== run.id));
     backend.dropRun?.(run.id).catch(() =>
@@ -1437,7 +1450,13 @@ export function CollectionsView({
           )}
 
           {!slice && runs.length > 0 && (
-            <AgentRuns collection={c} runs={runs} onJudge={judgeWork} onRemove={removeRun} />
+            <AgentRuns
+              collection={c}
+              runs={runs}
+              onJudge={judgeWork}
+              onCorrect={correctWork}
+              onRemove={removeRun}
+            />
           )}
 
           {!slice && c.batches.length > 0 && (

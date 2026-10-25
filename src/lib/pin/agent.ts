@@ -17,7 +17,7 @@ import {
   type RulePick,
   rulesOf,
   rulesText,
-  screenTagsIn,
+  rulesVersion,
   tagsOf,
   unreadNotes,
   waiting,
@@ -31,8 +31,9 @@ import {
   type Topic,
 } from './model';
 import { type Proposal, proposalOf } from './proposals';
-import { reportOf, type RunEvent } from './runs';
-import { briefOf, briefsLines, OPEN_CALLS, WORKING_LINES } from './screen-index';
+import { gapsLines, readinessLine, readinessOf } from './readiness';
+import { correctionsLines, reportOf, type Run, type RunEvent } from './runs';
+import { briefsLines, OPEN_CALLS, WORKING_LINES } from './screen-index';
 
 /*
  * Your agent, connected (D89): Pinch as an MCP server an agent such as Claude
@@ -55,7 +56,7 @@ import { briefOf, briefsLines, OPEN_CALLS, WORKING_LINES } from './screen-index'
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS =
-  `Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render, and on all your earlier work again whenever the rules, a check or a shared part changes. When the person settles something about their taste with you that their rules don’t hold, or holds otherwise (a correction, a choice between two rules), ask whether to keep it, and on a yes call propose_rule: it waits in Pinch for them to keep or drop. Do this even when you also write it into your own notes or files: Pinch is where their rules live, so every agent and session gets it. For the same reason, where your own notes of a rule differ from what get_design_rules returns now, the rule as returned wins: update your notes. ${OPEN_CALLS} Each time you report a piece of work, also call report_work with what you made, the rules you followed and set aside, the checks that failed and those decisions: the person sees it on Your rules beside what you asked Pinch for, and judges it. When the person asks you to read their notes into rules, or list_rule_topics says notes are waiting, call get_notes_to_read and follow it: you read them as Pinch would, and submit_reading hands your reading back. ${WORKING_LINES.join(' ')}`;
+  `Pinch keeps this person’s design taste as rules drawn from their notes on screenshots. Before designing or building interface for them, call get_design_rules with the topics the task touches (and their own tags when the task belongs to a project or client), and follow what it returns. To narrow them to what the person noted on screenshots of one product, feature or domain, give its screen tag too; list_rule_topics names them. When a rule is unclear, or you need to see what the person marked, call get_rule_evidence with its number for the close-ups it comes from; add whole: true when the rule is about the screen as a whole (layout, hierarchy, spacing) and the close-ups don’t show enough. When you render what you build, call get_render_checks once and run its checks on every render, and on all your earlier work again whenever the rules, a check or a shared part changes. When the person settles something about their taste with you that their rules don’t hold, or holds otherwise (a correction, a choice between two rules), ask whether to keep it, and on a yes call propose_rule: it waits in Pinch for them to keep or drop. Do this even when you also write it into your own notes or files: Pinch is where their rules live, so every agent and session gets it. For the same reason, where your own notes of a rule differ from what get_design_rules returns now, the rule as returned wins: update your notes. When you also work from a copy of the rules (a package's design-rules.md or rules.json), give its version to list_rule_topics, which says whether the copy is current. ${OPEN_CALLS} Each time you report a piece of work, also call report_work with what you made, the rules you followed and set aside, the checks that failed and those decisions: the person sees it on Your rules beside what you asked Pinch for, and judges it. When the person asks you to read their notes into rules, or list_rule_topics says notes are waiting, call get_notes_to_read and follow it: you read them as Pinch would, and submit_reading hands your reading back. ${WORKING_LINES.join(' ')}`;
 
 export const TOOLS = [
   {
@@ -260,8 +261,18 @@ export const TOOLS = [
     name: 'list_rule_topics',
     title: 'List rule topics',
     description:
-      'How many of this person’s rules are about each topic and carry each of their own tags, to choose what to ask get_design_rules for.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      'How many of this person’s rules are about each topic and carry each of their own tags, to choose what to ask get_design_rules for, and how ready each product is for your work: its rules, how many a render check holds, its best examples and whether it has a brief. Also the rules’ version: give the version a copy of the rules names (design-rules.md, rules.json) to learn whether that copy is current.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        version: {
+          type: 'string',
+          description:
+            'The version your copy of the rules names, to check it is current. Leave out when you have none.',
+        },
+      },
+      additionalProperties: false,
+    },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
 ];
@@ -608,8 +619,21 @@ export function pickOf(args: unknown): RulePick {
   };
 }
 
+/**
+ * Whether a copy of the rules is current (D125): the rules' version now, and the one the
+ * agent's copy names when it gave one.
+ */
+export function versionLine(now: string, copy?: string): string {
+  const asked = copy?.trim().replace(/^"|"$/g, '');
+  if (!asked)
+    return `Rules version ${now}. A copy of the rules (design-rules.md, rules.json) names its version: where it differs, the copy is behind.`;
+  return asked === now
+    ? `Rules version ${now}: your copy is current.`
+    : `Rules version ${now}: your copy (${asked}) is behind, so the author changed rules since. Call get_design_rules for the current ones: where they differ from your copy, they win.`;
+}
+
 /** What the rules are about, counted: the answer to list_rule_topics. */
-export function topicsText(c: Collection | null): string {
+export function topicsText(c: Collection | null, version?: { now: string; copy?: string }): string {
   const live = (c?.rules ?? []).filter(
     (r) => r.status === 'approved' && !r.locked && !waiting(r) && r.text,
   );
@@ -618,7 +642,8 @@ export function topicsText(c: Collection | null): string {
   const waitingLine = unread
     ? `${unread} ${unread === 1 ? 'note waits' : 'notes wait'} to be read into rules: call get_notes_to_read when the person asks you to read them.`
     : '';
-  if (!live.length) return ['No rules yet.', waitingLine].filter(Boolean).join('\n');
+  const versioned = version ? versionLine(version.now, version.copy) : '';
+  if (!live.length) return ['No rules yet.', waitingLine, versioned].filter(Boolean).join('\n');
   const lines = [`${live.length} ${live.length === 1 ? 'rule' : 'rules'}.`, 'Topics:'];
   for (const t of TOPICS) {
     const n = live.filter((r) => r.topics.includes(t.kind)).length;
@@ -629,15 +654,16 @@ export function topicsText(c: Collection | null): string {
     lines.push('Their own tags:');
     for (const t of tags) lines.push(`- ${t}: ${live.filter((r) => r.tags.includes(t)).length}`);
   }
-  const screens = c ? screenTagsIn(c, live) : [];
-  if (screens.length) {
+  // How ready each product is (D125): where the agent decides alone, it should say so.
+  const ready = c ? readinessOf(c, live) : [];
+  if (ready.length) {
     lines.push(
-      'Screen tags, the tags of the screenshots rules are drawn from (screenTags), with a brief where the author wrote one:',
+      'Screen tags, the tags of the screenshots rules are drawn from (screenTags), each with its rules, how many a render check holds, the author’s best examples and whether they wrote its brief:',
     );
-    for (const v of screens)
-      lines.push(`- ${v.value}: ${v.n}${c && briefOf(c, v.value) ? ', with a brief' : ''}`);
+    for (const r of ready) lines.push(`- ${readinessLine(r)}`);
   }
   if (waitingLine) lines.push(waitingLine);
+  if (versioned) lines.push(versioned);
   return lines.join('\n');
 }
 
@@ -722,8 +748,15 @@ async function readingContent(
   );
 }
 
-/** Where a run's calls go (D120): a fresh id for a report, and what each call adds. */
-export type RunLog = { id: () => string; add: (e: RunEvent) => void };
+/**
+ * Where a run's calls go (D120): a fresh id for a report, and what each call adds; and the
+ * account's runs so far, for the author's corrections on earlier work (D125).
+ */
+export type RunLog = {
+  id: () => string;
+  add: (e: RunEvent) => void;
+  runs?: () => Promise<Run[]>;
+};
 
 /** A rule proposed by the agent, checked and stored to wait for the person (D116). */
 async function proposeContent(
@@ -796,7 +829,16 @@ export async function answer(
     case 'tools/list':
       return reply(id, { tools: TOOLS });
     case 'tools/call': {
-      if (params.name === 'list_rule_topics') return reply(id, text(topicsText(await rules())));
+      if (params.name === 'list_rule_topics') {
+        // The version is of every rule, as the author's package has them, whatever the plan.
+        const whole = await (readings?.rules ?? rules)();
+        const args = (params.arguments ?? {}) as { version?: unknown };
+        const copy = typeof args.version === 'string' ? args.version : undefined;
+        return reply(
+          id,
+          text(topicsText(await rules(), whole ? { now: rulesVersion(whole), copy } : undefined)),
+        );
+      }
       if (params.name === 'propose_rule') {
         if (!proposals) return reply(id, text('Proposing rules isn’t available here.', true));
         return reply(id, await proposeContent(await rules(), params.arguments, proposals, log));
@@ -841,6 +883,9 @@ export async function answer(
         screen: [...(pick.screen ?? [])],
         rules: picked.map((r) => r.rule.id),
       });
+      // What the products asked for lack, and the author's corrections on earlier work (D125).
+      const corrections = correctionsLines((await log?.runs?.().catch(() => [])) ?? []);
+      const more = [...(c ? gapsLines(c, rulesOf(c).map((r) => r.rule), pick.screen) : []), ...corrections];
       if (!c || !picked.length) {
         // A product with no rules yet may still have its brief (D121).
         const briefs = c && pick.screen ? briefsLines(c, pick.screen) : [];
@@ -852,6 +897,7 @@ export async function answer(
                 ? 'No rules about that. Call list_rule_topics to see what the rules cover, or ask again without topics for every rule.'
                 : 'No rules yet. They come from the notes this person writes on screenshots in Pinch.',
               ...briefs,
+              ...more,
             ].join('\n'),
           ),
         );
@@ -859,7 +905,7 @@ export async function answer(
       return reply(
         id,
         text(
-          `${rulesText(c, picked, pick.screen)}\nTo see the notes a rule comes from, with their close-ups and where each spot is, call get_rule_evidence with its number.\n`,
+          `${rulesText(c, picked, pick.screen, more)}\nTo see the notes a rule comes from, with their close-ups and where each spot is, call get_rule_evidence with its number.\n`,
         ),
       );
     }

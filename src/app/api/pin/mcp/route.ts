@@ -7,6 +7,7 @@ import {
   addReading,
   batchFiles,
   listCollections,
+  listRuns,
   recordRun,
   validId,
 } from '@/lib/cloud';
@@ -27,7 +28,8 @@ import { agentName, type RunEvent } from '@/lib/pin/runs';
  * and what its calls asked for and got goes into the account's record of
  * runs once the reply is out. The agent may read the person's notes into
  * rules itself (D122); its reading waits in the account for the page. On the
- * free plan the agent gets the rules of one product (D123). No AI
+ * free plan the agent gets the rules of one product (D123). With the rules
+ * come the author's corrections on its earlier work (D125). No AI
  * runs here, and nothing about the call is logged but its method.
  */
 
@@ -72,7 +74,11 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const runId = session || `d${now.slice(0, 10).replace(/-/g, '')}`;
   const events: RunEvent[] = [];
-  const log = { id: newId, add: (e: RunEvent) => void events.push(e) };
+  const log = {
+    id: newId,
+    add: (e: RunEvent) => void events.push(e),
+    runs: () => listRuns(user),
+  };
   let whole: Promise<Collection | null> | null = null;
   let cached: Promise<Collection | null> | null = null;
   const all = () => {

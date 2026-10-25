@@ -1,8 +1,10 @@
 'use client';
 
 import { ChevronRight, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { type Collection, type ExportedRule, rulesOf } from '@/lib/pin/learnings';
 import {
+  MAX_CORRECTION,
   neverServed,
   type Report,
   type Run,
@@ -15,8 +17,9 @@ import { hit } from './dialog';
 
 /*
  * Your agent's work (D120): what each run of the connected agent did with the rules, newest
- * first, with the person's verdict on each piece of work it reported; above them, the rules the
- * runs say to look at, and the ones no run was served.
+ * first, with the person's verdict on each piece of work it reported and, on work judged close
+ * or off, what was wrong with it, which the agent gets with the rules (D125); above them, the
+ * rules the runs say to look at, and the ones no run was served.
  */
 
 const VERDICT_LABEL: Record<Verdict, string> = { good: 'Good', close: 'Close', off: 'Off' };
@@ -31,6 +34,8 @@ const pill = cn(
 );
 const heading = 'flex items-center gap-2 text-[13px] font-medium text-muted-foreground';
 const muted = 'm-0 text-[13px] text-muted-foreground';
+const field =
+  'w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none transition-colors duration-150 placeholder:text-[#737373] focus:border-foreground/25 motion-reduce:transition-none dark:placeholder:text-[#7a7a7a]';
 const count = 'font-mono font-normal text-muted-foreground/70';
 
 const when = (iso: string) =>
@@ -57,11 +62,13 @@ export function AgentRuns({
   collection,
   runs,
   onJudge,
+  onCorrect,
   onRemove,
 }: {
   collection: Collection;
   runs: Run[];
   onJudge: (run: Run, report: Report, verdict: Verdict | null) => void;
+  onCorrect: (run: Run, report: Report, correction: string) => void;
   onRemove: (run: Run) => void;
 }) {
   const byKey = new Map(rulesOf(collection).map((r) => [r.rule.id, r]));
@@ -111,6 +118,7 @@ export function AgentRuns({
               open={i === 0}
               ruleText={ruleText}
               onJudge={(p, v) => onJudge(r, p, v)}
+              onCorrect={(p, x) => onCorrect(r, p, x)}
               onRemove={() => onRemove(r)}
             />
           </li>
@@ -147,12 +155,14 @@ function RunCard({
   open,
   ruleText,
   onJudge,
+  onCorrect,
   onRemove,
 }: {
   run: Run;
   open: boolean;
   ruleText: (key: string) => string;
   onJudge: (p: Report, v: Verdict | null) => void;
+  onCorrect: (p: Report, correction: string) => void;
   onRemove: () => void;
 }) {
   const asked = [
@@ -178,7 +188,12 @@ function RunCard({
           <ol className="m-0 list-none space-y-3 p-0">
             {run.reports.map((p) => (
               <li key={p.id}>
-                <Piece report={p} ruleText={ruleText} onJudge={(v) => onJudge(p, v)} />
+                <Piece
+                  report={p}
+                  ruleText={ruleText}
+                  onJudge={(v) => onJudge(p, v)}
+                  onCorrect={(x) => onCorrect(p, x)}
+                />
               </li>
             ))}
           </ol>
@@ -224,10 +239,12 @@ function Piece({
   report: p,
   ruleText,
   onJudge,
+  onCorrect,
 }: {
   report: Report;
   ruleText: (key: string) => string;
   onJudge: (v: Verdict | null) => void;
+  onCorrect: (correction: string) => void;
 }) {
   const checks =
     p.checksRun !== undefined
@@ -259,6 +276,9 @@ function Piece({
           ))}
         </fieldset>
       </div>
+      {(p.verdict === 'close' || p.verdict === 'off') && (
+        <Correction key={p.verdict} report={p} onCorrect={onCorrect} />
+      )}
       <p className={muted}>
         {[`Followed ${p.followed.length}`, `Set aside ${p.setAside.length}`, checks]
           .filter(Boolean)
@@ -296,5 +316,40 @@ function Piece({
         </ul>
       )}
     </div>
+  );
+}
+
+/** What was wrong with work judged close or off, kept as it is left (D125). */
+function Correction({
+  report: p,
+  onCorrect,
+}: {
+  report: Report;
+  onCorrect: (correction: string) => void;
+}) {
+  const [text, setText] = useState(p.correction ?? '');
+  const keep = () => {
+    if (text.trim() !== (p.correction ?? '')) onCorrect(text.trim());
+  };
+  return (
+    <input
+      type="text"
+      aria-label={`What was ${p.verdict === 'off' ? 'off' : 'missing'} in ${p.work}`}
+      value={text}
+      maxLength={MAX_CORRECTION}
+      placeholder={p.verdict === 'off' ? 'What was off?' : 'What was missing?'}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={keep}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setText(p.correction ?? '');
+        }
+      }}
+      className={cn(field, 'py-1.5 text-[13px]')}
+    />
   );
 }

@@ -12,6 +12,7 @@ import {
   withEvents,
   withoutRun,
   withStart,
+  withCorrection,
   withVerdict,
 } from './pin/runs';
 import { readZipEntries, TAIL_BYTES } from './pin/zip-range';
@@ -134,6 +135,9 @@ export const recordRun = (
 
 export const judgeWork = (user: string, run: string, report: string, verdict: Verdict | null) =>
   changeRuns(user, (doc) => withVerdict(doc, run, report, verdict));
+
+export const correctWork = (user: string, run: string, report: string, text: string) =>
+  changeRuns(user, (doc) => withCorrection(doc, run, report, text));
 
 export const dropRun = (user: string, id: string) =>
   changeRuns(user, (doc) => withoutRun(doc, id));

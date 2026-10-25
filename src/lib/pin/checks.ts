@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fingerprint } from './hash';
 import type { Collection, ExportedRule } from './learnings';
 
 /**
@@ -238,13 +239,7 @@ export function checksRequest(rules: ExportedRule[]): ChecksRequest['rules'] {
  * asked for again only when the rules or their notes change.
  */
 export function checksBasis(rules: ChecksRequest['rules']): string {
-  const text = JSON.stringify(rules);
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return `${rules.length}-${h.toString(36)}`;
+  return `${rules.length}-${fingerprint(JSON.stringify(rules))}`;
 }
 
 /** The checks in the usual order. */

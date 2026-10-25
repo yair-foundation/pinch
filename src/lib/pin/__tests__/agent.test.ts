@@ -629,6 +629,6 @@ describe('the author’s brief for a product, over MCP (D121)', () => {
   it('is named in the topics list', async () => {
     const c = briefed();
     c.rules[0] = { ...c.rules[0], evidence: [{ batchId: 'b1', note: '01.1' }] };
-    assert.match(textOf(await ask('list_rule_topics', {}, c)), /- Agent Hub: \d+, with a brief/);
+    assert.match(textOf(await ask('list_rule_topics', {}, c)), /- Agent Hub: \d+ rules?, \d+ checked, [^,]+, a brief/);
   });
 });

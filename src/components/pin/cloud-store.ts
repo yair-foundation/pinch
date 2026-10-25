@@ -102,6 +102,15 @@ export function cloudBackend(folder: string, mode: 'blob' | 'memory'): Collectio
         }),
       );
     },
+    async correct(run, report, correction) {
+      await ok(
+        await fetch(`/api/pin/cloud/runs/${encodeURIComponent(run)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report, correction }),
+        }),
+      );
+    },
     async dropRun(id) {
       await ok(await fetch(`/api/pin/cloud/runs/${encodeURIComponent(id)}`, { method: 'DELETE' }));
     },

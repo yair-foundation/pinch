@@ -29,6 +29,8 @@ export type Report = {
   /** The decisions that need the person's call (D119). */
   open: string[];
   verdict?: Verdict;
+  /** What the person said was wrong with it, on work judged close or off (D125). */
+  correction?: string;
 };
 
 /** One get_design_rules call: what it asked for and how many rules it got. */
@@ -75,7 +77,9 @@ const MAX_REPORTS = 20;
 const MAX_KEYS = 1000;
 const MAX_LIST = 300;
 const MAX_OPEN = 20;
-const LIMITS = { work: 120, why: 300, check: 80, open: 300, agent: 60 };
+/** The longest correction the person gives on a piece of work (D125). */
+export const MAX_CORRECTION = 300;
+const LIMITS = { work: 120, why: 300, check: 80, open: 300, agent: 60, correction: MAX_CORRECTION };
 /** Rules count as never served only once this many runs asked for rules. */
 export const MIN_RUNS = 3;
 
@@ -206,28 +210,82 @@ export function withEvents(doc: RunsDoc, id: string, events: RunEvent[], now: st
   return { runs, agents: waiting ? doc.agents.filter((x) => x !== waiting) : doc.agents };
 }
 
-/** A piece of work judged, or its verdict taken back with null. */
-export function withVerdict(
+const withReport = (
+  doc: RunsDoc,
+  runId: string,
+  reportId: string,
+  fn: (p: Report) => Report,
+): RunsDoc => ({
+  ...doc,
+  runs: doc.runs.map((r) =>
+    r.id !== runId
+      ? r
+      : { ...r, reports: r.reports.map((p) => (p.id === reportId ? fn(p) : p)) },
+  ),
+});
+
+/**
+ * A piece of work judged, or its verdict taken back with null. A correction goes with a verdict
+ * of close or off only, so judging the work good, or no longer judging it, takes it away.
+ */
+export const withVerdict = (
   doc: RunsDoc,
   runId: string,
   reportId: string,
   verdict: Verdict | null,
-): RunsDoc {
-  return {
-    ...doc,
-    runs: doc.runs.map((r) =>
-      r.id !== runId
-        ? r
-        : {
-            ...r,
-            reports: r.reports.map((p) => {
-              if (p.id !== reportId) return p;
-              const { verdict: _, ...rest } = p;
-              return verdict ? { ...rest, verdict } : rest;
-            }),
-          },
+): RunsDoc =>
+  withReport(doc, runId, reportId, (p) => {
+    const { verdict: _, correction, ...rest } = p;
+    if (!verdict) return rest;
+    return verdict !== 'good' && correction ? { ...rest, verdict, correction } : { ...rest, verdict };
+  });
+
+/** What the person said was wrong with a piece of work judged close or off, or taken back. */
+export const withCorrection = (
+  doc: RunsDoc,
+  runId: string,
+  reportId: string,
+  text: string,
+): RunsDoc =>
+  withReport(doc, runId, reportId, (p) => {
+    const { correction: _, ...rest } = p;
+    const said = line(text, LIMITS.correction);
+    return said && (p.verdict === 'close' || p.verdict === 'off')
+      ? { ...rest, correction: said }
+      : rest;
+  });
+
+/** Corrections an agent gets with the rules: the newest first, enough to learn from. */
+export const MAX_CORRECTIONS = 8;
+
+/** The person's corrections on the agent's earlier work, newest first (D125). */
+export function correctionsOf(
+  runs: readonly Run[],
+): { work: string; verdict: Verdict; at: string; correction: string }[] {
+  return runs
+    .flatMap((r) => r.reports)
+    .flatMap((p) =>
+      p.correction && p.verdict && p.verdict !== 'good'
+        ? [{ work: p.work, verdict: p.verdict, at: p.at, correction: p.correction }]
+        : [],
+    )
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, MAX_CORRECTIONS);
+}
+
+/**
+ * The corrections as lines for an agent, under one line on what they are and what to do with
+ * them; none when there are none. Meant for the agent alone: the person wrote them to it.
+ */
+export function correctionsLines(runs: readonly Run[]): string[] {
+  const list = correctionsOf(runs);
+  if (!list.length) return [];
+  return [
+    'The author’s corrections on earlier work their agents reported, newest first. Don’t repeat what they correct. Where one is about their taste and no rule holds it, ask them whether to keep it as a rule, and on a yes call propose_rule:',
+    ...list.map(
+      (x) => `- On “${x.work}” (${x.verdict === 'off' ? 'off' : 'close'}, ${x.at.slice(0, 10)}): ${x.correction}`,
     ),
-  };
+  ];
 }
 
 export const withoutRun = (doc: RunsDoc, id: string): RunsDoc => ({

@@ -1,12 +1,14 @@
 import { accountGate } from '@/lib/access';
 import { isSameOriginWrite } from '@/lib/auth';
-import { dropRun, judgeWork, validId } from '@/lib/cloud';
+import { correctWork, dropRun, judgeWork, validId } from '@/lib/cloud';
 import { VERDICTS, type Verdict } from '@/lib/pin/runs';
 import { sessionOf } from '@/lib/session';
 
 /*
  * One run of the agent (D120): PATCH judges a piece of work in it (`{ report, verdict }`, null
- * to take the verdict back), DELETE removes the run. Same-origin only.
+ * to take the verdict back) or says what was wrong with work judged close or off
+ * (`{ report, correction }`, empty to take it back, D125), DELETE removes the run. Same-origin
+ * only.
  */
 
 export const dynamic = 'force-dynamic';
@@ -31,8 +33,15 @@ export async function PATCH(request: Request, ctx: RouteContext<'/api/pin/cloud/
   const body = (await request.json().catch(() => null)) as {
     report?: unknown;
     verdict?: unknown;
+    correction?: unknown;
   } | null;
   const report = typeof body?.report === 'string' ? body.report : '';
+  if (body && 'correction' in body) {
+    if (!validId(report) || typeof body.correction !== 'string')
+      return fail(400, 'Bad correction.');
+    await correctWork(user, id, report, body.correction);
+    return Response.json({ ok: true }, { headers });
+  }
   const verdict = body?.verdict ?? null;
   if (!validId(report) || (verdict !== null && !VERDICTS.includes(verdict as Verdict)))
     return fail(400, 'Bad verdict.');

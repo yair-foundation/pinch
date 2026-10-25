@@ -24,6 +24,8 @@ export type CollectionsBackend = {
   /** What the agent's runs did with the rules (D120), the person's verdicts, and removing one. */
   runs?(): Promise<Run[]>;
   judge?(run: string, report: string, verdict: Verdict | null): Promise<void>;
+  /** What was wrong with a piece of work judged close or off (D125), or taken back with ''. */
+  correct?(run: string, report: string, correction: string): Promise<void>;
   dropRun?(id: string): Promise<void>;
   /** The readings of notes the agent made itself, waiting to be applied (D122). */
   readings?(): Promise<AgentReading[]>;

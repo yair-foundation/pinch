@@ -7,6 +7,7 @@ import {
   checksOf,
 } from './checks';
 import { principleName } from './foundation';
+import { fingerprint } from './hash';
 import {
   itemsLine,
   cleanScreenTag,
@@ -806,6 +807,19 @@ export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
   return chosen.map((rule, i) => ({ id: `R${i + 1}`, rule, notes: evidenceOf(c, rule) }));
 }
 
+/**
+ * The rules' version (D125): a fingerprint of what an agent reads in them (each rule's number,
+ * words, place, topics and tags, and the briefs), so a copy of the rules in a package can be told
+ * from the current ones. A note added to a rule doesn't change it; a change to its words does.
+ */
+export const rulesVersion = (c: Collection): string =>
+  fingerprint(
+    JSON.stringify([
+      rulesOf(c).map(({ rule: r }) => [r.id, r.text.trim(), r.context.trim(), r.topics, r.tags]),
+      briefsOf(c),
+    ]),
+  );
+
 /** Where a note came from, in one line: "note 02.3 on pricing.png (Competitor)". */
 const fromLine = (n: ExportedNote) => `note ${n.note.ref} on ${n.note.image}${noteAbout(n.note)}`;
 
@@ -834,18 +848,21 @@ const said = (n: BatchNote) =>
 /**
  * The rules as text for an agent: what Copy as text puts on the clipboard and get_design_rules
  * answers. Each rule with where it holds, what it is about, and the notes it draws on; before
- * them, the briefs (D121): for the screen tags asked for, or every one.
+ * them, the briefs (D121): for the screen tags asked for, or every one, then any `more` lines
+ * the answer carries (D125: what the products asked for lack, the author's corrections).
  */
 export function rulesText(
   c: Collection,
   rules: ExportedRule[],
   screen?: readonly string[],
+  more: readonly string[] = [],
 ): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
     `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
     ...(rolesLine(c) ? [rolesLine(c)] : []),
     ...briefsLines(c, screen),
+    ...more,
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   for (const r of rules) {
@@ -1028,7 +1045,10 @@ export function rulesMarkdown(
   const lines = [
     `# Design rules: ${oneLine(c.name)}`,
     '',
-    `Exported from Pinch on ${exportedAt.slice(0, 10)}: ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}.`,
+    `Exported from Pinch on ${exportedAt.slice(0, 10)}: ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}, version ${rulesVersion(c)}.`,
+    '',
+    // A copy goes stale when the author changes a rule; the version tells (D125).
+    `When you're connected to Pinch, call list_rule_topics with version "${rulesVersion(c)}": it says whether this copy is current. If it isn't, the rules get_design_rules gives win over this file.`,
     '',
     '## How to use these',
     '',
@@ -1104,6 +1124,8 @@ export function rulesManifest(
     version: 4,
     collection: c.name,
     exportedAt,
+    // What list_rule_topics compares to say whether this copy is current (D125).
+    rulesVersion: rulesVersion(c),
     guide: 'design-rules.md',
     // What each set of screenshots is for, as the author says (D110).
     ...(Object.keys(c.screenRoles ?? {}).length
