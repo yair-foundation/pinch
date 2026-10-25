@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pinch voice test</title>
+<!--
+  The narration test (D131): show screenshots one at a time on a stack, record the microphone and
+  the pointer while the author talks about each, and save one JSON file with the audio, the
+  pointer's path and when each screen was shown. Nothing leaves the browser; the words are
+  transcribed afterwards, on this machine. Serve it from localhost (the microphone needs a secure
+  context): node scripts/voice-test/serve.mjs
+-->
+<style>
+  :root { color-scheme: light dark; --bg: #f4f4f4; --card: #fff; --fg: #121212; --muted: #6b6b6b; --line: #00000014; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0e0e0e; --card: #1b1b1b; --fg: #f2f2f2; --muted: #9a9a9a; --line: #ffffff1a; } }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
+  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; min-height: 36px; padding: 0 14px; cursor: pointer; }
+  button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .setup { max-width: 520px; margin: 12vh auto; display: grid; gap: 16px; padding: 0 16px; }
+  .setup h1 { font-size: 20px; font-weight: 500; margin: 0; }
+  .setup p { margin: 0; color: var(--muted); }
+  .bar { position: fixed; inset: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 12px 20px; color: var(--muted); z-index: 3; }
+  .bar .level { width: 80px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .bar .level i { display: block; height: 100%; width: 0; background: var(--fg); }
+  .bar .rec { width: 8px; height: 8px; border-radius: 50%; background: #d33; }
+  .bar .end { margin-left: auto; }
+  .stage { position: fixed; inset: 56px 0 40px; display: grid; place-items: center; overflow: hidden; }
+  .card { position: absolute; display: grid; place-items: center; width: calc(100% - 80px); height: calc(100% - 40px); transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s; }
+  .card img { max-width: 100%; max-height: 100%; border-radius: 14px; background: var(--card); display: block; user-select: none; -webkit-user-drag: none; }
+  .card.back { transform: translateY(18px) scale(0.94); opacity: 0.4; }
+  .card.gone { transform: translateY(-120%); opacity: 0; }
+  .hint { position: fixed; inset: auto 0 0; text-align: center; padding: 10px; color: var(--muted); font-size: 12px; }
+  .done { display: grid; gap: 12px; justify-items: center; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+</style>
+</head>
+<body>
+<main class="setup" id="setup">
+  <h1>Pinch voice test</h1>
+  <p>Pick about ten screenshots you already noted by typing, from the <code>images/</code> folder of an export of Your rules. Then talk through each one as you would to a designer beside you, pointing at what you mean.</p>
+  <p>Scroll, swipe or press the down arrow for the next screen, the up arrow to go back. The recording stays on this computer.</p>
+  <input type="file" id="files" accept="image/*" multiple />
+  <div><button type="button" class="primary" id="start" disabled>Start</button></div>
+</main>
+
+<div id="session" hidden>
+  <div class="bar">
+    <span class="rec" aria-hidden="true"></span>
+    <span>Recording</span>
+    <span class="level" aria-hidden="true"><i id="level"></i></span>
+    <span id="count"></span>
+    <span id="clock"></span>
+    <button type="button" class="end" id="end">Finish</button>
+  </div>
+  <div class="stage" id="stage"></div>
+  <div class="hint">Down arrow or scroll for the next screen · Up arrow to go back</div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const screens = [];
+  let index = 0;
+  let t0 = 0;
+  let recorder;
+  const chunks = [];
+  let stream;
+  const shown = [];
+  const pointer = [];
+  let lastOff = false;
+  let wheel = 0;
+  let wheelAt = 0;
+  let finished = false;
+
+  const now = () => Math.round(performance.now() - t0);
+
+  $('files').addEventListener('change', async (e) => {
+    screens.length = 0;
+    for (const file of e.target.files) {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = url;
+      });
+      if (img.naturalWidth) screens.push({ name: file.name, url, width: img.naturalWidth, height: img.naturalHeight });
+    }
+    $('start').disabled = screens.length === 0;
+    $('start').textContent = screens.length ? `Start with ${screens.length} screens` : 'Start';
+  });
+
+  $('start').addEventListener('click', async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      alert('The microphone is needed for the test. Allow it and try again.');
+      return;
+    }
+    meter(stream);
+    const type = ['audio/webm;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t)) || '';
+    recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.onstart = () => {
+      t0 = performance.now();
+      $('setup').hidden = true;
+      $('session').hidden = false;
+      show(0, 0);
+      setInterval(tick, 500);
+    };
+    recorder.start(1000);
+  });
+
+  function meter(s) {
+    const ctx = new AudioContext();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    ctx.createMediaStreamSource(s).connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+    const loop = () => {
+      analyser.getByteTimeDomainData(data);
+      let peak = 0;
+      for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+      $('level').style.width = `${Math.min(100, (peak / 64) * 100)}%`;
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  function tick() {
+    const s = Math.floor(now() / 1000);
+    $('clock').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function card(i, cls) {
+    const el = document.createElement('div');
+    el.className = `card ${cls}`;
+    const img = document.createElement('img');
+    img.src = screens[i].url;
+    img.alt = screens[i].name;
+    img.draggable = false;
+    el.append(img);
+    return el;
+  }
+
+  function show(i, dir) {
+    if (finished) return;
+    if (i < 0 || i > screens.length) return;
+    const stage = $('stage');
+    const old = stage.querySelector('.card.current');
+    index = i;
+    // Past the last screen: a card to finish on, so a stray scroll never ends the recording.
+    shown.push({ t: now(), screen: i < screens.length ? i : null });
+    const next = () => {
+      stage.innerHTML = '';
+      if (i === screens.length) {
+        stage.innerHTML = '<div class="done"><strong>That was the last screen</strong><span>Go back with the up arrow, or finish.</span></div>';
+        const finish = document.createElement('button');
+        finish.type = 'button';
+        finish.className = 'primary';
+        finish.textContent = 'Finish';
+        finish.addEventListener('click', end);
+        stage.firstChild.append(finish);
+        $('count').textContent = '';
+        return;
+      }
+      if (i + 1 < screens.length) stage.append(card(i + 1, 'back'));
+      stage.append(card(i, 'current'));
+      $('count').textContent = `${i + 1} of ${screens.length}`;
+    };
+    if (old && dir > 0) {
+      old.classList.add('gone');
+      const back = stage.querySelector('.card.back');
+      if (back) back.className = 'card current';
+      setTimeout(next, 450);
+    } else next();
+  }
+
+  // Where the pointer is, as fractions of the screenshot on show (0–1), or null when it's off it.
+  window.addEventListener('pointermove', (e) => {
+    if (!t0 || finished) return;
+    const img = $('stage').querySelector('.card.current img');
+    if (!img) return;
+    const r = img.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    const on = x >= 0 && x <= 1 && y >= 0 && y <= 1;
+    if (!on && lastOff) return;
+    lastOff = !on;
+    pointer.push(on ? [now(), index, +x.toFixed(4), +y.toFixed(4)] : [now(), index, null, null]);
+  });
+  window.addEventListener('pointerdown', (e) => {
+    if (!t0 || finished || e.target.closest('button')) return;
+    const img = $('stage').querySelector('.card.current img');
+    if (!img) return;
+    const r = img.getBoundingClientRect();
+    shown.push({ t: now(), screen: index, click: [+((e.clientX - r.left) / r.width).toFixed(4), +((e.clientY - r.top) / r.height).toFixed(4)] });
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!t0 || finished) return;
+    if (['ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); show(index + 1, 1); }
+    if (['ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); show(index - 1, -1); }
+  });
+  window.addEventListener('wheel', (e) => {
+    if (!t0 || finished) return;
+    e.preventDefault();
+    const at = performance.now();
+    if (at - wheelAt < 700) return;
+    wheel += e.deltaY;
+    if (Math.abs(wheel) > 80) {
+      wheelAt = at;
+      const dir = Math.sign(wheel);
+      wheel = 0;
+      show(index + dir, dir);
+    }
+  }, { passive: false });
+
+  $('end').addEventListener('click', end);
+
+  function end() {
+    if (finished) return;
+    finished = true;
+    const total = now();
+    recorder.onstop = async () => {
+      for (const track of stream.getTracks()) track.stop();
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const audio = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+      const data = {
+        version: 1,
+        recordedAt: new Date().toISOString(),
+        durationMs: total,
+        screens: screens.map(({ name, width, height }) => ({ name, width, height })),
+        shown,
+        pointer,
+        audio,
+      };
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+      a.download = `pinch-voice-${data.recordedAt.slice(0, 16).replace(/[:T]/g, '-')}.json`;
+      a.click();
+      for (const el of document.querySelectorAll('.bar, .hint')) el.hidden = true;
+      $('stage').innerHTML = `<div class="done"><strong>Saved to your downloads</strong><span>${a.download}</span></div>`;
+    };
+    recorder.stop();
+  }
+</script>
+</body>
+</html>
