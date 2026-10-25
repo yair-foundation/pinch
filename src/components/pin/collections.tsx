@@ -8,6 +8,7 @@ import {
   Download,
   Pencil,
   ListChecks,
+  Merge,
   NotebookPen,
   PlugZap,
   RefreshCw,
@@ -113,6 +114,7 @@ import {
   sourceRoleOf,
   sourceSets,
   withBrief,
+  withMergedTag,
   withScreenRole,
   withSourceRole,
 } from '@/lib/pin/screen-index';
@@ -297,6 +299,7 @@ export function CollectionsView({
   moveFrom,
   openPrints,
   openScreens,
+  onRenameScreenTag,
   openBest,
   onOpenBest,
   batchZip,
@@ -317,6 +320,8 @@ export function CollectionsView({
   openPrints: string[];
   /** The open images' notes' screen tags, by the same fingerprint (D100). */
   openScreens: ReadonlyMap<string, string | undefined>;
+  /** A screen tag merged into another (D129), carried to the open images so they don't undo it. */
+  onRenameScreenTag: (from: string, into: string) => void;
   /** The best examples marked or unmarked on the open images, by the same fingerprint (D110). */
   openBest: ReadonlyMap<string, boolean>;
   /** A best example marked here, carried to its note on an open image (D110). */
@@ -1070,6 +1075,15 @@ export function CollectionsView({
         .catch(() => undefined);
     onStatus({ tone: 'info', text: 'Batch removed.' });
   };
+  /**
+   * One screen tag's set merged into another (D129): its notes take the other's name, with its
+   * brief and role where the other has none. The open images follow, so they don't undo it.
+   */
+  const mergeTag = (from: string, into: string) => {
+    onRenameScreenTag(from, into);
+    change((x) => withMergedTag(x, from, into, nowIso()), true);
+    onStatus({ tone: 'info', text: `Merged “${from}” into “${into}”.` });
+  };
   /** A reference's screen tag, written on all its notes (D124). */
   const tagReference = (r: Reference, tag: string) =>
     change((x) => withReferenceTag(x, r.batch.id, r.number, tag, nowIso()), true);
@@ -1447,6 +1461,7 @@ export function CollectionsView({
                   brief: briefOf(c, s.name),
                   onBrief: (text: string) =>
                     change((x) => withBrief(x, s.name, text, nowIso()), true),
+                  onMerge: (into: string) => mergeTag(s.name, into),
                 })),
               ]}
             />
@@ -2201,10 +2216,15 @@ function ScreenRoles({
     /** A screen tag's set has a brief (D121); a source doesn't. */
     brief?: string;
     onBrief?: (text: string) => void;
+    /** A screen tag's set can merge into another (D129). */
+    onMerge?: (into: string) => void;
   }[];
 }) {
   // The set whose brief is being written, and the words so far.
   const [writing, setWriting] = useState<{ key: string; text: string } | null>(null);
+  // The set being merged, and the set it goes into once chosen.
+  const [merging, setMerging] = useState<{ key: string; into: string } | null>(null);
+  const tags = sets.filter((x) => x.onMerge).map((x) => x.name);
   const finish = (save: boolean) => {
     const s = writing && sets.find((x) => x.key === writing.key);
     if (save && s && writing.text.trim() !== (s.brief ?? '')) s.onBrief?.(writing.text);
@@ -2228,6 +2248,21 @@ function ScreenRoles({
                 {s.notes}
               </span>
             </label>
+            {s.onMerge && tags.length > 1 && (
+              <button
+                type="button"
+                aria-label={`Merge ${s.name} into another`}
+                aria-expanded={merging?.key === s.key}
+                title="Merge"
+                onClick={() => setMerging(merging?.key === s.key ? null : { key: s.key, into: '' })}
+                className={cn(
+                  hit,
+                  'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Merge className="size-4" aria-hidden />
+              </button>
+            )}
             {s.onBrief && (
               <button
                 type="button"
@@ -2262,6 +2297,43 @@ function ScreenRoles({
               ))}
             </select>
             </div>
+            {merging?.key === s.key && (
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label={`Merge ${s.name} into`}
+                  // biome-ignore lint/a11y/noAutofocus: opening the merge is asking to choose
+                  autoFocus
+                  value={merging.into}
+                  onChange={(e) => setMerging({ key: s.key, into: e.target.value })}
+                  className={cn(field, 'min-w-0 flex-1 py-1.5 text-[13px]')}
+                >
+                  <option value="" disabled>
+                    Merge into
+                  </option>
+                  {tags
+                    .filter((t) => t !== s.name)
+                    .map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                </select>
+                <button type="button" onClick={() => setMerging(null)} className={small}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!merging.into}
+                  onClick={() => {
+                    s.onMerge?.(merging.into);
+                    setMerging(null);
+                  }}
+                  className={cn(primary, 'min-h-8 text-[13px]')}
+                >
+                  Merge
+                </button>
+              </div>
+            )}
             {writing?.key === s.key ? (
               <textarea
                 aria-label={`Brief for ${s.name}`}

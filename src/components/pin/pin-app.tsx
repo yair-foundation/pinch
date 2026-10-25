@@ -1024,6 +1024,14 @@ function Workspace() {
     commit((list) => list.map((a) => ({ ...a, screenTag: tag })));
     setStatus({ tone: 'info', text: `Tagged ${count(assets.length, 'image')} “${tag}”.` });
   };
+  /** A screen tag merged into another on Your rules (D129): the open images take the new name. */
+  const renameScreenTag = (from: string, into: string) => {
+    const moves = (a: Asset) =>
+      Boolean(cleanScreenTag(a.screenTag)) &&
+      screenGroup(cleanScreenTag(a.screenTag)) === screenGroup(from);
+    if (!assetsRef.current.some(moves)) return;
+    commit((list) => list.map((a) => (moves(a) ? { ...a, screenTag: into } : a)));
+  };
   const setSourceForAll = () => {
     const source = asset?.source;
     if (!source) return;
@@ -1583,6 +1591,7 @@ function Workspace() {
           moveFrom={cloudKey ? browserBackend : undefined}
           openPrints={openPrints}
           openScreens={openScreens}
+          onRenameScreenTag={renameScreenTag}
           openBest={openBest}
           onOpenBest={setOpenBest}
           batchZip={batchZip}

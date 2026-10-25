@@ -114,6 +114,41 @@ export function screenSets(c: Collection): { name: string; notes: number }[] {
   return names.all().map((name) => ({ name, notes: counts.get(screenGroup(name)) ?? 0 }));
 }
 
+/**
+ * The collection with one screen tag's set merged into another (D129): every note tagged with any
+ * spelling of `from` takes `into`'s name, and the set's brief and role move to `into` where it has
+ * none (its own win), as does the free plan's product. The same collection back when they are
+ * the same set or `from` has no notes.
+ */
+export function withMergedTag(c: Collection, from: string, into: string, now: string): Collection {
+  const gone = screenGroup(from);
+  const kept = screenGroup(into);
+  const name = cleanScreenTag(into);
+  if (!name || gone === kept) return c;
+  const moves = (n: { screenTag?: string }) =>
+    Boolean(cleanScreenTag(n.screenTag)) && screenGroup(cleanScreenTag(n.screenTag)) === gone;
+  if (!c.batches.some((b) => b.notes.some(moves))) return c;
+  const carried = <T>(map: Record<string, T> | undefined) => {
+    if (!map || map[gone] === undefined) return map;
+    const { [gone]: moved, ...rest } = map;
+    return rest[kept] === undefined ? { ...rest, [kept]: moved } : rest;
+  };
+  const briefs = carried(c.briefs);
+  const screenRoles = carried(c.screenRoles);
+  return {
+    ...c,
+    updatedAt: now,
+    batches: c.batches.map((b) =>
+      b.notes.some(moves)
+        ? { ...b, notes: b.notes.map((n) => (moves(n) ? { ...n, screenTag: name } : n)) }
+        : b,
+    ),
+    ...(briefs ? { briefs } : {}),
+    ...(screenRoles ? { screenRoles } : {}),
+    ...(c.freeProduct === gone ? { freeProduct: kept } : {}),
+  };
+}
+
 /** The longest brief: a few sentences, enough for what a product is for and how it should feel. */
 export const MAX_BRIEF = 600;
 

@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D128.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D129.
 
 ## Open (need the user)
 
@@ -12,6 +12,11 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-10-25 — D129 One screen tag can be merged into another on Your rules (the user, of products tagged under two names such as "Multi-Calendar" and "Marketing Asset - Multi-Calendar": "They're the same product under two names. Build a way to merge one screen tag into another"). Amends D105, D110 and D121.** Spellings of one tag already count as one set (D105), but two names for one product don't, so its rules, brief, readiness (D125) and the free plan's product (D123) split in two: the Agent Hub brief sat on a three-rule tag while seven rules sat on another. Retagging one reference at a time (D124) is too slow for ten pairs.
+  - **Merge, on Roles and briefs.** Each screen tag's row has Merge: choose the set it goes into, then Merge. Every note with any spelling of it takes the other's name; its brief and role move there where the other has none (the other's own win); the free plan's product follows. The rules come along through their notes.
+  - **The open images follow.** Tags typed on the images open in the browser are carried to their notes (D100), which would put the old name back; so the merge renames them too, in the same step.
+  - **No undo.** Choosing the set and pressing Merge is the confirmation; a reference can still be retagged one by one in References (D124).
+  - **Checked** with the tests and on a local production build: three notes under two names became one set of three, the brief moved with them, the account kept it, and the row lines up in light and dark.
 - **2026-10-25 — D128 An agent with an old copy of the rules is told what changed since, not only that it is behind (the user, after Brain Co.'s "A Design System with Judgment", which keeps one changelog for components, skills and agent instructions: "Build what changed since your copy"). Amends D125.** Since D125 an agent learns its copy is behind, but then has to read every rule again to find the two that changed; the Guesty harness works from a dated package and would do that on every check.
   - **Each export keeps its version.** When the author exports, the collection keeps that version with each rule's lasting key and a fingerprint of its words, place, topics and tags, in order, and a fingerprint of the briefs (`exports`, the twelve newest, a version once; merged with the collection, D86). A copy is what an export carries, so that is the one moment to keep.
   - **list_rule_topics says what changed.** Given a copy's version Pinch kept, it lists each rule that is new, changed (with the number it had) or gone (with its number and words when the collection still has them, as a removed rule does), up to forty, says when the briefs changed, and that numbers moved when they did; the rest of the copy holds. For a version it has no record of (an export from before D128, or another account's), it says the copy is behind and to read the rules again, as before (`changes.ts`).
