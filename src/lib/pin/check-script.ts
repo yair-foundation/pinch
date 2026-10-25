@@ -78,17 +78,74 @@ export const CHECK_SCRIPT = String.raw`/*
     return String(value || '').split(',')[0].replace(/["']/g, '').trim();
   }
 
+  // Words of letters, for the checks on how text is written (D127).
+  function wordsOf(text) {
+    return String(text || '').match(/[A-Za-z\u00C0-\u024F]+/g) || [];
+  }
+
+  // Capitals: a word of five or more, or two of four or more. Short acronyms (AI, USD) pass.
+  function shouting(text) {
+    var caps = wordsOf(text).filter(function (w) {
+      return w.length >= 2 && w === w.toUpperCase() && w !== w.toLowerCase();
+    });
+    return caps.some(function (w) { return w.length >= 5; }) ||
+      caps.filter(function (w) { return w.length >= 4; }).length >= 2;
+  }
+
+  var SMALL = ['with', 'from', 'into', 'over', 'your', 'that', 'this', 'than', 'then', 'when', 'what', 'they', 'them'];
+
+  // Title Case: two or more of the longer words after the first start with a capital, and all do.
+  function titleCased(text) {
+    var words = wordsOf(text);
+    var rest = words.slice(1).filter(function (w) {
+      return w.length >= 4 && SMALL.indexOf(w.toLowerCase()) < 0 && w !== w.toUpperCase();
+    });
+    return rest.length >= 2 && /^[A-Z\u00C0-\u00DE]/.test(words[0]) && rest.every(function (w) {
+      return /^[A-Z\u00C0-\u00DE]/.test(w);
+    });
+  }
+
+  // A date in numbers alone: 2026-10-25, 25.10.26, 10/25/2026; the parts must read as a date.
+  function numericDate(text) {
+    var m = String(text || '').match(/\b(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})\b|\b(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})\b/);
+    if (!m) return '';
+    if (m[1]) return +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31 ? m[0] : '';
+    var a = +m[4], b = +m[5];
+    return a >= 1 && b >= 1 && ((a <= 31 && b <= 12) || (a <= 12 && b <= 31)) ? m[0] : '';
+  }
+
   function rulesLine(check) {
     return (check.rules || []).map(function (r) { return r.id; }).join(', ');
   }
 
   // Every check against what was read off the page. texts: { where, text, size, family, colour,
-  // background } with size in px at display size and background null when it can't be known (an
-  // image or a gradient behind it). colours: { where, property, value }.
-  function evaluate(spec, texts, colours) {
+  // background, full, underlined, upper, align, heading } with size in px at display size and
+  // background null when it can't be known (an image or a gradient behind it). colours: { where,
+  // property, value }. more: { images: [{ where, text, natural, shown }] with each a width over
+  // height, natural 0 when not loaded; inputs: [{ where, text, labelled }] }.
+  function evaluate(spec, texts, colours, more) {
+    more = more || {};
+    var images = more.images || [];
+    var inputs = more.inputs || [];
     var failures = [];
-    var skipped = { contrast: 0 };
+    var skipped = { contrast: 0, images: 0 };
     var CAP = 50;
+    // A title is a heading, or text a quarter larger than the page's most common size, with a word
+    // in it.
+    var counts = {};
+    texts.forEach(function (t) {
+      var k = Math.round(t.size * 2) / 2;
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    var body = 0;
+    Object.keys(counts).forEach(function (k) {
+      if (!body || counts[k] > counts[body] || (counts[k] === counts[body] && +k < +body)) body = k;
+    });
+    body = +body;
+    var titles = texts.filter(function (t) {
+      return (t.heading || (body && t.size >= body * 1.25)) &&
+        wordsOf(t.full || t.text).some(function (w) { return w.length >= 3; });
+    });
     (spec.checks || []).forEach(function (check) {
       var found = [];
       var v = check.value;
@@ -136,6 +193,40 @@ export const CHECK_SCRIPT = String.raw`/*
         sizes.sort(function (a, b) { return a - b; });
         if (sizes.length > v)
           found.push({ where: 'the page', text: '', found: sizes.length + ' sizes (' + sizes.join(', ') + 'px)', limit: 'at most ' + v });
+      } else if (check.kind === 'underlines') {
+        texts.forEach(function (t) {
+          if (t.underlined) found.push({ where: t.where, text: t.text, found: 'underlined', limit: 'no underline' });
+        });
+      } else if (check.kind === 'allCaps') {
+        texts.forEach(function (t) {
+          if (t.upper ? wordsOf(t.full || t.text).some(function (w) { return w.length >= 2; }) : shouting(t.full || t.text))
+            found.push({ where: t.where, text: t.text, found: t.upper ? 'set in capitals by its style' : 'words in capitals', limit: 'sentence case' });
+        });
+      } else if (check.kind === 'titleCase') {
+        titles.forEach(function (t) {
+          if (titleCased(t.full || t.text)) found.push({ where: t.where, text: t.text, found: 'Title Case', limit: 'sentence case' });
+        });
+      } else if (check.kind === 'numericDates') {
+        texts.forEach(function (t) {
+          var d = numericDate(t.full || t.text);
+          if (d) found.push({ where: t.where, text: t.text, found: d, limit: 'a date with the month in words' });
+        });
+      } else if (check.kind === 'centredTitles') {
+        titles.forEach(function (t) {
+          if (t.align === 'center' || t.align === '-webkit-center')
+            found.push({ where: t.where, text: t.text, found: 'centred', limit: 'left-aligned' });
+        });
+      } else if (check.kind === 'stretchedImages') {
+        images.forEach(function (im) {
+          if (!im.natural) { skipped.images++; return; }
+          var off = im.shown / im.natural - 1;
+          if (Math.abs(off) > 0.02)
+            found.push({ where: im.where, text: im.text, found: 'shown ' + Math.round(Math.abs(off) * 100) + '% ' + (off > 0 ? 'wider' : 'narrower') + ' than its own proportions', limit: 'its own proportions (crop it with object-fit: cover)' });
+        });
+      } else if (check.kind === 'unlabelledInputs') {
+        inputs.forEach(function (i) {
+          if (!i.labelled) found.push({ where: i.where, text: i.text, found: 'no visible label', limit: 'a <label> tied to it' });
+        });
       }
       found.slice(0, CAP).forEach(function (f) {
         failures.push({ check: check.kind, rules: check.rules || [], where: f.where, text: f.text, found: f.found, limit: f.limit });
@@ -143,7 +234,7 @@ export const CHECK_SCRIPT = String.raw`/*
       if (found.length > CAP)
         failures.push({ check: check.kind, rules: check.rules || [], where: '', text: '', found: (found.length - CAP) + ' more like these', limit: '' });
     });
-    return { passed: failures.length === 0, failures: failures, read: { texts: texts.length, colours: colours.length }, skipped: skipped };
+    return { passed: failures.length === 0, failures: failures, read: { texts: texts.length, colours: colours.length, images: images.length, inputs: inputs.length }, skipped: skipped };
   }
 
   // A short path to an element: "main > section.hero > p:nth-of-type(2)".
@@ -181,6 +272,28 @@ export const CHECK_SCRIPT = String.raw`/*
     return 'rgb(' + Math.round(out.r) + ', ' + Math.round(out.g) + ', ' + Math.round(out.b) + ')';
   }
 
+  // Whether an element's text is underlined, by its own style or one it takes from around it.
+  // Decoration doesn't reach into inline blocks, floats or positioned boxes.
+  function underlinedOf(el, win) {
+    for (var node = el; node && node.nodeType === 1; node = node.parentElement) {
+      var cs = win.getComputedStyle(node);
+      if (/underline/.test(cs.textDecorationLine || cs.textDecoration || '')) return true;
+      if (cs.display === 'inline-block' || cs.position === 'absolute' || cs.position === 'fixed' || cs.cssFloat !== 'none') return false;
+    }
+    return false;
+  }
+
+  var FIELD_TYPES = ['', 'text', 'email', 'search', 'number', 'tel', 'url', 'password', 'date', 'datetime-local', 'month', 'time', 'week'];
+
+  // Whether a text field has a visible label tied to it: a <label>, or aria-labelledby.
+  function labelledOf(el, doc) {
+    var visible = function (n) { return n && n.textContent.trim() && n.getBoundingClientRect().width > 0; };
+    if (Array.prototype.some.call(el.labels || [], visible)) return true;
+    return (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean).some(function (id) {
+      return visible(doc.getElementById(id));
+    });
+  }
+
   // Reads the page and runs the checks.
   function run(spec, options) {
     options = options || {};
@@ -190,6 +303,8 @@ export const CHECK_SCRIPT = String.raw`/*
     var top = options.root || doc.body;
     var texts = [];
     var colours = [];
+    var images = [];
+    var inputs = [];
     var all = [top].concat(Array.prototype.slice.call(top.querySelectorAll('*')));
     all.forEach(function (el) {
       var cs = win.getComputedStyle(el);
@@ -199,14 +314,29 @@ export const CHECK_SCRIPT = String.raw`/*
       var own = Array.prototype.filter.call(el.childNodes, function (n) {
         return n.nodeType === 3 && n.textContent.trim();
       }).map(function (n) { return n.textContent.trim(); }).join(' ');
+      var tag = el.tagName;
+      if (tag === 'IMG') {
+        var px = function (side) { return parseFloat(cs['padding-' + side]) + parseFloat(cs['border-' + side + '-width']); };
+        var w = box.width - px('left') - px('right');
+        var h = box.height - px('top') - px('bottom');
+        if (cs.objectFit === 'fill' && w > 0 && h > 0)
+          images.push({ where: where, text: el.getAttribute('alt') || '', natural: el.naturalWidth && el.naturalHeight ? el.naturalWidth / el.naturalHeight : 0, shown: w / h });
+      }
+      if ((tag === 'INPUT' && FIELD_TYPES.indexOf(String(el.getAttribute('type') || '').toLowerCase()) >= 0) || tag === 'TEXTAREA' || tag === 'SELECT')
+        inputs.push({ where: where, text: el.getAttribute('placeholder') || '', labelled: labelledOf(el, doc) });
       if (own) {
         texts.push({
           where: where,
           text: own.length > 40 ? own.slice(0, 39) + '…' : own,
+          full: own,
           size: parseFloat(cs.fontSize) * scale,
           family: firstFamily(cs.fontFamily),
           colour: cs.color,
           background: backgroundOf(el, win),
+          underlined: underlinedOf(el, win),
+          upper: cs.textTransform === 'uppercase',
+          align: cs.textAlign,
+          heading: /^H[1-6]$/.test(tag) || el.getAttribute('role') === 'heading',
         });
         colours.push({ where: where, property: 'color', value: cs.color });
       }
@@ -216,7 +346,7 @@ export const CHECK_SCRIPT = String.raw`/*
           colours.push({ where: where, property: 'border-' + side + '-color', value: cs['border-' + side + '-color'] });
       });
     });
-    return evaluate(spec, texts, colours);
+    return evaluate(spec, texts, colours, { images: images, inputs: inputs });
   }
 
   // The result as lines to read: one per failure, with the rules it breaks.
@@ -224,10 +354,10 @@ export const CHECK_SCRIPT = String.raw`/*
     if (result.passed) return 'All checks pass (' + result.read.texts + ' texts read).';
     return result.failures.map(function (f) {
       return 'FAIL ' + f.check + ' (' + rulesLine(f) + ')' + (f.where ? ' at ' + f.where : '') + (f.text ? ' "' + f.text + '"' : '') + ': ' + f.found + (f.limit ? ', needs ' + f.limit : '');
-    }).join('\n') + (result.skipped.contrast ? '\n' + result.skipped.contrast + ' texts on an image or gradient: contrast not checked.' : '');
+    }).join('\n') + (result.skipped.contrast ? '\n' + result.skipped.contrast + ' texts on an image or gradient: contrast not checked.' : '') + (result.skipped.images ? '\n' + result.skipped.images + ' images not loaded: proportions not checked.' : '');
   }
 
-  var api = { run: run, evaluate: evaluate, report: report, parseColour: parseColour, contrast: contrast, near: near, version: 1 };
+  var api = { run: run, evaluate: evaluate, report: report, parseColour: parseColour, contrast: contrast, near: near, shouting: shouting, titleCased: titleCased, numericDate: numericDate, version: 2 };
   if (typeof module === 'object' && module && module.exports) module.exports = api;
   else root.pinchChecks = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

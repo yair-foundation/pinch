@@ -40,7 +40,9 @@ export function checksGuide(c: Collection, rules: ExportedRule[], stamp: string)
         '',
         ...ready.map((x) => {
           const on = x.rules.flatMap((k) => numbers.get(k) ?? []);
-          return `- **${CHECK_INFO[x.kind].label}**: ${valueText(x)} (${CHECK_INFO[x.kind].unit}). ${CHECK_INFO[x.kind].holds}${on.length ? ` Holds ${on.join(', ')}.` : ''}`;
+          // A check with no number (D127) is named and said, nothing more.
+          const value = x.value === true ? '' : `: ${valueText(x)} (${CHECK_INFO[x.kind].unit})`;
+          return `- **${CHECK_INFO[x.kind].label}**${value}. ${CHECK_INFO[x.kind].holds}${on.length ? ` Holds ${on.join(', ')}.` : ''}`;
         }),
         '',
       ]
