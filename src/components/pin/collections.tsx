@@ -2241,13 +2241,15 @@ function ScreenRoles({
       <ul className="list-none divide-y divide-border rounded-xl border border-border px-4 py-1">
         {sets.map((s, i) => (
           <li key={s.key} className="space-y-2 py-2">
-            <div className="flex items-center gap-3">
-            <label htmlFor={`role-${i}`} className="flex min-w-0 flex-1 items-baseline gap-2">
+            {/* The controls wrap below a name they would otherwise squeeze out. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <label htmlFor={`role-${i}`} className="flex min-w-36 flex-1 items-baseline gap-2">
               <span className="truncate text-sm text-foreground">{s.name}</span>
               <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
                 {s.notes}
               </span>
             </label>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
             {s.onMerge && tags.length > 1 && (
               <button
                 type="button"
@@ -2296,6 +2298,7 @@ function ScreenRoles({
                 </option>
               ))}
             </select>
+            </div>
             </div>
             {merging?.key === s.key && (
               <div className="flex items-center gap-2">
