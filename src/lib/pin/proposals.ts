@@ -95,8 +95,10 @@ export function proposalsIn(doc: unknown): Proposal[] {
 /**
  * The collection with a proposal kept. A change rewrites its rule's words, place and topics and
  * keeps its notes; a new rule has none, like a taste-check pick, until a note strengthens it.
- * Either way the rule says it was agreed with the agent, and why. A change to a rule since
- * removed becomes a new rule, since the person kept it.
+ * Either way the rule says it was agreed with the agent, and why, and which proposal it came
+ * from: a proposal already kept leaves the collection as it is (a second click on Keep, or the
+ * same proposal shown again before it left the account's list). A change to a rule since removed
+ * becomes a new rule, since the person kept it.
  */
 export function keepProposal(
   c: Collection,
@@ -104,7 +106,8 @@ export function keepProposal(
   now: string,
   newId: () => string,
 ): Collection {
-  const agreed = { why: p.why, at: now };
+  if (c.rules.some((r) => r.agreed?.proposal === p.id)) return c;
+  const agreed = { why: p.why, at: now, proposal: p.id };
   const target = p.rule
     ? c.rules.find((r) => r.id === p.rule && r.status !== 'dismissed')
     : undefined;

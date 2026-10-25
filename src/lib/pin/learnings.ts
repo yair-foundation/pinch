@@ -126,10 +126,11 @@ export type Rule = {
    */
   taste?: string;
   /**
-   * Agreed with the agent in conversation and kept by the author (D116): what they agreed, and
-   * when it was kept. A new rule from the agent has no notes until a note strengthens it.
+   * Agreed with the agent in conversation and kept by the author (D116): what they agreed, when
+   * it was kept, and the proposal it came from, so the same proposal is never kept twice. A new
+   * rule from the agent has no notes until a note strengthens it.
    */
-  agreed?: { why: string; at: string };
+  agreed?: { why: string; at: string; proposal?: string };
   /**
    * `interpreted`: Pinch's reading of the author's vaguer words, not their own (D90), with how
    * it read them in `reading`. Absent: stated, the notes' own words.

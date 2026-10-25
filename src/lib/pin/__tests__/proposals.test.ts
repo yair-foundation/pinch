@@ -120,7 +120,7 @@ describe('keeping a proposal (D116)', () => {
       tags: [],
       evidence: [],
       status: 'approved',
-      agreed: { why: 'Said in round 4.', at: 'now' },
+      agreed: { why: 'Said in round 4.', at: 'now', proposal: 'p1' },
       createdAt: 'now',
     });
     assert.ok(
@@ -148,6 +148,19 @@ describe('keeping a proposal (D116)', () => {
     assert.deepEqual(changed?.evidence, [{ batchId: 'b1', note: '01.1' }]);
     assert.ok(!('title' in (changed ?? {})));
     assert.equal(c.rules.length, 2);
+  });
+
+  it('happens once: keeping the same proposal again changes nothing', () => {
+    const fresh = proposal({ text: 'AI boxes are white.', why: 'Agreed.' });
+    let n = 0;
+    const once = keepProposal(library(), fresh, 'now', () => `new${++n}`);
+    assert.equal(keepProposal(once, fresh, 'later', () => `new${++n}`), once, 'a double click');
+    assert.equal(once.rules.filter((r) => r.text === 'AI boxes are white.').length, 1);
+    const change = proposal({ rule: 'R1', text: 'New words.', why: 'Agreed.' });
+    const changed = keepProposal(library(), change, 'now', () => 'unused');
+    assert.equal(keepProposal(changed, change, 'later', () => 'unused'), changed);
+    const other = { ...fresh, id: 'p2' };
+    assert.equal(keepProposal(once, other, 'later', () => 'new9').rules.length, once.rules.length + 1, 'another proposal still keeps');
   });
 
   it('keeps a change to a rule removed since as a new rule', () => {

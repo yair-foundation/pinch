@@ -342,6 +342,8 @@ export function CollectionsView({
   const [unbatching, setUnbatching] = useState<string | null>(null);
   // The rules the agent proposed, waiting to be kept or dropped (D116).
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  // A proposal is answered once: a second click before the list updates does nothing.
+  const answered = useRef(new Set<string>());
   // What the agent's runs did with the rules (D120).
   const [runs, setRuns] = useState<Run[]>([]);
   // The rules, or the library of references they come from (D124).
@@ -1093,6 +1095,8 @@ export function CollectionsView({
   };
   // Kept, a proposal becomes a rule, and leaves the account's list once the rule is saved (D116).
   const keepProposed = (p: Proposal) => {
+    if (answered.current.has(p.id)) return;
+    answered.current.add(p.id);
     setProposals((x) => x.filter((y) => y.id !== p.id));
     change((c) => keepProposal(c, p, nowIso(), newId), true);
     const now = ref.current;
@@ -1107,6 +1111,8 @@ export function CollectionsView({
     });
   };
   const dropProposed = (p: Proposal) => {
+    if (answered.current.has(p.id)) return;
+    answered.current.add(p.id);
     setProposals((x) => x.filter((y) => y.id !== p.id));
     backend.dropProposal?.(p.id).catch(() =>
       onStatus({ tone: 'error', text: 'That didn’t reach your account, so it may show again.' }),
