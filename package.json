@@ -10,6 +10,7 @@
     "lint": "biome lint",
     "format": "node scripts/format.mjs",
     "jev-stub": "node scripts/jev-stub.mjs",
+    "whisper-model": "sh scripts/whisper-model.sh",
     "test": "node --import tsx --test \"src/**/__tests__/*.test.ts\""
   },
   "dependencies": {

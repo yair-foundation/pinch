@@ -17,7 +17,8 @@ import {
   type Wheel,
   wheelTurn,
 } from '@/lib/pin/narration';
-import { VOICE_LEGEND } from '@/lib/pin/voice-tags';
+import { opLabel, spoken, wordsByScreen } from '@/lib/pin/transcript';
+import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
 
@@ -27,8 +28,22 @@ import { hit } from './dialog';
  * fading. R records after a five-second count, Space pauses and resumes, the arrows (or a scroll
  * or swipe) turn the reel, F goes to the end, and ? or the Keys and voice button opens the legend. While recording, the microphone
  * and the pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
- * this browser as a take. Speech isn't turned into notes yet.
+ * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
+ * Finish and shown by screen, with the voice tags heard; they aren't turned into notes yet.
  */
+
+/** What was said over one screen: its voice tags and the words left for notes. */
+type Heard = { name: string; ops: string[]; rest: string }[];
+
+/** The take's words by screen, as the end card shows them. */
+function heardOf(take: Take, words: TimedWord[], known: string[]): Heard {
+  return wordsByScreen(take.shown, words, take.screens.length)
+    .map((said, k) => {
+      const { ops, rest } = parseVoiceTags(said, known);
+      return { name: take.screens[k].name, ops: ops.map(opLabel), rest: spoken(rest) };
+    })
+    .filter((s) => s.ops.length || s.rest);
+}
 
 type Phase = 'paused' | 'counting' | 'live' | 'saved';
 
@@ -122,6 +137,9 @@ export function Reel({
   const [legendOpen, setLegendOpen] = useState(false);
   const [clock, setClock] = useState('0:00');
   const [saved, setSaved] = useState<{ take: Take; audio: Blob } | null>(null);
+  // Speech-to-text: whether it's on here, and reading a take's words.
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [reading, setReading] = useState<'idle' | 'working' | 'failed'>('idle');
 
   const reel = useRef<HTMLDivElement>(null);
   const middle = useRef<HTMLImageElement>(null);
@@ -287,6 +305,27 @@ export function Reel({
     return { take: kept, audio };
   }, [assets, onSave]);
 
+  /** Read a kept take's words on this machine, and keep them with it. */
+  const read = async (done: { take: Take; audio: Blob }) => {
+    setReading('working');
+    try {
+      const res = await fetch('/api/pin/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': done.audio.type || 'audio/webm' },
+        body: done.audio,
+      });
+      if (!res.ok) throw new Error();
+      const { words } = (await res.json()) as { words: TimedWord[] };
+      const take = { ...done.take, words };
+      await onSave(take, done.audio);
+      if (!mounted.current) return;
+      setSaved({ take, audio: done.audio });
+      setReading('idle');
+    } catch {
+      if (mounted.current) setReading('failed');
+    }
+  };
+
   const finish = async () => {
     if (!recorded()) return;
     setSaveError(false);
@@ -295,6 +334,7 @@ export function Reel({
       if (!mounted.current) return;
       setSaved(done);
       setPhase('saved');
+      if (done && voiceOn) void read(done);
     } catch {
       if (mounted.current) {
         setSaveError(true);
@@ -329,6 +369,21 @@ export function Reel({
     return () => clearInterval(id);
   }, [keptMs]);
 
+  useEffect(() => {
+    fetch('/api/pin/voice')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { available?: boolean } | null) => setVoiceOn(Boolean(d?.available)))
+      .catch(() => undefined);
+  }, []);
+
+  const heard = saved?.take.words
+    ? heardOf(
+        saved.take,
+        saved.take.words,
+        assets.flatMap((a) => (a.screenTag ? [a.screenTag] : [])),
+      )
+    : null;
+
   // Closing the reel mid-take (Your rules, Start over) keeps what was recorded.
   const keepRef = useRef(keep);
   keepRef.current = keep;
@@ -355,6 +410,8 @@ export function Reel({
     const el = reel.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // The words on the end card scroll on their own.
+      if (e.target instanceof Element && e.target.closest('[data-reel-scroll]')) return;
       e.preventDefault();
       if (inert) return;
       const next = wheelTurn(wheel.current, e, performance.now());
@@ -511,6 +568,53 @@ export function Reel({
                 {clockText(saved.take.durationMs)} over {saved.take.screens.length}{' '}
                 {saved.take.screens.length === 1 ? 'screen' : 'screens'}. Notes from it come next.
               </p>
+              {reading === 'working' && (
+                <p aria-live="polite" className="m-0 text-sm text-muted-foreground">
+                  Reading the words…
+                </p>
+              )}
+              {reading === 'failed' && (
+                <p role="alert" className="m-0 text-sm text-destructive">
+                  The words couldn’t be read.{' '}
+                  <button
+                    type="button"
+                    onClick={() => void read(saved)}
+                    className="underline underline-offset-2"
+                  >
+                    Try again
+                  </button>
+                </p>
+              )}
+              {heard &&
+                (heard.length ? (
+                  <ol
+                    data-reel-scroll
+                    aria-label="What you said"
+                    className="m-0 grid max-h-[calc(var(--w)*0.4)] w-[min(36rem,calc(var(--w)-2rem))] list-none gap-3 overflow-y-auto overscroll-contain rounded-lg border border-border p-3 text-left text-sm select-text"
+                  >
+                    {heard.map((s) => (
+                      <li key={s.name} className="grid gap-1">
+                        <span className="truncate font-medium text-foreground">{s.name}</span>
+                        {s.ops.length > 0 && (
+                          <span className="flex flex-wrap gap-1">
+                            {s.ops.map((op, k) => (
+                              <span
+                                // biome-ignore lint/suspicious/noArrayIndexKey: the same tag can be said twice
+                                key={k}
+                                className="rounded-full bg-muted px-2 py-0.5 text-[12px] text-foreground"
+                              >
+                                {op}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                        {s.rest && <span className="text-muted-foreground">{s.rest}</span>}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="m-0 text-sm text-muted-foreground">No words heard.</p>
+                ))}
               <div className="mt-1 flex gap-2">
                 <button type="button" onClick={download} className={BUTTON}>
                   <Download className="size-4" aria-hidden />

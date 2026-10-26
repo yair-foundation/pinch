@@ -4,6 +4,8 @@
  * swipe turns the reel, where the pointer is on the screenshot, and the take that is kept.
  */
 
+import type { TimedWord } from './voice-tags';
+
 /** How long the count before recording starts or resumes runs, in seconds. */
 export const COUNTDOWN = 5;
 
@@ -97,6 +99,8 @@ export type Take = {
   screens: { id: string; name: string; width: number; height: number }[];
   shown: Shown[];
   pointer: PointerSample[];
+  /** What was said, once speech-to-text has read it (D136). */
+  words?: TimedWord[];
 };
 
 /** A take's file to download: the take with its audio as a data URL, as the narration test reads it. */
