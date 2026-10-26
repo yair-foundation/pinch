@@ -5,14 +5,14 @@ import { ThemeProvider } from '@/components/site/theme-provider';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
-  title: 'Pinch: tag screenshots for your agent',
+  title: 'Pinch: talk through screenshots for your agent',
   description:
-    'Pin what works and what doesn’t on a batch of screenshots, with a dot, an area or an arrow, keep the rules your notes teach, and export it all for Claude, ChatGPT or any agent.',
+    'Talk through a batch of screenshots, pointing at what works and what doesn’t. Pinch turns what you say into rules that Claude, ChatGPT or any agent follows.',
   icons: { icon: '/pin-notes/icon.svg', apple: '/pin-notes/icon.svg' },
   openGraph: {
     title: 'Pinch',
     description:
-      'Pin what works and what doesn’t on screenshots, then export it all for any agent.',
+      'Talk through screenshots, and your agent learns your taste.',
   },
 };
 

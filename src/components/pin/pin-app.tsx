@@ -2063,11 +2063,11 @@ function EmptyState({
                   className="mx-auto -mt-3 mb-3 w-64 [@media(max-height:760px)]:w-52"
                 />
                 <h1 className="m-0 text-center text-[1.4rem] leading-snug font-normal tracking-tight text-balance">
-                  Your taste, in everything your agent creates.
+                  Talk through screenshots. Your agent learns your taste.
                 </h1>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  Mark what you like and dislike on screenshots. Pinch turns your notes into rules
-                  for any AI agent.
+                  Point at what works and what doesn’t, and say why. Pinch turns what you say into
+                  rules for any AI agent.
                 </p>
                 <div className="mt-5 flex flex-col items-center gap-3">
                   <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
@@ -2088,8 +2088,8 @@ function EmptyState({
           <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
             <span className="mx-auto block max-w-3xl text-balance">
               {offer
-                ? `Marking images is free. Start free with ${offer.free} credits; top up anytime. Images stay in this browser unless you sign in.`
-                : 'Free, no account. Images stay in this browser.'}
+                ? `Talking through images is free. Start free with ${offer.free} credits; top up anytime. Your voice is never kept.`
+                : 'Free, no account. Images stay in this browser, and your voice is never kept.'}
             </span>
             <span className="mx-auto mt-1 block">
               <a
