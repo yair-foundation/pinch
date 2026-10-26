@@ -35,8 +35,6 @@ export const VERDICT_COLOR = {
   both: '#d97706',
   empty: '#737373',
 };
-/** The marker the AI sees for a suggestion: a colour no interface uses for chrome, so it isn't read as part of the design. */
-const AI_MARK_COLOR = '#ff00c8';
 const SHEET_BG = '#1c1d22';
 /** A crop's longest side: smaller than the 1800px marked copy, so a wide crop still costs less. */
 const CROP_MAX_SIDE = 1200;
@@ -565,22 +563,6 @@ function drawCrop(
   return canvas;
 }
 
-/** The whole image with one note's marker, 768px at most, as JPEG: context for a suggestion. */
-export async function contextForAi(
-  bitmap: ImageBitmap,
-  mark: Mark,
-  number: number,
-  grid: LumaGrid | undefined = lumaGrid(bitmap),
-) {
-  const scale = Math.min(1, 768 / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
-  const { canvas, ctx } = canvasOf(w, h);
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  drawMark(ctx, mark, number, (x, y) => [x * w, y * h], 1, AI_MARK_COLOR, busyOn(grid, scale, null));
-  return toBlob(canvas, 'image/jpeg', 0.8);
-}
-
 /**
  * A close-up of one note, its marker drawn in, upscaled when the crop is
  * small and at most CROP_MAX_SIDE on its long side. `rect` is the crop
@@ -651,21 +633,6 @@ export async function closeUpForReading(
   } finally {
     bitmap.close();
   }
-}
-
-/** The same close-up for a suggestion: 1024px at most, as JPEG. */
-export function cropForAi(
-  bitmap: ImageBitmap,
-  mark: Mark,
-  number: number,
-  rect?: Rect,
-  grid: LumaGrid | undefined = lumaGrid(bitmap),
-) {
-  return toBlob(
-    drawCrop(bitmap, mark, number, 1024, rect ?? settledCrop(bitmap, mark, grid), grid, AI_MARK_COLOR),
-    'image/jpeg',
-    0.85,
-  );
 }
 
 function roundRect(

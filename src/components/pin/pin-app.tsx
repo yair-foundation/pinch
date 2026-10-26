@@ -2,74 +2,32 @@
 
 import {
   ArrowLeft,
-  ArrowRight,
-  Building2,
-  Check,
-  Globe,
-  House,
   Library,
-  Lightbulb,
-  Loader2,
-  MapPin,
-  Monitor,
-  MousePointerClick,
-  MoveUpRight,
   Plus,
-  RotateCcw,
-  SquareDashed,
-  Star,
-  StickyNote,
-  Swords,
-  Tag,
-  ThumbsDown,
-  ThumbsUp,
-  Trash2,
   X,
 } from 'lucide-react';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  type Area,
-  type Arrow,
   type Asset,
-  areaFrom,
-  arrowFrom,
   cleanScreenTag,
-  currentSuggestion,
   exportName,
-  isTinyArea,
   itemsOf,
-  isTinyArrow,
   type Mark,
-  moveArrow,
-  needsSuggestion,
-  SOURCES,
-  type Shape,
-  sourceLabel,
   type Source,
-  type Suggestion,
-  shapeKey,
-  sortTopics,
-  topicLabel,
   verdictOf,
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { noteFingerprint } from '@/lib/pin/learnings';
-import { screenGroup, screenNamesOf } from '@/lib/pin/screen-index';
+import { screenGroup, } from '@/lib/pin/screen-index';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
-import type { SuggestResult } from '@/lib/pin/suggest';
 import { unzip } from '@/lib/pin/unzip';
 import { updatePrice } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
@@ -89,30 +47,20 @@ import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
 import { DropFolder } from './drop-folder';
 import { Reel } from './reel';
-import { TopicPicker } from './topic-picker';
 import {
-  bitmapOf,
   buildExport,
-  contextForAi,
-  cropForAi,
   prepareImage,
-  VERDICT_COLOR,
 } from './render';
 import * as store from './store';
 
 /*
- * Pinch: add a batch of screenshots, click for a dot, drag for an area or
- * draw an arrow (the Arrow tool, or Shift-drag), say what works and what
- * doesn't, then export everything for an agent.
- * Images stay in this browser. "Find in image" sends one image and its note
- * to the AI; suggestions send the crop of an empty note; the text of written
- * notes is saved anonymously (`notes-log.ts`).
+ * Pinch: add a batch of screenshots and talk through them on the reel (D131, `reel.tsx`), the
+ * microphone and the pointer kept as a take; Your rules reads notes into rules. Images stay in
+ * this browser; the text of written notes is saved anonymously (`notes-log.ts`).
  */
 
 const newId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => (b % 36).toString(36)).join('');
-
-const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
@@ -134,9 +82,9 @@ type Status = {
 } | null;
 
 /*
- * History: snapshots of the session before each change, so ⌘Z puts it back.
- * A change can coalesce into the step before it (typing, a drag), by key and
- * within a pause; a silent change (a suggestion arriving) is no step at all.
+ * History: snapshots of the session before each change, so a toast's Undo puts it back.
+ * A change can coalesce into the step before it, by key and within a pause; a silent
+ * change is no step at all.
  * The latest state is kept here as well as in React, so several changes in
  * one event each see the one before.
  */
@@ -177,25 +125,11 @@ class History {
     return true;
   }
 
-  /** Whether the last step is still open to this key: the field is being typed in. */
-  isOpen(key: string, within: number) {
-    const last = this.past.at(-1);
-    return Boolean(last && last.key === key && Date.now() - last.at < within);
-  }
-
   undo(): Asset[] | undefined {
     const step = this.past.pop();
     if (!step) return undefined;
     this.future.push(this.current);
     this.current = step.before;
-    return this.current;
-  }
-
-  redo(): Asset[] | undefined {
-    const next = this.future.pop();
-    if (!next) return undefined;
-    this.past.push({ before: this.current, at: 0 });
-    this.current = next;
     return this.current;
   }
 
@@ -208,14 +142,9 @@ class History {
   }
 }
 
-/** How long typing in one field keeps adding to the same step. */
-const TYPING_PAUSE = 800;
-
 /** A note's fingerprint as the rules keep it, to find it among the open images (D110). */
 const markPrint = (a: Asset, m: Mark) =>
   noteFingerprint(exportName(a), itemsOf(m.good).join('\n'), itemsOf(m.bad).join('\n'));
-/** A drag or a run of arrow presses on one note is one step. */
-const DRAG_PAUSE = 250;
 
 /** A key in a shortcut hint. */
 function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -230,29 +159,6 @@ function Kbd({ children, className }: { children: React.ReactNode; className?: s
     </kbd>
   );
 }
-
-/** A short-lived "working" state: a pill with a spinner, which reduced motion hides. */
-function WorkingPill({
-  children,
-  className,
-  ...props
-}: React.ComponentProps<'span'> & { children: React.ReactNode }) {
-  return (
-    <span
-      {...props}
-      className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-[13px] text-muted-foreground',
-        className,
-      )}
-    >
-      <Loader2 className="size-3 animate-spin motion-reduce:hidden" aria-hidden />
-      {children}
-    </span>
-  );
-}
-
-/** Grey suggestion text and the "Suggesting…" pill fade: 200ms, opacity only, none under reduced motion. */
-const ghostFade = 'transition-opacity duration-200 ease-out motion-reduce:transition-none';
 
 /** Whether to show ⌘ or Ctrl in shortcut hints; read after mount so the server and client agree. */
 function useIsMac() {
@@ -278,7 +184,6 @@ const local = {
     } catch {}
   },
 };
-const SUGGEST_KEY = 'pinch-suggestions';
 const SENT_KEY = 'pinch-sent';
 /** "off" when the visitor switched off saving their notes' words (D82). */
 const SAVE_NOTES_KEY = 'pinch-save-notes';
@@ -302,13 +207,6 @@ const isZip = (f: File) => /zip/.test(f.type) || /\.zip$/i.test(f.name);
 const isSmallDevice = () =>
   window.matchMedia('(pointer: coarse)').matches ||
   window.screen.width * window.devicePixelRatio < 768;
-
-/** The next source when S is pressed: through the four kinds, then none. */
-function nextSource(source: Source | undefined): Source | undefined {
-  const at = source ? SOURCES.findIndex((s) => s.kind === source.kind) : -1;
-  const next = SOURCES[at + 1];
-  return next ? { kind: next.kind } : undefined;
-}
 
 /**
  * Pinch needs a pointer and room: drawing on an image, side by side with its notes. On a phone or
@@ -354,10 +252,6 @@ export function PinApp() {
   );
 }
 
-/** A pin on the stage, by its note's id. */
-const pinOf = (id: string) =>
-  document.querySelector<HTMLElement>(`button[data-mark="${id}"]:not([data-end])`);
-
 /** One tab's name, so a tab can tell its own saves from another's. */
 const TAB_ID = newId();
 
@@ -378,14 +272,8 @@ function Workspace() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [index, setIndex] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Status>(null);
-  // Suggestions: available on the server, and on in this browser (the default).
-  const [suggestAvailable, setSuggestAvailable] = useState(false);
-  const [suggestPref, setSuggestPref] = useState(true);
-  const [suggesting, setSuggesting] = useState<string | null>(null);
-  const suggestStopped = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   // The one dialog open, and what had focus before it, so closing it puts focus back.
   const [dialog, setDialog] = useState<DialogKind | null>(null);
@@ -406,23 +294,13 @@ function Workspace() {
   const [volatile, setVolatile] = useState(false);
   // Another tab saved this session since it was loaded here; this tab stops saving until reloaded.
   const stale = useRef(false);
-  // A tall image fills the stage's width and scrolls, or fits whole. Per visit.
-  const [fitWidth, setFitWidth] = useState(true);
-  // Suggestions the user dismissed, by note and field, with the shape they were written for.
-  const [dismissed, setDismissed] = useState<Record<string, string>>({});
-  // What a drag draws: a dot or area (Pin), or an arrow. Per visit; A toggles it, Esc leaves it.
-  const [tool, setTool] = useState<Tool>('pin');
   // The batch, or the collections in its place (D79). Per visit.
   const [view, setView] = useState<'batch' | 'collections'>('batch');
-  // A batch is talked through on the reel (D131). A session that already holds typed notes (an
-  // export opened, or work from before) keeps the marking screen, so its notes stay in reach.
-  const narrating = !assets.some(hasMarks);
   const viewRef = useRef(view);
   viewRef.current = view;
   // Who is looking, and their credits (D81, D98). Anyone marks images and reads notes into
   // rules with their credits; AI suggestions are for buyers, once billing is on.
   const { me, refresh: refreshMe } = useMe();
-  const allowed = !me?.paywall || Boolean(me?.allowed);
   // Credits are counted once billing is on, except for buyers of the original offer (D98).
   const credits =
     me?.paywall && me.credits && !me.credits.original
@@ -445,7 +323,6 @@ function Workspace() {
   indexRef.current = index;
   const urlsRef = useRef(urls);
   urlsRef.current = urls;
-  const suggestionsOn = suggestAvailable && suggestPref;
   const mac = useIsMac();
 
   /**
@@ -498,14 +375,12 @@ function Workspace() {
       assetsRef.current = list;
       setAssets(list);
       setIndex((i) => Math.max(0, Math.min(i, list.length - 1)));
-      setSelected((s) => (s && list.some((a) => a.marks.some((m) => m.id === s)) ? s : null));
       setStatus((s) => (s?.action ? null : s));
       collect();
     },
     [collect],
   );
   const undo = useCallback(() => restore(history.current.undo()), [restore]);
-  const redo = useCallback(() => restore(history.current.redo()), [restore]);
 
   // Load the saved session, and whether the AI step is on.
   useEffect(() => {
@@ -550,11 +425,6 @@ function Workspace() {
         setLoaded(true);
       }
     })();
-    fetch('/api/pin/suggest')
-      .then((r) => r.json())
-      .then((r) => setSuggestAvailable(Boolean(r.available)))
-      .catch(() => setSuggestAvailable(false));
-    setSuggestPref(local.get(SUGGEST_KEY) !== 'off');
   }, []);
 
   // Back from Google: say how it went, once, and take the word out of the address.
@@ -917,116 +787,6 @@ function Workspace() {
     };
   }, [addFiles]);
 
-  /**
-   * Leaving a note with nothing written drops it, like a cancelled draft. The drop joins the
-   * step that added the note, so the two cancel out and Undo has nothing to put back.
-   */
-  const deselect = useCallback(() => {
-    if (asset && selected) {
-      const mark = asset.marks.find((m) => m.id === selected);
-      if (mark && verdictOf(mark) === 'empty' && !mark.label.trim()) {
-        update(asset.id, (a) => ({ ...a, marks: a.marks.filter((m) => m.id !== selected) }), {
-          coalesce: { key: `mark:${selected}`, within: Number.POSITIVE_INFINITY },
-        });
-      }
-    }
-    setSelected(null);
-  }, [asset, selected, update]);
-
-  /** Close the open note and put focus back on its pin, so the keyboard stays where the user was. */
-  const closeNote = useCallback(() => {
-    const id = selected;
-    deselect();
-    if (id) requestAnimationFrame(() => pinOf(id)?.focus());
-  }, [selected, deselect]);
-
-  const go = useCallback(
-    (to: number) => {
-      if (!assets.length) return;
-      deselect();
-      setIndex(Math.min(assets.length - 1, Math.max(0, to)));
-    },
-    [assets.length, deselect],
-  );
-
-  const removeMark = useCallback(
-    (id: string) => {
-      if (!asset) return;
-      update(asset.id, (a) => ({ ...a, marks: a.marks.filter((m) => m.id !== id) }));
-      setSelected(null);
-      setStatus({ tone: 'info', text: 'Note deleted.', action: { label: 'Undo', run: undo } });
-    },
-    [asset, update, undo],
-  );
-
-  const addMark = useCallback(
-    (shape: Shape) => {
-      if (!asset) return;
-      const mark: Mark = { id: newId(), shape, label: '', good: '', bad: '', origin: 'user' };
-      deselect();
-      update(asset.id, (a) => ({ ...a, marks: [...a.marks, mark] }), {
-        coalesce: { key: `mark:${mark.id}`, within: 0 },
-      });
-      setSelected(mark.id);
-    },
-    [asset, deselect, update],
-  );
-
-  /** A move or resize in progress joins one step; a text edit joins the typing before it. */
-  const changeMark = (id: string, change: Partial<Mark>) => {
-    if (!asset) return;
-    const field = (['good', 'bad'] as const).find((f) => f in change);
-    const coalesce: Coalesce | undefined =
-      'shape' in change
-        ? { key: `shape:${id}`, within: DRAG_PAUSE }
-        : field
-          ? { key: `text:${id}:${field}`, within: TYPING_PAUSE }
-          : undefined;
-    update(
-      asset.id,
-      (a) => ({ ...a, marks: a.marks.map((m) => (m.id === id ? { ...m, ...change } : m)) }),
-      { coalesce },
-    );
-  };
-
-  const setSource = useCallback(
-    (source: Source | undefined) => {
-      if (!asset) return;
-      update(asset.id, (a) => ({ ...a, source }));
-    },
-    [asset, update],
-  );
-  /** The image's tag as typed (D100); typing joins the step before it. Tidied when exported. */
-  const setScreenTag = (value: string) => {
-    if (!asset) return;
-    update(asset.id, (a) => ({ ...a, screenTag: value.slice(0, 40) }), {
-      coalesce: { key: `screen:${asset.id}`, within: TYPING_PAUSE },
-    });
-  };
-  /**
-   * Leaving the tag field: a tag that is another spelling of one the images or rules already
-   * use (case, spacing, punctuation, a plural) takes that spelling, so a set keeps one name (D110).
-   */
-  const settleScreenTag = () => {
-    if (!asset) return;
-    const tag = cleanScreenTag(asset.screenTag);
-    if (!tag) return;
-    const others = [
-      ...assetsRef.current.filter((a) => a.id !== asset.id).flatMap((a) => a.screenTag ?? []),
-      ...ruleTags,
-    ];
-    const name = screenNamesOf(others).name(tag);
-    if (name === tag || screenGroup(name) !== screenGroup(tag)) return;
-    update(asset.id, (a) => ({ ...a, screenTag: name }), {
-      coalesce: { key: `screen:${asset.id}`, within: TYPING_PAUSE },
-    });
-  };
-  const setScreenTagForAll = () => {
-    const tag = cleanScreenTag(asset?.screenTag);
-    if (!tag) return;
-    commit((list) => list.map((a) => ({ ...a, screenTag: tag })));
-    setStatus({ tone: 'info', text: `Tagged ${count(assets.length, 'image')} “${tag}”.` });
-  };
   /** A screen tag merged into another on Your rules (D129): the open images take the new name. */
   const renameScreenTag = (from: string, into: string) => {
     const moves = (a: Asset) =>
@@ -1035,241 +795,15 @@ function Workspace() {
     if (!assetsRef.current.some(moves)) return;
     commit((list) => list.map((a) => (moves(a) ? { ...a, screenTag: into } : a)));
   };
-  const setSourceForAll = () => {
-    const source = asset?.source;
-    if (!source) return;
-    commit((list) => list.map((a) => ({ ...a, source: { kind: source.kind } })));
-    setStatus({
-      tone: 'info',
-      text: `Set ${count(assets.length, 'image')} to ${sourceLabel(source.kind)}.`,
-    });
-  };
-
-  // Keys: arrows or J/K move between images, 1–9 and [ ] open a note, N adds one, A toggles the
-  // Arrow tool, S cycles the source, Delete removes the note whose pin is focused, Escape closes
-  // the open note (then leaves the Arrow tool), ⌘Z and ⇧⌘Z undo and redo, ? lists them all.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys,
-      // and the walkthrough (D131) has its own.
-      if (dialog || view === 'collections' || narrating) return;
-      if (e.key === 'Escape') {
-        if (isTyping(e.target)) (e.target as HTMLElement).blur();
-        else if (!selected && tool !== 'pin') setTool('pin');
-        closeNote();
-        return;
-      }
-      const key = e.key.toLowerCase();
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && (key === 'z' || key === 'y')) {
-        const isRedo = key === 'y' || e.shiftKey;
-        // While a field is still being typed in, the browser's own undo keeps the keystrokes.
-        if (isTyping(e.target) && !isRedo) {
-          const el = e.target as HTMLElement;
-          const field = el.id.match(/^(works|doesnt)-(.+)$/);
-          const openKey = field
-            ? `text:${field[2]}:${{ works: 'good', doesnt: 'bad' }[field[1]]}`
-            : null;
-          if (openKey && history.current.isOpen(openKey, TYPING_PAUSE)) return;
-        }
-        e.preventDefault();
-        if (isRedo) redo();
-        else undo();
-        return;
-      }
-      if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === '?') {
-        e.preventDefault();
-        openDialog('shortcuts');
-        return;
-      }
-      // Delete removes the note whose pin (or arrow handle) has focus: never one merely open.
-      const focusedPin = (e.target as HTMLElement)?.closest?.<HTMLElement>('[data-mark]');
-      if ((e.key === 'Delete' || e.key === 'Backspace') && focusedPin?.dataset.mark) {
-        e.preventDefault();
-        removeMark(focusedPin.dataset.mark);
-        return;
-      }
-      const open = (mark: Mark | undefined) => {
-        if (!mark) return;
-        e.preventDefault();
-        if (mark.id !== selected) deselect();
-        setSelected(mark.id);
-      };
-      if (asset && /^[1-9]$/.test(e.key)) {
-        open(asset.marks[Number(e.key) - 1]);
-        return;
-      }
-      // [ and ] walk the notes on this image, for the tenth note and beyond: from the open note,
-      // else from the focused pin, else from either end.
-      if (asset && (e.key === '[' || e.key === ']') && asset.marks.length) {
-        const from = selected ?? focusedPin?.dataset.mark;
-        const at = asset.marks.findIndex((m) => m.id === from);
-        const last = asset.marks.length - 1;
-        open(
-          asset.marks[
-            e.key === ']'
-              ? at < 0
-                ? 0
-                : Math.min(last, at + 1)
-              : at < 0
-                ? last
-                : Math.max(0, at - 1)
-          ],
-        );
-        return;
-      }
-      if (asset && key === 'n') {
-        e.preventDefault();
-        // The selected tool decides what appears at the centre: a dot, a standard area or an arrow.
-        addMark(
-          tool === 'area'
-            ? standardAreaAt({ x: 0.5, y: 0.5 })
-            : tool === 'arrow'
-              ? { kind: 'arrow', x: 0.35, y: 0.5, x2: 0.65, y2: 0.5 }
-              : { kind: 'dot', x: 0.5, y: 0.5 },
-        );
-        return;
-      }
-      // P, R and A pick a tool; Esc with nothing open goes back to Pin.
-      const picked = asset && ({ p: 'pin', r: 'area', a: 'arrow' } as Record<string, Tool>)[key];
-      if (picked) {
-        e.preventDefault();
-        setTool(picked);
-        const name = TOOLS.find((t) => t.kind === picked)?.label;
-        setStatus({
-          tone: 'info',
-          text: `${name} tool: ${TOOL_WHAT[picked].charAt(0).toLowerCase()}${TOOL_WHAT[picked].slice(1)}${picked === 'pin' ? '' : ' Esc or P goes back to Pin.'}`,
-        });
-        return;
-      }
-      if (asset && key === 's') {
-        e.preventDefault();
-        const next = nextSource(asset.source);
-        setSource(next);
-        setStatus({
-          tone: 'info',
-          text: next ? `Source: ${sourceLabel(next.kind)}.` : 'Source cleared.',
-        });
-        return;
-      }
-      // Arrow keys on a focused mark move the mark instead.
-      if ((e.target as HTMLElement)?.closest?.('[data-mark]')) return;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || key === 'j') go(index + 1);
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || key === 'k') go(index - 1);
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [
-    go,
-    index,
-    selected,
-    deselect,
-    closeNote,
-    removeMark,
-    addMark,
-    setSource,
-    asset,
-    dialog,
-    openDialog,
-    tool,
-    undo,
-    redo,
-    view,
-    narrating,
-  ]);
-
-  const toggleSuggestions = () => {
-    const next = !suggestPref;
-    setSuggestPref(next);
-    local.set(SUGGEST_KEY, next ? 'on' : 'off');
-  };
-
-  // Suggest what works and what doesn't for the open note while it's empty, once it stops moving.
-  const openMark = asset?.marks.find((m) => m.id === selected);
-  const wanted =
-    suggestionsOn && asset && openMark && needsSuggestion(openMark)
-      ? `${asset.id}/${openMark.id}/${shapeKey(openMark.shape)}`
-      : null;
-  useEffect(() => {
-    if (!wanted) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const [assetId, markId, shape] = wanted.split('/');
-      const target = assetsRef.current.find((a) => a.id === assetId);
-      const mark = target?.marks.find((m) => m.id === markId);
-      if (!target || !mark || suggestStopped.current) return;
-      setSuggesting(markId);
-      try {
-        const blob = await store.getImage(assetId);
-        if (!blob) return;
-        const bitmap = await bitmapOf(blob);
-        const number = target.marks.indexOf(mark) + 1;
-        const [crop, context] = [
-          await cropForAi(bitmap, mark, number),
-          await contextForAi(bitmap, mark, number),
-        ];
-        bitmap.close();
-        const form = new FormData();
-        form.set('image', crop, 'crop.jpg');
-        form.set('context', context, 'context.jpg');
-        form.set('shape', mark.shape.kind);
-        if (target.source) form.set('source', target.source.kind);
-        const res = await fetch('/api/pin/suggest', { method: 'POST', body: form });
-        // Out of budget or switched off on the server: stop asking for this visit.
-        if (res.status === 429 || res.status === 503) suggestStopped.current = true;
-        if (!res.ok || cancelled) return;
-        const result = (await res.json()) as SuggestResult;
-        const suggestion: Suggestion = { ...result, shape };
-        const withSuggestion = (a: Asset) => ({
-          ...a,
-          marks: a.marks.map((m) =>
-            m.id === markId && shapeKey(m.shape) === shape ? { ...m, suggestion } : m,
-          ),
-        });
-        // A suggestion arriving is not a step; it also goes into the snapshots, so an undone
-        // and redone note doesn't ask again.
-        update(assetId, withSuggestion, { silent: true });
-        const h = history.current;
-        const patch = (list: Asset[]) =>
-          list.map((a) => (a.id === assetId ? withSuggestion(a) : a));
-        for (const step of h.past) step.before = patch(step.before);
-        h.future = h.future.map(patch);
-      } catch {
-        // No suggestion this time; the note works the same without one.
-      } finally {
-        setSuggesting((s) => (s === markId ? null : s));
-      }
-    }, 450);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [wanted, update]);
 
   const tagged = assets.filter(hasMarks);
   const allMarks = tagged.flatMap((a) => a.marks.filter((m) => verdictOf(m) !== 'empty'));
-
-  /** The image leaves the session; its file stays in the browser while Undo can bring it back. */
-  const removeAsset = (id: string) => {
-    const name = assets.find((a) => a.id === id)?.name ?? 'image';
-    commit((list) => list.filter((a) => a.id !== id));
-    setIndex((i) => Math.max(0, Math.min(i, assets.length - 2)));
-    setSelected(null);
-    setStatus({
-      tone: 'info',
-      text: `Removed ${name}.`,
-      action: { label: 'Undo', run: undo },
-    });
-  };
 
   const startOver = () => {
     const images = assets.length;
     const notes = allMarks.length;
     commit([]);
     setIndex(0);
-    setSelected(null);
     setStatus({
       tone: 'info',
       text: `Removed ${count(images, 'image')} and ${count(notes, 'note')}.`,
@@ -1281,7 +815,6 @@ function Workspace() {
   const batchZip = useCallback(async () => {
     const list = assetsRef.current;
     if (!list.some(hasMarks)) return null;
-    deselect();
     try {
       const made = await buildExport(list, store.getImage, (done, total) =>
         setStatus({
@@ -1296,7 +829,7 @@ function Workspace() {
     } finally {
       setStatus((s) => (s?.sticky ? null : s));
     }
-  }, [deselect, markExported]);
+  }, [markExported]);
 
   /**
    * The logo goes home, which in Pinch means a new batch: straight there when everything was
@@ -1326,29 +859,6 @@ function Workspace() {
     balanceAtPay.current = me?.credits?.balance ?? 0;
     openDialog('pay');
   };
-  // The tags the rules already know, so the tag field offers them and keeps one spelling per set (D110).
-  const [ruleTags, setRuleTags] = useState<string[]>([]);
-  useEffect(() => {
-    if (view !== 'batch') return;
-    let gone = false;
-    backend
-      .list()
-      .then((list) => {
-        if (!gone)
-          setRuleTags(
-            list.flatMap((c) => c.batches.flatMap((b) => b.notes.flatMap((n) => n.screenTag ?? []))),
-          );
-      })
-      .catch(() => undefined);
-    return () => {
-      gone = true;
-    };
-  }, [backend, view]);
-  // Every tag typed on an open image or known to the rules, one spelling per set, to suggest.
-  const screenTags = useMemo(
-    () => screenNamesOf([...assets.flatMap((a) => a.screenTag ?? []), ...ruleTags]).all(),
-    [assets, ruleTags],
-  );
   // Each open note's best mark, when the author set one, so it reaches the rules (D110).
   const openBest = useMemo(
     () =>
@@ -1458,14 +968,6 @@ function Workspace() {
               'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
           )}
         >
-          {batchTools && !narrating && (
-            <p
-              className="m-0 mr-2 text-[13px] text-muted-foreground max-[900px]:hidden"
-              aria-live="polite"
-            >
-              {tagged.length} of {assets.length} tagged · {count(allMarks.length, 'note')}
-            </p>
-          )}
           {loaded && (
             // Between the images and the rules, which take their place (D79). With images open
             // it is the batch's main step (D87): the notes go to the rules, which read them.
@@ -1508,11 +1010,6 @@ function Workspace() {
             <AccountMenu
               me={me}
               landing={landing}
-              suggestions={
-                suggestAvailable && allowed
-                  ? { on: suggestPref, onToggle: toggleSuggestions }
-                  : undefined
-              }
               onShortcuts={() => openDialog('shortcuts')}
               onPrivacy={() => openDialog('privacy')}
               onDelete={() => openDialog('delete')}
@@ -1615,7 +1112,7 @@ function Workspace() {
           offer={me?.paywall ? { ...OFFER, price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
         />
-      ) : narrating ? (
+      ) : (
         // The walkthrough (D131): the batch on a reel, talked through with the microphone on.
         <Reel
           assets={assets}
@@ -1625,62 +1122,6 @@ function Workspace() {
           onIndex={setIndex}
           onSave={store.saveTake}
         />
-      ) : (
-        <div inert={dialog !== null} className="flex min-h-0 flex-1">
-          <Filmstrip
-            assets={assets}
-            urls={urls}
-            index={index}
-            onPick={go}
-            onAdd={() => fileInput.current?.click()}
-            onStartOver={startOver}
-          />
-          <Stage
-            key={asset.id}
-            asset={asset}
-            url={urls[asset.id]}
-            selected={selected}
-            tool={tool}
-            onTool={setTool}
-            fitWidth={fitWidth}
-            onFitWidth={setFitWidth}
-            onSelect={(id) => {
-              if (id !== selected) deselect();
-              setSelected(id);
-            }}
-            onAdd={addMark}
-            onChange={changeMark}
-          />
-          <Panel
-            key={`panel-${asset.id}`}
-            asset={asset}
-            number={index + 1}
-            total={assets.length}
-            selected={selected}
-            suggestionsOn={suggestionsOn}
-            suggesting={suggesting}
-            onSource={setSource}
-            onSourceForAll={setSourceForAll}
-            screenTags={screenTags}
-            onScreenTag={setScreenTag}
-            onScreenTagSettle={settleScreenTag}
-            onScreenTagForAll={setScreenTagForAll}
-            onSelect={(id) => {
-              if (id !== selected) deselect();
-              setSelected(id);
-            }}
-            onChangeMark={changeMark}
-            onRemoveMark={removeMark}
-            onDone={closeNote}
-            onPrev={() => go(index - 1)}
-            onNext={() => go(index + 1)}
-            onRemove={() => removeAsset(asset.id)}
-            dismissed={dismissed}
-            onDismiss={(markId, field, shape) =>
-              setDismissed((d) => ({ ...d, [`${markId}:${field}`]: shape }))
-            }
-          />
-        </div>
       )}
       {dialog === 'shortcuts' && (
         <ShortcutsDialog mac={mac} opener={opener.current} onClose={closeDialog} />
@@ -1835,63 +1276,31 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
 type ShortcutRow = { combos: string[][]; join?: 'or' | 'to'; what: string };
 const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
   {
-    group: 'Images',
+    group: 'Recording',
+    rows: [
+      { combos: [['R']], what: 'Record, or resume, after a five-second count' },
+      { combos: [['Space']], what: 'Pause, or resume' },
+      { combos: [['Esc']], what: 'Stop the count' },
+    ],
+  },
+  {
+    group: 'The reel',
     rows: [
       {
-        combos: [
-          ['←', '→'],
-          ['J', 'K'],
-        ],
+        combos: [['→'], ['↓']],
         join: 'or',
-        what: 'Previous or next image',
+        what: 'Next screen; a scroll or a swipe turns it too',
       },
-      { combos: [['⌘', 'V']], what: 'Paste a screenshot' },
-    ],
-  },
-  {
-    group: 'Notes',
-    rows: [
-      { combos: [['1'], ['9']], join: 'to', what: 'Open note 1 to 9 on this image' },
-      { combos: [['['], [']']], join: 'or', what: 'Open the previous or next note' },
-      { combos: [['N']], what: 'Add a note at the centre: a dot, or an area or arrow when that tool is on' },
-      { combos: [['⇧', 'Drag']], what: 'Draw an arrow from one spot to another' },
-      { combos: [['P']], what: 'Pin tool: click for a dot, drag for an area' },
-      { combos: [['R']], what: 'Area tool: drag for an area, click for a standard box' },
-      { combos: [['A']], what: 'Arrow tool: every drag draws an arrow' },
-      { combos: [['S']], what: 'Cycle the source: Ours, Competitor, Other product, Concept, none' },
-      { combos: [['Esc']], what: 'Close the note, leave a field, or go back to the Pin tool' },
-    ],
-  },
-  {
-    group: 'On a focused pin, or an arrow’s tail or head',
-    rows: [
-      { combos: [['Arrows']], what: 'Move it 1%' },
-      { combos: [['⇧', 'Arrows']], what: 'Move it 5%' },
-      { combos: [['Enter']], what: 'Open its note' },
-      { combos: [['Delete']], what: 'Delete its note' },
-    ],
-  },
-  {
-    group: 'On a focused area’s corner handle',
-    rows: [
-      { combos: [['Arrows']], what: 'Resize the area 1%' },
-      { combos: [['⇧', 'Arrows']], what: 'Resize it 5%' },
-    ],
-  },
-  {
-    group: 'In a field',
-    rows: [
-      { combos: [['Tab']], what: 'Take the grey suggestion and its topics; the next Tab moves on' },
-      { combos: [['Esc']], what: 'Dismiss the grey suggestion' },
-      { combos: [['⌘', 'Enter']], what: 'Done with this note; focus returns to its pin' },
+      { combos: [['←'], ['↑']], join: 'or', what: 'Previous screen' },
+      { combos: [['F']], what: 'The end, to finish' },
+      { combos: [['Enter']], what: 'Finish, on the end' },
     ],
   },
   {
     group: 'Session',
     rows: [
-      { combos: [['⌘', 'Z']], what: 'Undo' },
-      { combos: [['⇧', '⌘', 'Z']], what: 'Redo' },
-      { combos: [['?']], what: 'These shortcuts' },
+      { combos: [['⌘', 'V']], what: 'Paste a screenshot' },
+      { combos: [['?']], what: 'The keys, on the reel' },
     ],
   },
 ];
@@ -2088,7 +1497,7 @@ function EmptyState({
                   Pinch voice test
                 </h1>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  Talk through screenshots you already noted, pointing at what you mean.
+                  Talk through your screenshots, pointing at what you mean.
                 </p>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
                   <LandingKey>R</LandingKey> records, <LandingKey>Space</LandingKey> pauses, the
@@ -2140,1733 +1549,3 @@ function EmptyState({
   );
 }
 
-function Filmstrip({
-  assets,
-  urls,
-  index,
-  onPick,
-  onAdd,
-  onStartOver,
-}: {
-  assets: Asset[];
-  urls: Record<string, string>;
-  index: number;
-  onPick: (i: number) => void;
-  onAdd: () => void;
-  onStartOver: () => void;
-}) {
-  const current = useRef<HTMLButtonElement>(null);
-  // Keep the current image in view when it changes from the keyboard.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the current image changes
-  useEffect(() => {
-    current.current?.scrollIntoView({ block: 'nearest' });
-  }, [index]);
-  return (
-    <nav
-      aria-label="Images"
-      className="flex w-52 shrink-0 flex-col border-r border-border max-[900px]:w-36"
-    >
-      <ol className="m-0 min-h-0 flex-1 list-none space-y-1 overflow-y-auto p-2">
-        {assets.map((a, i) => {
-          const marks = a.marks.filter((m) => verdictOf(m) !== 'empty');
-          const good = marks.filter((m) => m.good.trim()).length;
-          const bad = marks.filter((m) => m.bad.trim()).length;
-          return (
-            <li key={a.id}>
-              <button
-                ref={i === index ? current : undefined}
-                type="button"
-                aria-current={i === index ? 'true' : undefined}
-                aria-label={`${i + 1}. ${a.name}, ${good} works, ${bad} doesn't`}
-                onClick={() => onPick(i)}
-                className={cn(
-                  'relative flex w-full gap-2 rounded-lg p-1.5 text-left',
-                  // The open image: a quiet fill and a 2px bar on its left edge.
-                  i === index
-                    ? 'bg-muted before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-foreground before:content-[""]'
-                    : 'transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-                )}
-              >
-                {/* biome-ignore lint/performance/noImgElement: a local image held by this browser */}
-                <img
-                  src={urls[a.id]}
-                  alt=""
-                  className="h-12 w-16 shrink-0 rounded object-cover object-top"
-                />
-                <span className="flex min-w-0 flex-col justify-center gap-0.5">
-                  <span className="flex items-center gap-1 font-mono text-[13px] text-muted-foreground">
-                    {String(i + 1).padStart(2, '0')}
-                    {hasMarks(a) && <Check className="size-3 text-foreground" aria-hidden />}
-                  </span>
-                  <span className="truncate text-[13px]">{a.name}</span>
-                  {marks.length > 0 && (
-                    <span className="flex items-center gap-2 font-mono text-[13px] text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <ThumbsUp aria-hidden className="size-4" />
-                        {good}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <ThumbsDown aria-hidden className="size-4" />
-                        {bad}
-                      </span>
-                    </span>
-                  )}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-      <div className="flex shrink-0 flex-col gap-1 border-t border-border p-2">
-        <button
-          type="button"
-          onClick={onAdd}
-          className={cn(
-            hit,
-            'flex min-h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-          )}
-        >
-          <Plus className="size-4" aria-hidden />
-          Add more
-        </button>
-        <button
-          type="button"
-          onClick={onStartOver}
-          className={cn(
-            hit,
-            'flex min-h-9 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-          )}
-        >
-          <RotateCcw className="size-4" aria-hidden />
-          Start over
-        </button>
-      </div>
-    </nav>
-  );
-}
-
-/* ---------- Stage: the image and its marks ---------- */
-
-/** What a drag on the image makes: a dot or an area (the default), or an arrow. */
-type Tool = 'pin' | 'area' | 'arrow';
-const TOOLS: { kind: Tool; label: string; hint: string; icon: typeof MapPin }[] = [
-  {
-    kind: 'pin',
-    label: 'Pin',
-    hint: 'Click for a dot, drag for an area. Shift-drag for an arrow. Key: P',
-    icon: MapPin,
-  },
-  {
-    kind: 'area',
-    label: 'Area',
-    hint: 'Drag to mark an area; click for a standard box. Key: R',
-    icon: SquareDashed,
-  },
-  {
-    kind: 'arrow',
-    label: 'Arrow',
-    hint: 'Drag from one spot to another: "move this there", "align this with that". Key: A',
-    icon: MoveUpRight,
-  },
-];
-/** What each tool does, for the stage's name and the toast when a key picks one. */
-const TOOL_WHAT: Record<Tool, string> = {
-  pin: 'Click to add a dot, drag to mark an area, Shift-drag to draw an arrow.',
-  area: 'Drag to mark an area, or click for a standard box.',
-  arrow: 'Drag from one spot to another to draw an arrow.',
-};
-/** The box a click makes with the Area tool: a share of the image, centred on the click, kept inside. */
-const STANDARD_AREA = { w: 0.16, h: 0.1 };
-const standardAreaAt = (p: { x: number; y: number }): Area => ({
-  kind: 'area',
-  x: Math.min(1 - STANDARD_AREA.w, Math.max(0, p.x - STANDARD_AREA.w / 2)),
-  y: Math.min(1 - STANDARD_AREA.h, Math.max(0, p.y - STANDARD_AREA.h / 2)),
-  ...STANDARD_AREA,
-});
-/** What the first upload and an empty panel say. */
-const HOW_TO_MARK = 'Click for a dot or drag for an area, then say what to learn and what to avoid.';
-
-type ArrowEnd = 'tail' | 'head';
-
-/** An image this much taller than wide is a full-page capture: fitted whole it is a sliver. */
-const TALL = 2.2;
-const isTall = (a: { width: number; height: number }) => a.height / a.width > TALL;
-
-/** The pill style the stage's floating controls share: the Tool switch and the Fit switch. */
-const stagePill =
-  'absolute top-3 z-10 m-0 flex gap-0.5 rounded-full border border-border bg-background/90 p-1 shadow-sm backdrop-blur-sm dark:shadow-none';
-/**
- * A pill in a segmented tray. Hover fills an unselected pill with the muted tone; the selected
- * one is stronger: the accent fill plus a faint ring, so it still reads as selected beside a
- * hovered neighbour.
- */
-const stagePillButton =
-  'relative inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-muted-foreground transition-colors duration-150 outline-none motion-reduce:transition-none after:absolute after:top-1/2 after:left-1/2 after:size-full after:min-h-11 after:-translate-x-1/2 after:-translate-y-1/2 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-pressed:bg-accent aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-foreground/15 aria-pressed:hover:bg-accent';
-
-type Gesture =
-  | {
-      kind: 'draw';
-      x0: number;
-      y0: number;
-      /** Drawing an arrow (the Arrow tool, or Shift held): the draft is a line, not a box. */
-      asArrow: boolean;
-      area: Area | null;
-      arrow: Arrow | null;
-      pointer: number;
-    }
-  | {
-      kind: 'move';
-      id: string;
-      dx: number;
-      dy: number;
-      x0: number;
-      y0: number;
-      shape: Shape;
-      moved: boolean;
-    }
-  | { kind: 'resize'; id: string; shape: Area }
-  | { kind: 'end'; id: string; end: ArrowEnd; shape: Arrow };
-
-function Stage({
-  asset,
-  url,
-  selected,
-  tool,
-  onTool,
-  fitWidth,
-  onFitWidth,
-  onSelect,
-  onAdd,
-  onChange,
-}: {
-  asset: Asset;
-  url: string;
-  selected: string | null;
-  tool: Tool;
-  onTool: (tool: Tool) => void;
-  /** A tall image fills the width and scrolls; otherwise every image fits whole. */
-  fitWidth: boolean;
-  onFitWidth: (on: boolean) => void;
-  onSelect: (id: string) => void;
-  onAdd: (shape: Shape) => void;
-  onChange: (id: string, change: Partial<Mark>) => void;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  const frame = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const [gesture, setGesture] = useState<Gesture | null>(null);
-  const tall = isTall(asset);
-  const scrolls = tall && fitWidth;
-
-  // Fit the image inside the stage: whole, or to its width when a tall image is set to scroll.
-  // Marks are fractions of the frame and the pointer is read against the frame's rectangle, so
-  // scrolling changes nothing about drawing.
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const fit = () => {
-      const pad = 32;
-      const aw = Math.max(0, el.clientWidth - pad * 2);
-      const ah = Math.max(0, el.clientHeight - pad * 2);
-      const scale = scrolls ? aw / asset.width : Math.min(aw / asset.width, ah / asset.height);
-      setSize({ w: Math.floor(asset.width * scale), h: Math.floor(asset.height * scale) });
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [asset.width, asset.height, scrolls]);
-
-  const at = (e: { clientX: number; clientY: number }) => {
-    const r = frame.current?.getBoundingClientRect();
-    if (!r) return { x: 0.5, y: 0.5 };
-    return {
-      x: clamp01((e.clientX - r.left) / r.width),
-      y: clamp01((e.clientY - r.top) / r.height),
-    };
-  };
-
-  const onDown = (e: ReactPointerEvent) => {
-    if (e.button !== 0) return;
-    const p = at(e);
-    frame.current?.setPointerCapture(e.pointerId);
-    setGesture({
-      kind: 'draw',
-      x0: p.x,
-      y0: p.y,
-      asArrow: tool === 'arrow' || e.shiftKey,
-      area: null,
-      arrow: null,
-      pointer: e.pointerId,
-    });
-  };
-
-  const onMove = (e: ReactPointerEvent) => {
-    if (!gesture) return;
-    const p = at(e);
-    if (gesture.kind === 'draw') {
-      if (gesture.asArrow) {
-        const arrow = arrowFrom(gesture.x0, gesture.y0, p.x, p.y);
-        setGesture({ ...gesture, arrow: isTinyArrow(arrow) && !gesture.arrow ? null : arrow });
-        return;
-      }
-      const area = areaFrom(gesture.x0, gesture.y0, p.x, p.y);
-      setGesture({ ...gesture, area: isTinyArea(area) && !gesture.area ? null : area });
-    } else if (gesture.kind === 'move') {
-      // A jitter of a few pixels is still a click, not a drag.
-      if (!gesture.moved && Math.hypot(p.x - gesture.x0, p.y - gesture.y0) < 0.005) return;
-      const s = gesture.shape;
-      const shape: Shape =
-        s.kind === 'dot'
-          ? { kind: 'dot', x: clamp01(p.x - gesture.dx), y: clamp01(p.y - gesture.dy) }
-          : s.kind === 'arrow'
-            ? moveArrow(s, p.x - gesture.dx - s.x, p.y - gesture.dy - s.y)
-            : {
-                ...s,
-                x: Math.min(1 - s.w, Math.max(0, p.x - gesture.dx)),
-                y: Math.min(1 - s.h, Math.max(0, p.y - gesture.dy)),
-              };
-      onChange(gesture.id, { shape, confirmed: true });
-      if (!gesture.moved) setGesture({ ...gesture, moved: true });
-    } else if (gesture.kind === 'end') {
-      // One end of an arrow follows the pointer; the other stays. Too short, and it waits.
-      const s = gesture.shape;
-      const arrow =
-        gesture.end === 'tail'
-          ? arrowFrom(p.x, p.y, s.x2, s.y2)
-          : arrowFrom(s.x, s.y, p.x, p.y);
-      if (!isTinyArrow(arrow)) onChange(gesture.id, { shape: arrow, confirmed: true });
-    } else {
-      const s = gesture.shape;
-      const area = areaFrom(s.x, s.y, p.x, p.y);
-      if (!isTinyArea(area)) onChange(gesture.id, { shape: area, confirmed: true });
-    }
-  };
-
-  const onUp = (e: ReactPointerEvent) => {
-    if (!gesture) return;
-    if (gesture.kind === 'draw') {
-      if (gesture.asArrow) {
-        // A drag too short to be an arrow makes nothing: a slip, not a note.
-        if (gesture.arrow && !isTinyArrow(gesture.arrow)) onAdd(gesture.arrow);
-      } else if (gesture.area && !isTinyArea(gesture.area)) {
-        onAdd(gesture.area);
-      } else {
-        // A click (or a drag too small to be an area). Clicking while a note is open closes it and
-        // starts the next one: no extra click per pin. With the Area tool it makes a standard box.
-        onAdd(tool === 'area' ? standardAreaAt(at(e)) : { kind: 'dot', ...at(e) });
-      }
-    } else if (gesture.kind === 'move' && !gesture.moved) {
-      onSelect(gesture.id);
-    }
-    setGesture(null);
-  };
-
-  const startMove = (e: ReactPointerEvent, mark: Mark) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    frame.current?.setPointerCapture(e.pointerId);
-    const p = at(e);
-    setGesture({
-      kind: 'move',
-      id: mark.id,
-      dx: p.x - mark.shape.x,
-      dy: p.y - mark.shape.y,
-      x0: p.x,
-      y0: p.y,
-      shape: mark.shape,
-      moved: false,
-    });
-  };
-
-  const startResize = (e: ReactPointerEvent, mark: Mark) => {
-    if (e.button !== 0 || mark.shape.kind !== 'area') return;
-    e.stopPropagation();
-    frame.current?.setPointerCapture(e.pointerId);
-    setGesture({ kind: 'resize', id: mark.id, shape: mark.shape });
-  };
-
-  const startEnd = (e: ReactPointerEvent, mark: Mark, end: ArrowEnd) => {
-    if (e.button !== 0 || mark.shape.kind !== 'arrow') return;
-    e.stopPropagation();
-    frame.current?.setPointerCapture(e.pointerId);
-    setGesture({ kind: 'end', id: mark.id, end, shape: mark.shape });
-  };
-
-  /**
-   * Arrow keys move a focused mark: 1% a press, 5% with Shift. On an arrow's
-   * tail or head handle they move that end alone; on its number, the whole arrow.
-   */
-  const nudge = (e: ReactKeyboardEvent, mark: Mark, end?: ArrowEnd) => {
-    const step = e.shiftKey ? 0.05 : 0.01;
-    const d = {
-      ArrowLeft: [-step, 0],
-      ArrowRight: [step, 0],
-      ArrowUp: [0, -step],
-      ArrowDown: [0, step],
-    }[e.key];
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onSelect(mark.id);
-      return;
-    }
-    if (!d) return;
-    e.preventDefault();
-    const s = mark.shape;
-    let shape: Shape;
-    if (s.kind === 'dot') {
-      shape = { ...s, x: clamp01(s.x + d[0]), y: clamp01(s.y + d[1]) };
-    } else if (s.kind === 'arrow') {
-      shape =
-        end === 'tail'
-          ? arrowFrom(s.x + d[0], s.y + d[1], s.x2, s.y2)
-          : end === 'head'
-            ? arrowFrom(s.x, s.y, s.x2 + d[0], s.y2 + d[1])
-            : moveArrow(s, d[0], d[1]);
-      if (isTinyArrow(shape)) return;
-    } else {
-      shape = {
-        ...s,
-        x: Math.min(1 - s.w, Math.max(0, s.x + d[0])),
-        y: Math.min(1 - s.h, Math.max(0, s.y + d[1])),
-      };
-    }
-    onChange(mark.id, { shape, confirmed: true });
-  };
-
-  /** Arrow keys on an area's corner handle resize it: 1% a press, 5% with Shift. Enter opens the note. */
-  const resizeByKey = (e: ReactKeyboardEvent, mark: Mark) => {
-    if (mark.shape.kind !== 'area') return;
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onSelect(mark.id);
-      return;
-    }
-    const step = e.shiftKey ? 0.05 : 0.01;
-    const d = {
-      ArrowLeft: [-step, 0],
-      ArrowRight: [step, 0],
-      ArrowUp: [0, -step],
-      ArrowDown: [0, step],
-    }[e.key];
-    if (!d) return;
-    e.preventDefault();
-    const s = mark.shape;
-    const area = areaFrom(s.x, s.y, s.x + s.w + d[0], s.y + s.h + d[1]);
-    if (!isTinyArea(area)) onChange(mark.id, { shape: area, confirmed: true });
-  };
-
-  const draft = gesture?.kind === 'draw' ? gesture.area : null;
-  const draftArrow = gesture?.kind === 'draw' ? gesture.arrow : null;
-  // The open area dims the rest of the image. The dim is its own layer, clipped to the image,
-  // so it never leaks onto the stage and never clips a pin sitting on the edge.
-  const openMark = asset.marks.find((m) => m.id === selected);
-  const openArea = openMark?.shape;
-  const dim = openArea?.kind === 'area' ? openArea : null;
-
-  return (
-    <div className="relative min-w-0 flex-1">
-      {/* The tool, floating over the top of the canvas: a segmented control, pills like the source picker. */}
-      <fieldset className={cn(stagePill, 'left-1/2 -translate-x-1/2')}>
-        <legend className="sr-only">Tool</legend>
-        {TOOLS.map((t) => (
-          <button
-            key={t.kind}
-            type="button"
-            aria-pressed={tool === t.kind}
-            title={t.hint}
-            onClick={() => onTool(t.kind)}
-            className={stagePillButton}
-          >
-            <t.icon className="size-4" aria-hidden />
-            {t.label}
-          </button>
-        ))}
-      </fieldset>
-      {tall && (
-        // A full-page capture: fit it whole (a sliver), or to the width and scroll down it.
-        <fieldset className={cn(stagePill, 'right-3')}>
-          <legend className="sr-only">How the tall image fits</legend>
-          <button
-            type="button"
-            aria-pressed={!fitWidth}
-            title="Fit the whole image in the stage"
-            onClick={() => onFitWidth(false)}
-            className={stagePillButton}
-          >
-            Fit
-          </button>
-          <button
-            type="button"
-            aria-pressed={fitWidth}
-            title="Fit the image to the stage's width and scroll down it"
-            onClick={() => onFitWidth(true)}
-            className={stagePillButton}
-          >
-            Fit width
-          </button>
-        </fieldset>
-      )}
-      <div
-        ref={box}
-        // A faint 24px grid behind the image, like a design canvas. Scrolls only for a tall image.
-        className={cn(
-          'absolute inset-0 flex bg-muted/40 bg-[linear-gradient(to_right,rgb(0_0_0/0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgb(0_0_0/0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:bg-[linear-gradient(to_right,rgb(255_255_255/0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgb(255_255_255/0.05)_1px,transparent_1px)]',
-          scrolls
-            ? 'overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]'
-            : 'overflow-hidden',
-        )}
-      >
-        {/* Auto margins centre the frame and, unlike flex alignment, still let it scroll when it is taller than the stage. */}
-        <div
-          ref={frame}
-          role="application"
-          aria-label={`${asset.name}. ${TOOL_WHAT[tool]}`}
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={onUp}
-          onPointerCancel={() => setGesture(null)}
-          className="relative m-auto shrink-0 cursor-crosshair touch-none select-none shadow-sm"
-          style={{
-            width: size.w,
-            height: size.h,
-            marginTop: scrolls ? 32 : undefined,
-            marginBottom: scrolls ? 32 : undefined,
-          }}
-        >
-          {/* biome-ignore lint/performance/noImgElement: a local image held by this browser */}
-          <img src={url} alt="" draggable={false} className="pointer-events-none size-full" />
-          {dim && (
-            <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-              <div
-                className="absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.25)]"
-                style={{
-                  left: `${dim.x * 100}%`,
-                  top: `${dim.y * 100}%`,
-                  width: `${dim.w * 100}%`,
-                  height: `${dim.h * 100}%`,
-                }}
-              />
-            </div>
-          )}
-          {asset.marks.map((m, i) => (
-            <MarkView
-              key={m.id}
-              mark={m}
-              number={i + 1}
-              selected={m.id === selected}
-              size={size}
-              onDown={(e) => startMove(e, m)}
-              onResize={(e) => startResize(e, m)}
-              onResizeKey={(e) => resizeByKey(e, m)}
-              onEnd={(e, end) => startEnd(e, m, end)}
-              onKey={(e, end) => nudge(e, m, end)}
-            />
-          ))}
-          {draftArrow && (
-            <svg
-              aria-hidden
-              width={size.w}
-              height={size.h}
-              className="pointer-events-none absolute inset-0 overflow-visible"
-            >
-              <ArrowLine arrow={draftArrow} size={size} color="#ffffff" dashed />
-            </svg>
-          )}
-          {draft && (
-            <div
-              className="pointer-events-none absolute border-2 border-dashed border-white shadow-[0_0_0_1px_rgb(0_0_0/0.5)]"
-              style={{
-                left: `${draft.x * 100}%`,
-                top: `${draft.y * 100}%`,
-                width: `${draft.w * 100}%`,
-                height: `${draft.h * 100}%`,
-              }}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** An arrow in stage pixels: where its tail, head and the unit vector between them sit. */
-function arrowPixels(a: Arrow, size: { w: number; h: number }) {
-  const tx = a.x * size.w;
-  const ty = a.y * size.h;
-  const hx = a.x2 * size.w;
-  const hy = a.y2 * size.h;
-  const len = Math.hypot(hx - tx, hy - ty) || 1;
-  return { tx, ty, hx, hy, len, ux: (hx - tx) / len, uy: (hy - ty) / len };
-}
-
-/**
- * An arrow drawn in the stage's SVG overlay: a line from the tail to a filled
- * head, a small ring at the tail, each over a dark halo so it reads on any
- * screenshot. A draft is white and dashed; an AI arrow not yet checked is dashed.
- */
-function ArrowLine({
-  arrow,
-  size,
-  color,
-  dashed,
-}: {
-  arrow: Arrow;
-  size: { w: number; h: number };
-  color: string;
-  dashed?: boolean;
-}) {
-  const { tx, ty, hx, hy, len, ux, uy } = arrowPixels(arrow, size);
-  const head = Math.min(14, len / 3);
-  const half = head * 0.42;
-  const bx = hx - ux * head;
-  const by = hy - uy * head;
-  const ring = 4;
-  const line = {
-    x1: tx + ux * (ring + 2),
-    y1: ty + uy * (ring + 2),
-    x2: bx + ux * head * 0.3,
-    y2: by + uy * head * 0.3,
-  };
-  const tip = `${hx},${hy} ${bx - uy * half},${by + ux * half} ${bx + uy * half},${by - ux * half}`;
-  const dash = dashed ? '6 5' : undefined;
-  return (
-    <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-      <line {...line} stroke="rgb(0 0 0 / 0.55)" strokeWidth={6} />
-      <line {...line} stroke={color} strokeWidth={3} strokeDasharray={dash} />
-      <polygon points={tip} stroke="rgb(0 0 0 / 0.55)" strokeWidth={4} />
-      <polygon points={tip} fill={color} />
-      <circle cx={tx} cy={ty} r={ring} stroke="rgb(0 0 0 / 0.55)" strokeWidth={5.5} />
-      <circle cx={tx} cy={ty} r={ring} stroke={color} strokeWidth={2.5} />
-    </g>
-  );
-}
-
-function MarkView({
-  mark,
-  number,
-  selected,
-  size,
-  onDown,
-  onResize,
-  onResizeKey,
-  onEnd,
-  onKey,
-}: {
-  mark: Mark;
-  number: number;
-  selected: boolean;
-  size: { w: number; h: number };
-  onDown: (e: ReactPointerEvent) => void;
-  onResize: (e: ReactPointerEvent) => void;
-  onResizeKey: (e: ReactKeyboardEvent) => void;
-  onEnd: (e: ReactPointerEvent, end: ArrowEnd) => void;
-  onKey: (e: ReactKeyboardEvent, end?: ArrowEnd) => void;
-}) {
-  const v = verdictOf(mark);
-  const color = VERDICT_COLOR[v];
-  const label = `Note ${number}${mark.label ? `: ${mark.label}` : ''}${v === 'empty' ? ' (empty)' : ''}`;
-  // An arrow's number sits just behind its tail, off the line, so the tail stays visible.
-  const arrowPx = mark.shape.kind === 'arrow' ? arrowPixels(mark.shape, size) : null;
-  const badgeAt = arrowPx
-    ? {
-        left: Math.min(size.w - 12, Math.max(12, arrowPx.tx - arrowPx.ux * 24)),
-        top: Math.min(size.h - 12, Math.max(12, arrowPx.ty - arrowPx.uy * 24)),
-      }
-    : mark.shape.kind === 'dot'
-      ? { left: `${mark.shape.x * 100}%`, top: `${mark.shape.y * 100}%` }
-      : { left: 0, top: 0 };
-  const pin = (
-    <button
-      type="button"
-      data-mark={mark.id}
-      aria-label={label}
-      aria-pressed={selected}
-      onPointerDown={onDown}
-      onKeyDown={(e) => onKey(e)}
-      className={cn(
-        // The pin keeps its size; an invisible ::after takes the hit area to 44px or more.
-        'pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-neutral-900 font-mono text-[13px] font-semibold text-white shadow-[0_1px_5px_rgb(0_0_0/0.5)] dark:bg-white dark:text-neutral-900 after:absolute after:-inset-3 after:content-[""] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white active:cursor-grabbing',
-        selected ? 'size-8 ring-4 ring-white/50' : 'size-6',
-      )}
-      style={badgeAt}
-    >
-      {number}
-    </button>
-  );
-  if (mark.shape.kind === 'dot') return pin;
-  if (mark.shape.kind === 'arrow' && arrowPx) {
-    const a = mark.shape;
-    const handle =
-      'pointer-events-auto absolute size-3.5 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-2 border-neutral-900 bg-white after:absolute after:-inset-4 after:content-[""] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white active:cursor-grabbing';
-    return (
-      <>
-        <svg
-          aria-hidden
-          width={size.w}
-          height={size.h}
-          className="pointer-events-none absolute inset-0 overflow-visible"
-        >
-          <ArrowLine arrow={a} size={size} color={color} />
-          {selected && (
-            // The open arrow moves by its line: a wide, invisible stroke takes the pointer.
-            <line
-              x1={arrowPx.tx}
-              y1={arrowPx.ty}
-              x2={arrowPx.hx}
-              y2={arrowPx.hy}
-              stroke="transparent"
-              strokeWidth={18}
-              className="cursor-move"
-              style={{ pointerEvents: 'stroke' }}
-              onPointerDown={onDown}
-            />
-          )}
-        </svg>
-        {pin}
-        {selected && (
-          <>
-            <button
-              type="button"
-              data-mark={mark.id}
-              data-end
-              aria-label={`${label}, tail`}
-              onPointerDown={(e) => onEnd(e, 'tail')}
-              onKeyDown={(e) => onKey(e, 'tail')}
-              className={handle}
-              style={{ left: arrowPx.tx, top: arrowPx.ty }}
-            />
-            <button
-              type="button"
-              data-mark={mark.id}
-              data-end
-              aria-label={`${label}, head`}
-              onPointerDown={(e) => onEnd(e, 'head')}
-              onKeyDown={(e) => onKey(e, 'head')}
-              className={handle}
-              style={{ left: arrowPx.hx, top: arrowPx.hy }}
-            />
-          </>
-        )}
-      </>
-    );
-  }
-  const s = mark.shape as Area;
-  return (
-    <div
-      className="pointer-events-none absolute border-2"
-      style={{
-        left: `${s.x * 100}%`,
-        top: `${s.y * 100}%`,
-        width: `${s.w * 100}%`,
-        height: `${s.h * 100}%`,
-        borderColor: color,
-        boxShadow: selected ? '0 0 0 1px rgb(0 0 0 / 0.5)' : '0 0 0 1px rgb(0 0 0 / 0.45)',
-        background: selected ? 'transparent' : `${color}14`,
-      }}
-    >
-      {selected && (
-        <div className="pointer-events-auto absolute inset-0 cursor-move" onPointerDown={onDown} />
-      )}
-      {pin}
-      {selected && (
-        // The bottom-right corner resizes, by drag or, once focused, by the arrow keys; the
-        // top-left one carries the number.
-        <button
-          type="button"
-          data-mark={mark.id}
-          data-end
-          aria-label={`${label}, corner: arrow keys resize`}
-          onPointerDown={onResize}
-          onKeyDown={onResizeKey}
-          className="pointer-events-auto absolute -right-2 -bottom-2 size-3.5 cursor-nwse-resize rounded-sm border-2 border-neutral-900 bg-white after:absolute after:-inset-3 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        />
-      )}
-    </div>
-  );
-}
-
-/* ---------- Panel: notes on this image ---------- */
-
-// Placeholders and suggestions sit a clear step lighter than typed text, still at 4.5:1 on the page.
-function Panel({
-  asset,
-  number,
-  total,
-  selected,
-  suggestionsOn,
-  suggesting,
-  onSource,
-  onSourceForAll,
-  screenTags,
-  onScreenTag,
-  onScreenTagSettle,
-  onScreenTagForAll,
-  onSelect,
-  onChangeMark,
-  onRemoveMark,
-  onDone,
-  onPrev,
-  onNext,
-  onRemove,
-  dismissed,
-  onDismiss,
-}: {
-  asset: Asset;
-  number: number;
-  total: number;
-  selected: string | null;
-  suggestionsOn: boolean;
-  suggesting: string | null;
-  onSource: (source: Source | undefined) => void;
-  onSourceForAll: () => void;
-  /** The tags typed on any image or known to the rules, one spelling per set, to suggest. */
-  screenTags: string[];
-  onScreenTag: (value: string) => void;
-  /** Leaving the field: another spelling of a known tag takes the known one (D110). */
-  onScreenTagSettle: () => void;
-  onScreenTagForAll: () => void;
-  onSelect: (id: string) => void;
-  onChangeMark: (id: string, change: Partial<Mark>) => void;
-  onRemoveMark: (id: string) => void;
-  onDone: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-  onRemove: () => void;
-  /** Suggestions dismissed, by `note:field`, with the shape key they were written for. */
-  dismissed: Record<string, string>;
-  onDismiss: (markId: string, field: SuggestedKey, shape: string) => void;
-}) {
-  const mark = asset.marks.find((m) => m.id === selected);
-  const markNumber = asset.marks.findIndex((m) => m.id === selected) + 1;
-  const suggestion = mark && suggestionsOn ? currentSuggestion(mark) : undefined;
-  const mac = useIsMac();
-
-  return (
-    <aside
-      aria-label="Notes"
-      className="flex w-[22rem] shrink-0 flex-col border-l border-border max-[900px]:w-64"
-    >
-      <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={asset.name}>
-          {asset.name}
-        </span>
-        <button
-          type="button"
-          aria-label="Remove this image"
-          onClick={onRemove}
-          className={cn(
-            hit,
-            'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-          )}
-        >
-          <Trash2 className="size-4" aria-hidden />
-        </button>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
-        <SourcePicker
-          source={asset.source}
-          total={total}
-          onChange={onSource}
-          onForAll={onSourceForAll}
-        />
-        <ScreenTagField
-          value={asset.screenTag ?? ''}
-          suggestions={screenTags}
-          total={total}
-          onChange={onScreenTag}
-          onSettle={onScreenTagSettle}
-          onForAll={onScreenTagForAll}
-        />
-        {/* What the whole image is above, its notes below: an edge-to-edge line between. */}
-        <hr className="-mx-4 border-border" />
-        {mark ? (
-          <MarkEditor
-            key={mark.id}
-            mark={mark}
-            number={markNumber}
-            suggestion={suggestion}
-            suggesting={suggestionsOn && suggesting === mark.id}
-            dismissed={(field) =>
-              Boolean(suggestion) && dismissed[`${mark.id}:${field}`] === suggestion?.shape
-            }
-            onDismiss={(field) => suggestion && onDismiss(mark.id, field, suggestion.shape)}
-            onChange={(c) => onChangeMark(mark.id, c)}
-            onRemove={() => onRemoveMark(mark.id)}
-            onDone={onDone}
-          />
-        ) : (
-          <section>
-            <h2 className="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-medium">
-              <IconBox>
-                <StickyNote />
-              </IconBox>
-              Notes
-            </h2>
-            {asset.marks.length === 0 ? (
-              <p className="m-0 flex items-start gap-2 rounded-lg bg-muted px-3 py-2.5 text-[13px] leading-snug text-foreground">
-                <MousePointerClick
-                  aria-hidden
-                  className="mt-px size-4 shrink-0 text-muted-foreground"
-                />
-                {HOW_TO_MARK}
-              </p>
-            ) : (
-              <ol className="m-0 list-none space-y-1.5 p-0">
-                {asset.marks.map((m, i) => (
-                  <li key={m.id}>
-                    <MarkRow mark={m} number={i + 1} onOpen={() => onSelect(m.id)} />
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-        )}
-      </div>
-
-      <div className="flex shrink-0 flex-wrap gap-2 border-t border-border p-3">
-        {mark && (
-          // The open note's way out, full width, right above the image's own steps (D95).
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    data-note-done
-                    onClick={onDone}
-                    className={cn(
-                      hit,
-                      'flex min-h-10 w-full basis-full items-center justify-center rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
-                    )}
-                  >
-                    Done
-                  </button>
-                }
-              />
-              <TooltipContent>
-                <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> done · <Kbd>Esc</Kbd> close
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        <button
-          type="button"
-          onClick={onPrev}
-          disabled={number === 1}
-          className={cn(
-            hit,
-            'flex min-h-10 items-center gap-1.5 rounded-md border border-border px-3 text-sm transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-40',
-          )}
-        >
-          <ArrowLeft className="size-4" aria-hidden />
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={number === total}
-          className={cn(
-            hit,
-            'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-muted disabled:opacity-40',
-          )}
-        >
-          Next image
-          <ArrowRight className="size-4" aria-hidden />
-        </button>
-      </div>
-    </aside>
-  );
-}
-
-function MarkRow({ mark, number, onOpen }: { mark: Mark; number: number; onOpen: () => void }) {
-  const v = verdictOf(mark);
-  const topics = sortTopics(mark.topics ?? []);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full items-start gap-2.5 rounded-lg border border-border p-2.5 text-left transition-colors duration-150 motion-reduce:transition-none hover:bg-muted"
-    >
-      <span
-        className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 font-mono text-[13px] font-semibold text-white dark:bg-white dark:text-neutral-900"
-      >
-        {number}
-      </span>
-      <span className="min-w-0 flex-1 text-sm">
-        <span className="block truncate font-medium">
-          {mark.label || mark.good || mark.bad || 'Empty note'}
-        </span>
-        <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-          {mark.shape.kind}
-          {v !== 'empty' && (
-            <>
-              {' · '}
-              {(v === 'good' || v === 'both') && (
-                <ThumbsUp aria-hidden className="size-3.5" />
-              )}
-              {(v === 'bad' || v === 'both') && (
-                <ThumbsDown aria-hidden className="size-3.5" />
-              )}
-              {v === 'both' ? 'to learn and to avoid' : v === 'good' ? 'to learn' : 'to avoid'}
-            </>
-          )}
-          {topics.length > 0 && (
-            <span className="min-w-0 truncate">· {topics.map(topicLabel).join(', ')}</span>
-          )}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-/** The fields a suggestion fills, by the suggestion's own names. */
-type SuggestedKey = 'works' | 'doesNotWork';
-
-function MarkEditor({
-  mark,
-  number,
-  suggestion,
-  suggesting,
-  dismissed,
-  onDismiss,
-  onChange,
-  onRemove,
-  onDone,
-}: {
-  mark: Mark;
-  number: number;
-  suggestion?: Suggestion;
-  suggesting: boolean;
-  dismissed: (field: SuggestedKey) => boolean;
-  onDismiss: (field: SuggestedKey) => void;
-  onChange: (c: Partial<Mark>) => void;
-  onRemove: () => void;
-  onDone: () => void;
-}) {
-  const first = useRef<HTMLTextAreaElement>(null);
-  // A note opens ready to type, however it was opened (a click on its pin, a key), so the next
-  // keystrokes go into it and never fire a shortcut. The caret goes after any text already there.
-  useEffect(() => {
-    const el = first.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
-  const ghost = (field: SuggestedKey) =>
-    dismissed(field) ? undefined : suggestion?.[field] || undefined;
-  // A suggestion's topics come with its words, unless the note already has topics of its own.
-  const ownTopics = mark.topics !== undefined;
-  const showsGhost = Boolean((!mark.good && ghost('works')) || (!mark.bad && ghost('doesNotWork')));
-  const suggestedTopics = !ownTopics && showsGhost ? suggestion?.topics : undefined;
-  const takeTopics = (accepted: boolean) =>
-    accepted && !ownTopics && suggestion?.topics?.length ? { topics: suggestion.topics } : {};
-  const doneOnShortcut = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      onDone();
-    }
-  };
-
-  return (
-    <section className="space-y-5" aria-label={`Note ${number}`}>
-      <ItemsField
-        ref={first}
-        id={`works-${mark.id}`}
-        label="What to learn"
-        verdict="good"
-        value={mark.good}
-        suggestion={ghost('works')}
-        suggesting={suggesting}
-        example="One big number with nothing competing"
-        another="Another thing to learn"
-        onChange={(good, accepted) =>
-          onChange({
-            good,
-            accepted: withAccepted(mark.accepted, 'good', good, accepted),
-            ...takeTopics(accepted),
-          })
-        }
-        onDismiss={() => onDismiss('works')}
-        onKeyDown={doneOnShortcut}
-      />
-      {mark.good.trim() && (
-        // One of the author's best examples (D110): the note they hold up to follow.
-        <button
-          type="button"
-          aria-pressed={Boolean(mark.best)}
-          onClick={() => onChange({ best: !mark.best })}
-          className={cn(
-            hit,
-            '!mt-2 flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-            mark.best && 'text-foreground',
-          )}
-        >
-          <Star className={cn('size-4', mark.best && 'fill-current')} aria-hidden />
-          Best example
-        </button>
-      )}
-      <ItemsField
-        id={`doesnt-${mark.id}`}
-        label="What to avoid"
-        verdict="bad"
-        value={mark.bad}
-        suggestion={ghost('doesNotWork')}
-        suggesting={suggesting}
-        example="Six badges compete for attention"
-        another="Another thing to avoid"
-        onChange={(bad, accepted) =>
-          onChange({
-            bad,
-            accepted: withAccepted(mark.accepted, 'bad', bad, accepted),
-            ...takeTopics(accepted),
-          })
-        }
-        onDismiss={() => onDismiss('doesNotWork')}
-        onKeyDown={doneOnShortcut}
-      />
-      <TopicPicker
-        legend={
-          <span className="flex items-center gap-2 text-foreground">
-            <IconBox>
-              <Tag />
-            </IconBox>
-            Tags
-          </span>
-        }
-        topics={mark.topics}
-        suggested={suggestedTopics}
-        onChange={(topics) => onChange({ topics })}
-      />
-      {/* Its own row under a divider: the Tags fieldset's m-0 would cancel the list's spacing. */}
-      <div className="!mt-6 border-t border-border pt-4">
-        <button
-          type="button"
-          onClick={onRemove}
-          className={cn(
-            hit,
-            'flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-red-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
-          )}
-        >
-          <Trash2 className="size-4" aria-hidden />
-          Delete note
-        </button>
-      </div>
-    </section>
-  );
-}
-
-/** Record a taken suggestion; clearing a field forgets it, so what's typed next is the user's own. */
-function withAccepted(
-  prev: Mark['accepted'],
-  field: 'good' | 'bad',
-  value: string,
-  accepted: boolean,
-): Mark['accepted'] {
-  const next = { ...prev };
-  if (accepted) next[field] = value;
-  else if (!value.trim()) delete next[field];
-  return next.good || next.bad ? next : undefined;
-}
-
-/**
- * Keys on a field that shows a grey suggestion. Tab takes it as real text and keeps focus in the
- * field, so the next Tab moves on as usual; Shift+Tab moves back without taking it; Escape, or
- * Delete or Backspace in the empty field, dismisses it (the second Escape then closes the note).
- * Returns whether the key was spent here.
- */
-function ghostKey(
-  e: React.KeyboardEvent,
-  ghost: string,
-  accept: () => void,
-  dismiss: () => void,
-): boolean {
-  if (!ghost) return false;
-  if (e.key === 'Tab' && !e.shiftKey) {
-    e.preventDefault();
-    accept();
-    return true;
-  }
-  if (e.key === 'Escape' || e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault();
-    e.stopPropagation();
-    dismiss();
-    return true;
-  }
-  return false;
-}
-
-/**
- * Whether something stays for a moment after it is switched off, so it can fade out: true while
- * `on`, and for `ms` after it goes.
- */
-function useLingers(on: boolean, ms: number) {
-  const [lingering, setLingering] = useState(on);
-  useEffect(() => {
-    if (on) {
-      setLingering(true);
-      return;
-    }
-    const timer = setTimeout(() => setLingering(false), ms);
-    return () => clearTimeout(timer);
-  }, [on, ms]);
-  return on || lingering;
-}
-
-/*
- * The suggestion hint ("AI suggestion · Tab to use · Esc to dismiss") shows once: the first time a
- * suggestion appears, on one field, until the owner closes it or uses a suggestion (Tab, Esc,
- * Delete, or typing in that field). Then it never comes back, in this browser.
- */
-const HINT_KEY = 'pinch-suggestion-hint';
-const hintListeners = new Set<() => void>();
-let hintOwner: string | null = null;
-let hintSeen: boolean | null = null;
-const emitHint = () => {
-  for (const l of hintListeners) l();
-};
-const subscribeHint = (l: () => void) => {
-  hintListeners.add(l);
-  return () => {
-    hintListeners.delete(l);
-  };
-};
-const readHintSeen = () => {
-  if (hintSeen === null) hintSeen = local.get(HINT_KEY) === '1';
-  return hintSeen;
-};
-function dismissHint() {
-  if (readHintSeen()) return;
-  hintSeen = true;
-  hintOwner = null;
-  local.set(HINT_KEY, '1');
-  emitHint();
-}
-
-/** Whether this field shows the one-time hint now, and how to close it for good. */
-function useSuggestionHint(id: string, ghost: string) {
-  // On the server it counts as seen, so the page never flashes a hint before it knows.
-  const seen = useSyncExternalStore(subscribeHint, readHintSeen, () => true);
-  const owner = useSyncExternalStore(subscribeHint, () => hintOwner, () => null);
-  // The first field to show a suggestion claims the hint; if it goes away unused (another note
-  // opens), the next one may.
-  useEffect(() => {
-    if (ghost && !seen && hintOwner === null) {
-      hintOwner = id;
-      emitHint();
-    }
-  }, [ghost, seen, id]);
-  useEffect(
-    () => () => {
-      if (hintOwner === id) {
-        hintOwner = null;
-        emitHint();
-      }
-    },
-    [id],
-  );
-  return { visible: !seen && owner === id && Boolean(ghost), dismiss: dismissHint };
-}
-
-/** A key chip inside the hint, whose colours are the page's inverted. */
-const tipKbd = 'border-background/30 bg-background/15 text-background';
-
-/** The hint above a field: the keys for a grey suggestion, with a close button. */
-function SuggestionTip({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  return (
-    <div
-      role="status"
-      aria-hidden={!visible}
-      className={cn(
-        'absolute bottom-full left-0 z-20 mb-2 flex w-max max-w-full items-center gap-1 rounded-md bg-foreground py-1.5 pr-1 pl-2.5 text-[13px] leading-tight text-background shadow-lg transition-opacity duration-200 motion-reduce:transition-none dark:shadow-none',
-        visible ? 'opacity-100' : 'pointer-events-none opacity-0',
-      )}
-    >
-      <span>
-        AI suggestion · <Kbd className={tipKbd}>Tab</Kbd> to use · <Kbd className={tipKbd}>Esc</Kbd>{' '}
-        to dismiss
-      </span>
-      <button
-        type="button"
-        tabIndex={visible ? 0 : -1}
-        aria-label="Close this hint"
-        onClick={onClose}
-        className={cn(
-          hit,
-          'relative flex size-6 shrink-0 items-center justify-center rounded text-background transition-colors duration-150 outline-none motion-reduce:transition-none hover:bg-background/20 focus-visible:ring-2 focus-visible:ring-background/60',
-        )}
-      >
-        <X aria-hidden className="size-3.5" />
-      </button>
-    </div>
-  );
-}
-
-/**
- * A note field with an AI suggestion as its grey text: Tab in the empty field takes it as real
- * text, Escape dismisses it, any other key types over it. The example placeholder shows only
- * when no suggestion applies.
- */
-/** An icon in a small rounded box, beside a field's label. */
-function IconBox({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground [&>svg]:size-3.5"
-    >
-      {children}
-    </span>
-  );
-}
-
-/** One item's text, the same box for the field and the grey suggestion over it. */
-const itemText = 'px-1.5 py-1 text-sm leading-5';
-
-/**
- * A note's field as a list (D95): one short item per line, easy to scan. Enter starts a new item
- * (split at the caret), Backspace at an item's start joins it to the one above, the arrow keys
- * move between items, and pasted lines become items. Each written item has a checkbox that only
- * selects it, to delete it: it isn't a to-do, so a selected item looks selected, never done. While
- * the field is empty, the grey suggestion shows in its first item; Tab takes it.
- */
-function ItemsField({
-  ref,
-  id,
-  label,
-  verdict,
-  value,
-  suggestion,
-  suggesting,
-  example,
-  another,
-  onChange,
-  onDismiss,
-  onKeyDown,
-}: {
-  ref?: React.Ref<HTMLTextAreaElement>;
-  id: string;
-  label: string;
-  verdict: 'good' | 'bad';
-  value: string;
-  suggestion?: string;
-  suggesting: boolean;
-  /** The first item's placeholder. */
-  example: string;
-  /** Every later item's placeholder. */
-  another: string;
-  onChange: (value: string, accepted: boolean) => void;
-  onDismiss: () => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-}) {
-  const items = value === '' ? [''] : value.split('\n');
-  const ghost = !value && suggestion ? suggestion : '';
-  const rows = useRef<(HTMLTextAreaElement | null)[]>([]);
-  // Where focus goes once the items are re-rendered: an item, and a caret position in it.
-  const focusNext = useRef<{ i: number; at: number } | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const hint = useSuggestionHint(id, ghost);
-  const ghostLingers = useLingers(Boolean(ghost), 220);
-  const Icon = verdict === 'good' ? ThumbsUp : ThumbsDown;
-  // Each item grows with its text; then focus lands where an edit asked.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: measured again whenever the text changes
-  useLayoutEffect(() => {
-    for (const el of rows.current) {
-      if (!el) continue;
-      el.style.height = 'auto';
-      el.style.height = `${el.scrollHeight}px`;
-    }
-    const f = focusNext.current;
-    if (!f) return;
-    focusNext.current = null;
-    const el = rows.current[f.i];
-    if (!el) return;
-    el.focus();
-    const at = Math.min(f.at, el.value.length);
-    el.setSelectionRange(at, at);
-  }, [value]);
-  const setItems = (next: string[], focus?: { i: number; at: number }) => {
-    if (focus) focusNext.current = focus;
-    if (next.length !== items.length) setSelected(new Set());
-    onChange(next.join('\n'), false);
-  };
-  const removeSelected = () => {
-    const next = items.filter((_, i) => !selected.has(i));
-    setSelected(new Set());
-    focusNext.current = { i: 0, at: Number.MAX_SAFE_INTEGER };
-    onChange(next.length ? next.join('\n') : '', false);
-  };
-  const onRowKey = (e: React.KeyboardEvent<HTMLTextAreaElement>, i: number) => {
-    if (i === 0) {
-      const used = ghostKey(
-        e,
-        ghost,
-        () => {
-          if (hint.visible) hint.dismiss();
-          onChange(ghost, true);
-        },
-        () => {
-          if (hint.visible) hint.dismiss();
-          onDismiss();
-        },
-      );
-      if (used) return;
-    }
-    const el = e.currentTarget;
-    const start = el.selectionStart;
-    const collapsed = start === el.selectionEnd;
-    const plainEnter =
-      e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing;
-    if (plainEnter) {
-      e.preventDefault();
-      // An empty last item stays the only empty one: Enter there doesn't stack more.
-      if (!items[i].trim() && i === items.length - 1) return;
-      const next = [...items];
-      next.splice(i, 1, items[i].slice(0, start), items[i].slice(el.selectionEnd));
-      setItems(next, { i: i + 1, at: 0 });
-      return;
-    }
-    if (e.key === 'Backspace' && collapsed && start === 0 && i > 0) {
-      e.preventDefault();
-      const at = items[i - 1].length;
-      const next = [...items];
-      next.splice(i - 1, 2, items[i - 1] + items[i]);
-      setItems(next, { i: i - 1, at });
-      return;
-    }
-    if (e.key === 'ArrowUp' && collapsed && start === 0 && i > 0) {
-      e.preventDefault();
-      focusNext.current = null;
-      rows.current[i - 1]?.focus();
-      return;
-    }
-    if (e.key === 'ArrowDown' && collapsed && start === el.value.length && i < items.length - 1) {
-      e.preventDefault();
-      const below = rows.current[i + 1];
-      below?.focus();
-      below?.setSelectionRange(0, 0);
-      return;
-    }
-    onKeyDown(e);
-  };
-  const toggle = (i: number) =>
-    setSelected((s) => {
-      const next = new Set(s);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-  const nSelected = [...selected].filter((i) => items[i]?.trim()).length;
-  return (
-    <div className="relative">
-      <div className="mb-2.5 flex min-h-7 items-center gap-2">
-        <label htmlFor={id} className="flex items-center gap-2 text-[13px] font-medium">
-          <IconBox>
-            <Icon />
-          </IconBox>
-          {label}
-        </label>
-        {nSelected > 0 ? (
-          <button
-            type="button"
-            onClick={removeSelected}
-            className={cn(
-              hit,
-              'ml-auto flex min-h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-red-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted dark:text-red-400',
-            )}
-          >
-            <Trash2 className="size-3.5" aria-hidden />
-            Delete {nSelected}
-          </button>
-        ) : (
-          <WorkingPill
-            aria-hidden={!(suggesting && !value)}
-            className={cn(
-              'ml-auto',
-              ghostFade,
-              suggesting && !value ? 'opacity-100' : 'opacity-0',
-            )}
-          >
-            Suggesting…
-          </WorkingPill>
-        )}
-        <span className="sr-only" aria-live="polite">
-          {suggesting && !value ? 'Suggesting…' : ''}
-        </span>
-      </div>
-      <div className="relative">
-        <SuggestionTip visible={hint.visible} onClose={hint.dismiss} />
-        <ul className="m-0 list-none space-y-px rounded-lg border border-border p-1 transition-colors duration-150 motion-reduce:transition-none focus-within:border-foreground/25">
-          {items.map((text, i) => {
-            const on = selected.has(i) && Boolean(text.trim());
-            const showGhost = i === 0 && ghostLingers;
-            return (
-              <li
-                // Items have no ids of their own; a row is its place in the list.
-                // biome-ignore lint/suspicious/noArrayIndexKey: the place is what a row stands for
-                key={i}
-                className={cn(
-                  'flex items-start gap-1.5 rounded-md pl-1.5 transition-colors duration-150 motion-reduce:transition-none',
-                  on && 'bg-muted',
-                )}
-              >
-                {/* biome-ignore lint/a11y/useSemanticElements: a drawn checkbox, sized to the item's first line */}
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={on}
-                  aria-label={`Select “${text.trim() || 'empty item'}” to delete`}
-                  disabled={!text.trim()}
-                  onClick={() => toggle(i)}
-                  className={cn(
-                    'mt-[7px] flex size-4 shrink-0 items-center justify-center rounded border transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:invisible',
-                    on
-                      ? 'border-foreground bg-foreground text-background'
-                      : 'border-foreground/30 hover:border-foreground/60',
-                  )}
-                >
-                  {on && <Check className="size-3" strokeWidth={3} aria-hidden />}
-                </button>
-                <div className="relative min-w-0 flex-1">
-                  {showGhost && (
-                    <div
-                      aria-hidden
-                      className={cn(
-                        itemText,
-                        'pointer-events-none whitespace-pre-wrap text-[#737373] [overflow-wrap:break-word] dark:text-[#7a7a7a]',
-                        ghostFade,
-                      )}
-                      style={{ opacity: ghost ? 1 : 0 }}
-                    >
-                      {ghost || ' '}
-                    </div>
-                  )}
-                  <textarea
-                    ref={(el) => {
-                      rows.current[i] = el;
-                      if (i !== 0) return;
-                      if (typeof ref === 'function') ref(el);
-                      else if (ref) ref.current = el;
-                    }}
-                    id={i === 0 ? id : `${id}-${i}`}
-                    rows={1}
-                    maxLength={1000}
-                    value={text}
-                    aria-label={i === 0 ? undefined : `${label}, item ${i + 1}`}
-                    aria-describedby={i === 0 && ghost ? `${id}-hint` : undefined}
-                    placeholder={
-                      i === 0 ? (ghostLingers || suggesting ? '' : example) : another
-                    }
-                    onChange={(e) => {
-                      if (hint.visible) hint.dismiss();
-                      const parts = e.target.value.split('\n');
-                      const next = [...items];
-                      next.splice(i, 1, ...parts);
-                      setItems(
-                        next,
-                        parts.length > 1
-                          ? { i: i + parts.length - 1, at: Number.MAX_SAFE_INTEGER }
-                          : undefined,
-                      );
-                    }}
-                    onKeyDown={(e) => onRowKey(e, i)}
-                    className={cn(
-                      itemText,
-                      'block w-full resize-none overflow-hidden bg-transparent outline-none placeholder:text-[#737373] dark:placeholder:text-[#7a7a7a]',
-                      showGhost && 'absolute inset-0',
-                    )}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-      <SuggestionHint id={id} ghost={ghost} />
-    </div>
-  );
-}
-
-function SuggestionHint({ id, ghost }: { id: string; ghost: string }) {
-  if (!ghost) return null;
-  return (
-    <span id={`${id}-hint`} className="sr-only">
-      Suggestion: {ghost} Press Tab to use it, Escape to dismiss it.
-    </span>
-  );
-}
-
-/**
- * Whose design the image is: four radio rows, optional (S cycles back to none). New images
- * take the open one's. Arrow keys move and choose, as in any radio group.
- */
-/**
- * The screenshot's own tag (D100): a product, a feature, a domain, typed once for the image
- * and carried by every note on it to the rules. It suggests the tags of the other images and of
- * the rules, and on leaving takes the known spelling of a tag typed another way (D110).
- */
-function ScreenTagField({
-  value,
-  suggestions,
-  total,
-  onChange,
-  onSettle,
-  onForAll,
-}: {
-  value: string;
-  suggestions: string[];
-  total: number;
-  onChange: (value: string) => void;
-  onSettle: () => void;
-  onForAll: () => void;
-}) {
-  const others = suggestions.filter((v) => v.toLowerCase() !== value.trim().toLowerCase());
-  return (
-    <section>
-      <div className="mb-2.5 flex items-center gap-1">
-        <h2 className="m-0 text-[13px] font-medium">
-          <label htmlFor="screen-tag" className="flex items-center gap-2">
-            <IconBox>
-              <Monitor />
-            </IconBox>
-            Screen tag
-            <span className="font-normal text-muted-foreground">Optional</span>
-          </label>
-        </h2>
-        {value.trim() && total > 1 && (
-          <button
-            type="button"
-            onClick={onForAll}
-            className={cn(
-              hit,
-              'ml-auto min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-            )}
-          >
-            Set for all {total}
-          </button>
-        )}
-      </div>
-      <input
-        id="screen-tag"
-        type="text"
-        value={value}
-        maxLength={40}
-        autoComplete="off"
-        spellCheck={false}
-        placeholder="A product, feature or domain"
-        list={others.length ? 'screen-tag-list' : undefined}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onSettle}
-        className="min-h-9 w-full min-w-0 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-[13px] outline-none transition-colors duration-150 placeholder:text-[#737373] focus:border-foreground/25 motion-reduce:transition-none dark:placeholder:text-[#7a7a7a]"
-      />
-      {others.length > 0 && (
-        <datalist id="screen-tag-list">
-          {others.map((v) => (
-            <option key={v} value={v} />
-          ))}
-        </datalist>
-      )}
-    </section>
-  );
-}
-
-/** One icon per source: our own product, a rival, the wider world, an idea. */
-const SOURCE_ICONS = { ours: House, competitor: Swords, other: Globe, concept: Lightbulb };
-
-function SourcePicker({
-  source,
-  total,
-  onChange,
-  onForAll,
-}: {
-  source?: Source;
-  total: number;
-  onChange: (source: Source | undefined) => void;
-  onForAll: () => void;
-}) {
-  const group = useRef<HTMLDivElement>(null);
-  const current = SOURCES.findIndex((s) => s.kind === source?.kind);
-  const onKey = (e: ReactKeyboardEvent, i: number) => {
-    // Two columns: left and right move one, up and down move a row.
-    const step = { ArrowDown: 2, ArrowRight: 1, ArrowUp: -2, ArrowLeft: -1 }[e.key];
-    const to =
-      step !== undefined
-        ? (i + step + SOURCES.length) % SOURCES.length
-        : e.key === 'Home'
-          ? 0
-          : e.key === 'End'
-            ? SOURCES.length - 1
-            : undefined;
-    if (to === undefined) return;
-    e.preventDefault();
-    // The page's own arrow keys change the image; inside the group they only move the choice.
-    e.stopPropagation();
-    onChange({ kind: SOURCES[to].kind });
-    group.current?.querySelectorAll<HTMLButtonElement>('[role=radio]')[to]?.focus();
-  };
-  const small = cn(
-    hit,
-    'min-h-7 rounded-md px-2 text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-  );
-  return (
-    <section aria-labelledby="source-heading">
-      <div className="mb-2.5 flex items-center gap-1">
-        <h2 id="source-heading" className="m-0 flex items-center gap-2 text-[13px] font-medium">
-          <IconBox>
-            <Building2 />
-          </IconBox>
-          Source
-        </h2>
-        {source && total > 1 && (
-          <button type="button" onClick={onForAll} className={cn(small, 'ml-auto')}>
-            Set for all {total}
-          </button>
-        )}
-      </div>
-      {/* A 2×2 grid of bordered radio buttons; 36px buttons 8px apart, so their 44px hit areas tile. */}
-      <div
-        ref={group}
-        role="radiogroup"
-        aria-labelledby="source-heading"
-        className="grid grid-cols-2 gap-2"
-      >
-        {SOURCES.map((s, i) => {
-          const checked = i === current;
-          const Icon = SOURCE_ICONS[s.kind];
-          return (
-            // biome-ignore lint/a11y/useSemanticElements: a styled radio row; the group keeps its own roving tabindex and arrow keys
-            <button
-              key={s.kind}
-              type="button"
-              role="radio"
-              aria-checked={checked}
-              tabIndex={checked || (current < 0 && i === 0) ? 0 : -1}
-              title={s.hint}
-              onClick={() => onChange({ kind: s.kind })}
-              onKeyDown={(e) => onKey(e, i)}
-              className={cn(
-                hit,
-                'flex min-h-9 w-full min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[13px] leading-tight transition-colors duration-150 outline-none motion-reduce:transition-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
-                checked
-                  ? 'border-choice font-medium text-foreground'
-                  : 'border-border text-muted-foreground',
-              )}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  'flex size-4 shrink-0 items-center justify-center rounded-full border-2',
-                  checked ? 'border-choice' : 'border-foreground/30',
-                )}
-              >
-                {checked && <span className="size-2 rounded-full bg-choice" />}
-              </span>
-              <Icon aria-hidden className="size-4 shrink-0" />
-              {s.label}
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
