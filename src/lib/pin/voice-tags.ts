@@ -411,3 +411,20 @@ export function parseVoiceTags(
   }
   return { ops, rest };
 }
+
+/**
+ * The phrases the reel's legend teaches, one or two for each command, with what each sets. Every
+ * one is checked against `parseVoiceTags` in the tests, so the legend never shows a phrase that
+ * doesn't work.
+ */
+export const VOICE_LEGEND: { say: string[]; does: string; kind: VoiceOp['kind'] }[] = [
+  { say: ['Tag this as Checkout'], does: 'Tag the screen', kind: 'tag' },
+  { say: ['A competitor', 'This is ours'], does: 'Whose design it is', kind: 'source' },
+  { say: ['The role is target', 'How it looks today'], does: 'What the set is for', kind: 'role' },
+  { say: ['Star this'], does: 'Mark a best example', kind: 'star' },
+  { say: ['That’s about copy'], does: 'Set the note’s topics', kind: 'topics' },
+  { say: ['Drop that', 'Drop the second one'], does: 'Remove a note', kind: 'drop' },
+  { say: ['Not that, this'], does: 'Point at the right spot again', kind: 'repoint' },
+  { say: ['Redo this screen'], does: 'Talk through it again', kind: 'redo' },
+  { say: ['Next', 'Back'], does: 'Turn the reel', kind: 'next' },
+];

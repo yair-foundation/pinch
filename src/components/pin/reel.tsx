@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, Download, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import type { Asset } from '@/lib/pin/model';
 import {
@@ -17,6 +17,7 @@ import {
   type Wheel,
   wheelTurn,
 } from '@/lib/pin/narration';
+import { VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
 
@@ -24,7 +25,7 @@ import { hit } from './dialog';
  * The walkthrough (D131): the batch on a reel, after a View-Master. The screenshot being narrated
  * sits in the middle; the one before and the one after are tilted at the edges, lower down and
  * fading. R records after a five-second count, Space pauses and resumes, the arrows (or a scroll
- * or swipe) turn the reel, F goes to the end and ? lists the keys. While recording, the microphone
+ * or swipe) turn the reel, F goes to the end, and ? or the Keys and voice button opens the legend. While recording, the microphone
  * and the pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
  * this browser as a take. Speech isn't turned into notes yet.
  */
@@ -85,6 +86,13 @@ const Right = () => (
   </Kbd>
 );
 
+/** How pointing while talking places a note (D131). */
+const POINTING: [how: string, what: string][] = [
+  ['Rest the pointer, say “this”', 'A note on that spot'],
+  ['Circle something', 'A note on that area'],
+  ['Point off the screenshot', 'A note on the whole screen'],
+];
+
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
@@ -111,7 +119,7 @@ export function Reel({
   const [count, setCount] = useState(COUNTDOWN);
   const [micError, setMicError] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const [keysOpen, setKeysOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [clock, setClock] = useState('0:00');
   const [saved, setSaved] = useState<{ take: Take; audio: Blob } | null>(null);
 
@@ -362,10 +370,12 @@ export function Reel({
     const onKey = (e: KeyboardEvent) => {
       if (inert || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      // A focused button takes its own Enter and Space.
+      if ((key === 'Enter' || key === ' ') && e.target instanceof HTMLButtonElement) return;
       const act: Record<string, () => void> = {
         r: () => void record(),
         ' ': () => (phase === 'paused' || phase === 'saved' ? void record() : pause()),
-        Escape: () => (phase === 'counting' ? pause() : setKeysOpen(false)),
+        Escape: () => (phase === 'counting' ? pause() : setLegendOpen(false)),
         ArrowRight: () => turn(at + 1),
         ArrowDown: () => turn(at + 1),
         PageDown: () => turn(at + 1),
@@ -373,7 +383,7 @@ export function Reel({
         ArrowUp: () => turn(at - 1),
         PageUp: () => turn(at - 1),
         f: () => turn(assets.length),
-        '?': () => setKeysOpen((o) => !o),
+        '?': () => setLegendOpen((o) => !o),
         Enter: () => {
           if (atEnd && phase !== 'saved') void finish();
         },
@@ -567,7 +577,7 @@ export function Reel({
         )
       )}
 
-      <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center gap-5 px-4 py-3 text-[13px] text-muted-foreground">
+      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-5 px-4 py-3 text-[13px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <Kbd>Space</Kbd> Pause
         </span>
@@ -578,28 +588,95 @@ export function Reel({
         <span className="flex items-center gap-1.5">
           <Kbd>F</Kbd> Finish
         </span>
-        <span className="flex items-center gap-1.5">
-          <Kbd>?</Kbd> Keys
-        </span>
+        <button
+          type="button"
+          aria-expanded={legendOpen}
+          aria-controls="reel-legend"
+          // A click keeps the focus where it was, so Space still pauses.
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => setLegendOpen((o) => !o)}
+          className={cn(
+            BUTTON,
+            'absolute right-5 min-h-8 px-2.5 text-[13px]',
+            legendOpen && 'bg-muted',
+          )}
+        >
+          <CircleHelp className="size-4" aria-hidden />
+          Keys and voice
+        </button>
       </div>
 
-      {keysOpen && (
-        <div className="absolute right-5 bottom-14 z-30 grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-background p-4 text-[13px] shadow-lg dark:shadow-none">
-          <Kbd>R</Kbd>
-          <span>Record, or resume, after a five-second count</span>
-          <Kbd>Space</Kbd>
-          <span>Pause, or resume</span>
-          <Kbd>Esc</Kbd>
-          <span>Stop the count</span>
-          <Right />
-          <span>Next screen, also a scroll or swipe</span>
-          <Left />
-          <span>Previous screen</span>
-          <Kbd>F</Kbd>
-          <span>The end, to finish</span>
-          <Kbd>?</Kbd>
-          <span>Show or hide these keys</span>
-        </div>
+      {legendOpen && (
+        <section
+          id="reel-legend"
+          aria-labelledby="reel-legend-title"
+          className="absolute right-5 bottom-16 z-30 w-[min(44rem,calc(100%-2.5rem))] rounded-xl border border-border bg-background p-5 text-[13px] shadow-lg dark:shadow-none"
+        >
+          <div className="mb-4 flex items-center justify-between">
+            <h2 id="reel-legend-title" className="m-0 text-[15px] font-medium">
+              Keys and voice
+            </h2>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setLegendOpen(false)}
+              className={cn(
+                hit,
+                '-mr-2 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div>
+              <h3 className="m-0 mb-2 text-[13px] font-medium text-muted-foreground">Keys</h3>
+              <dl className="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+                {(
+                  [
+                    [<Kbd key="r">R</Kbd>, 'Record, or resume, after a five-second count'],
+                    [<Kbd key="s">Space</Kbd>, 'Pause, or resume'],
+                    [<Kbd key="e">Esc</Kbd>, 'Stop the count'],
+                    [<Right key="n" />, 'Next screen, also a scroll or swipe'],
+                    [<Left key="p" />, 'Previous screen'],
+                    [<Kbd key="f">F</Kbd>, 'The end, to finish'],
+                    [<Kbd key="q">?</Kbd>, 'Show or hide this'],
+                  ] as const
+                ).map(([key, what]) => (
+                  <div key={what} className="contents">
+                    <dt className="flex justify-start">{key}</dt>
+                    <dd className="m-0">{what}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <div>
+              <h3 className="m-0 mb-2 flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
+                Voice
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
+                  Soon
+                </span>
+              </h3>
+              {/* Each phrase over what it does, so a long one never squeezes its meaning. */}
+              <dl className="m-0 grid gap-2">
+                {POINTING.map(([how, what]) => (
+                  <div key={how}>
+                    <dt className="text-foreground">{how}</dt>
+                    <dd className="m-0 text-muted-foreground">{what}</dd>
+                  </div>
+                ))}
+              </dl>
+              <dl className="m-0 mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3">
+                {VOICE_LEGEND.map((row) => (
+                  <div key={row.kind}>
+                    <dt className="text-foreground">{row.say.map((p) => `“${p}”`).join(' or ')}</dt>
+                    <dd className="m-0 text-muted-foreground">{row.does}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </section>
       )}
     </section>
   );

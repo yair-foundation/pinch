@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parseVoiceTags, type TimedWord, type VoiceOp } from '../voice-tags';
+import { parseVoiceTags, type TimedWord, VOICE_LEGEND, type VoiceOp } from '../voice-tags';
 
 /** Words as speech-to-text gives them, 300ms apart; "…" stands for a long pause. */
 function say(text: string): TimedWord[] {
@@ -133,5 +133,17 @@ describe('voice tags: times', () => {
   it('gives each command when it was said', () => {
     const { ops: read } = parseVoiceTags(say('The legend is faint. … Star this.'));
     assert.deepEqual(read, [{ kind: 'star', start: 2700, end: 3250 }]);
+  });
+});
+
+describe('voice tags: the legend', () => {
+  it('teaches only phrases that work, each as what it says it does', () => {
+    for (const row of VOICE_LEGEND)
+      for (const phrase of row.say) {
+        const read = ops(`${phrase}.`);
+        assert.equal(read.length, 1, phrase);
+        const kind = row.kind === 'next' && /back/i.test(phrase) ? 'back' : row.kind;
+        assert.equal(read[0].kind, kind, phrase);
+      }
   });
 });
