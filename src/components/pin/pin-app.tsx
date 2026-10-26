@@ -1494,10 +1494,11 @@ function EmptyState({
                   className="mx-auto -mt-3 mb-3 w-64 [@media(max-height:760px)]:w-52"
                 />
                 <h1 className="m-0 text-center text-[1.4rem] leading-snug font-normal tracking-tight text-balance">
-                  Pinch voice test
+                  Talk your agent through your taste
                 </h1>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  Talk through your screenshots, pointing at what you mean.
+                  Walk through your screenshots out loud. Pinch turns what you say into rules for
+                  your agent.
                 </p>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
                   <LandingKey>R</LandingKey> records, <LandingKey>Space</LandingKey> pauses, the
