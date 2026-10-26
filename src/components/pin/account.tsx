@@ -242,7 +242,7 @@ export function AccountMenu({
   onSignOut,
 }: {
   me: Me | null;
-  /** Over the landing's painting: the trigger sits in the glass pill. */
+  /** On the landing: the trigger is smaller, with no pill round it. */
   landing: boolean;
   /** The suggestions switch, when suggestions are available to this visitor. */
   suggestions?: { on: boolean; onToggle: () => void };

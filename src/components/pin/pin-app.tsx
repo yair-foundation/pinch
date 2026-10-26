@@ -6,7 +6,6 @@ import {
   Plus,
   X,
 } from 'lucide-react';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   useCallback,
@@ -28,10 +27,14 @@ import { assetsOf, readExport } from '@/lib/pin/import';
 import { noteFingerprint } from '@/lib/pin/learnings';
 import { screenGroup, } from '@/lib/pin/screen-index';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
+import { IDLE_TALK } from '@/lib/pin/ring-demo';
+import { RING_PICTURES } from '@/lib/pin/ring-pictures';
 import { unzip } from '@/lib/pin/unzip';
 import { updatePrice } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
+import { RingDemo, Waveform } from './ring-demo';
+import { type RingControl, RingGallery } from './ring-gallery';
 import {
   AccessGate,
   AccountMenu,
@@ -45,7 +48,6 @@ import { cloudBackend } from './cloud-store';
 import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
-import { DropFolder } from './drop-folder';
 import { Reel } from './reel';
 import {
   buildExport,
@@ -841,7 +843,7 @@ function Workspace() {
     else startOver();
   };
 
-  // The landing: no image yet, so the header floats over the painting in two glass pills.
+  // The landing: no image yet, so the header floats over the page, on the title's grid.
   const landing = loaded && !asset && view === 'batch';
   // The batch's own controls in the header: its count, suggestions, export and keys.
   const batchTools = view === 'batch' && assets.length > 0;
@@ -927,18 +929,14 @@ function Workspace() {
         inert={dialog !== null}
         className={cn(
           'flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1',
-          landing ? 'absolute inset-x-0 top-0 z-10 h-16 px-5 py-0' : 'border-b border-border',
+          landing
+            ? 'absolute inset-x-0 top-0 z-10 h-16 px-6 py-0 sm:px-[8vw]'
+            : 'border-b border-border',
         )}
       >
-        <div
-          className={cn(
-            'flex items-center gap-2.5',
-            landing &&
-              'h-9 rounded-full bg-background/80 px-3.5 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
-          )}
-        >
+        <div className={cn('flex items-center gap-2.5')}>
           {landing ? (
-            <PinchWordmark className="h-[15px]" />
+            <PinchWordmark className="h-[15px]" ink />
           ) : (
             // Home is a new batch; a modified click still opens a new tab, as a link should.
             <a
@@ -961,13 +959,7 @@ function Workspace() {
             </a>
           )}
         </div>
-        <div
-          className={cn(
-            'ml-auto flex items-center gap-2',
-            landing &&
-              'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
-          )}
-        >
+        <div className={cn('ml-auto flex items-center', landing ? 'gap-0.5' : 'gap-2')}>
           {loaded && (
             // Between the images and the rules, which take their place (D79). With images open
             // it is the batch's main step (D87): the notes go to the rules, which read them.
@@ -1358,27 +1350,57 @@ function ShortcutsDialog({
 }
 
 /*
- * The landing: the painting fills the page (dusk in dark mode, night in light mode, crossfading
- * when the theme changes), and a glass card sits in the middle, light in light mode and dark in
- * dark mode. The card sets its own text colour (#1a1a1a on white 90%, #f5f5f5 on near-black 90%)
- * and its secondary text is 80% of it, which keeps 4.5:1 with the painting showing through.
+ * The landing (D133): the title types itself in at the top left while the ring of the author's
+ * pictures spins in below it, on the page's own ground, after a reference clip. What Pinch does
+ * and Add images sit under the title; the footer keeps the offer and the links.
  */
-/** How far the painting drifts against the pointer, in px at the screen's edge. */
-const PARALLAX = { x: 44, y: 28 };
-/** The painting is drawn this much larger, so its edges never show as it drifts. */
-const PARALLAX_SCALE = 1.1;
+/** The ring's pictures (D133) and what the demo marks on each (D135). */
+const RING_SOURCES = RING_PICTURES.map((p) => p.src);
+const RING_TARGETS = RING_PICTURES.map((p) => p.target);
 
-/** The landing card's main button and the hint under it. */
+const LANDING_TITLE = 'Teach AI your taste.';
+
+/** The landing's main button, and what shows beside it while files are dragged over the page. */
 const LANDING_BUTTON =
-  'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
-const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
+  'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors duration-150 motion-reduce:transition-none hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
+const LANDING_HINT = 'm-0 text-[13px] leading-relaxed text-foreground';
+const FOOTER_LINK =
+  '-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 
-/** A key named on the landing card, on the card's own colours. */
-const LandingKey = ({ children }: { children: React.ReactNode }) => (
-  <kbd className="rounded border border-current/20 px-1.5 py-0.5 font-mono text-[12px] text-current">
-    {children}
-  </kbd>
-);
+const GLYPHS = 'ABCDEFGHJKLMNOPRSTUVWXYZabcdefghkmnoprstuvwxyz+-_/';
+
+/**
+ * The text as it types itself in once `run` turns on: each letter flickers through noise, then
+ * settles, left to right. Blank but holding its lines until then; all at once under reduced motion.
+ */
+function useTypedIn(text: string, run: boolean): string {
+  const [shown, setShown] = useState(() => text.replace(/[^\n]/g, ' '));
+  useEffect(() => {
+    if (!run) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShown(text);
+      return;
+    }
+    const begun = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const p = (now - begun) / 700;
+      setShown(
+        [...text]
+          .map((ch, i) => {
+            const at = (i / text.length) * 0.8;
+            if (ch === '\n' || ch === ' ' || p >= at + 0.2) return ch;
+            return p < at ? ' ' : GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+          })
+          .join(''),
+      );
+      if (p < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [text, run]);
+  return shown;
+}
 
 function EmptyState({
   dragging,
@@ -1392,145 +1414,76 @@ function EmptyState({
   offer?: Offer & { price: string };
   onChoose: () => void;
 }) {
-  // Parallax: the painting drifts a little against the pointer, eased so it glides. Still under
-  // reduced motion.
-  const painting = useRef<HTMLDivElement>(null);
+  // The title types in as the ring starts to spin, or after a second if its pictures are slow.
+  const [spinning, setSpinning] = useState(false);
+  const title = useTypedIn(LANDING_TITLE, spinning);
+  // The demo over the ring drives it and tells the waveform how loudly someone is talking.
+  const [ring, setRing] = useState<RingControl | null>(null);
+  const talking = useRef(IDLE_TALK);
   useEffect(() => {
-    const el = painting.current;
-    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let target = { x: 0, y: 0 };
-    let now = { x: 0, y: 0 };
-    let frame = 0;
-    const tick = () => {
-      now = { x: now.x + (target.x - now.x) * 0.08, y: now.y + (target.y - now.y) * 0.08 };
-      el.style.transform = `translate3d(${now.x.toFixed(2)}px, ${now.y.toFixed(2)}px, 0) scale(${PARALLAX_SCALE})`;
-      const left = Math.abs(target.x - now.x) + Math.abs(target.y - now.y);
-      frame = left > 0.05 ? requestAnimationFrame(tick) : 0;
-    };
-    const onMove = (e: PointerEvent) => {
-      target = {
-        x: -(e.clientX / window.innerWidth - 0.5) * PARALLAX.x,
-        y: -(e.clientY / window.innerHeight - 0.5) * PARALLAX.y,
-      };
-      if (!frame) frame = requestAnimationFrame(tick);
-    };
-    window.addEventListener('pointermove', onMove);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      cancelAnimationFrame(frame);
-    };
+    const wait = setTimeout(() => setSpinning(true), 1000);
+    return () => clearTimeout(wait);
   }, []);
   return (
-    // The painting is drawn larger than the page for the parallax; this clips it, so the page never scrolls sideways.
     <section
       data-landing
       aria-label="Start"
       inert={inert}
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      className={cn(
+        'relative flex min-h-0 flex-1 flex-col bg-background',
+        // Files over the window: the whole page takes them.
+        dragging && 'ring-2 ring-foreground/40 ring-inset',
+      )}
     >
-      <div
-        ref={painting}
-        aria-hidden
-        className="absolute inset-0 will-change-transform"
-        style={{ transform: `scale(${PARALLAX_SCALE})` }}
-      >
-        <Image
-          src="/pin-notes/landing.webp"
-          alt=""
-          fill
-          preload
-          sizes="100vw"
-          quality={85}
-          className="object-cover"
-        />
-        {/*
-         * Light mode lays the night painting over the dusk one and fades it in. The theme
-         * provider switches themes with transitions off, so this one is forced on (!); it
-         * stands still under reduced motion.
-         */}
-        <Image
-          src="/pin-notes/landing-night.webp"
-          alt=""
-          fill
-          sizes="100vw"
-          quality={85}
-          className="object-cover opacity-100 transition-opacity! duration-700! ease-in-out! motion-reduce:transition-none! dark:opacity-0"
-        />
-      </div>
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgb(0_0_0/0.06)_30%,rgb(0_0_0/0.4)_100%)]"
-      />
-      <div className="relative min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex min-h-full flex-col">
-          <div className="flex flex-1 items-center justify-center px-6 pt-20 pb-8">
-            {/*
-             * The bezel: a liquid-glass frame around the card. A frosted, saturated blur of the
-             * painting, a bright specular edge on the top-left and bottom-right (the masked
-             * ring below), and light pooled along the inside edge.
-             */}
-            <div
-              className={cn(
-                'relative w-full max-w-[27rem] rounded-[2rem] bg-gradient-to-br from-white/30 via-white/[0.12] to-white/25 p-1.5 backdrop-blur-2xl backdrop-saturate-150 transition-[box-shadow,background-color] duration-300',
-                'shadow-[inset_0_1px_1px_rgb(255_255_255/0.6),inset_0_-1px_1px_rgb(255_255_255/0.3),inset_0_0_18px_rgb(255_255_255/0.18),0_30px_80px_-20px_rgb(0_0_0/0.55)]',
-                dragging && 'bg-white/40 ring-2 ring-white/80',
-              )}
-            >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-[inherit] p-px"
-                style={{
-                  background:
-                    'linear-gradient(135deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0) 32%, rgb(255 255 255 / 0) 66%, rgb(255 255 255 / 0.7))',
-                  // Only the 1px edge shows: the middle is masked out.
-                  WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-                  WebkitMaskComposite: 'xor',
-                  mask: 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)',
-                }}
+          <div className="shrink-0 px-6 pt-28 sm:px-[8vw]">
+            <h1 className="m-0 font-display text-[clamp(1.75rem,3.4vw,2.75rem)] leading-[1.04] font-light tracking-[-0.035em] text-black dark:text-white">
+              <span className="sr-only">{LANDING_TITLE.replace('\n', ' ')}</span>
+              <span aria-hidden className="whitespace-pre-wrap">
+                {title}
+              </span>
+            </h1>
+            <p className="mt-4 mb-0 max-w-md text-[13px] leading-relaxed text-balance text-muted-foreground">
+              Walk through your screenshots out loud. Pinch turns what you say into rules for your
+              agent.
+            </p>
+            {/* The waveform sits in this row, centred on the page and on the button (D135). */}
+            <div className="relative mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
+                <Plus className="size-4" aria-hidden />
+                Add images
+              </button>
+              <p className={LANDING_HINT} aria-live="polite">
+                {dragging && 'Drop to add them.'}
+              </p>
+              <Waveform
+                level={talking}
+                className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-black dark:text-white"
               />
-              <div className="overflow-hidden rounded-[1.625rem] bg-white/90 px-7 pt-7 pb-6 text-[#1a1a1a] ring-1 ring-black/10 transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! dark:bg-[#0e0e10]/90 dark:text-[#f5f5f5] dark:ring-black/40">
-                <DropFolder
-                  active={dragging}
-                  className="mx-auto -mt-3 mb-3 w-64 [@media(max-height:760px)]:w-52"
-                />
-                <h1 className="m-0 text-center text-[1.4rem] leading-snug font-normal tracking-tight text-balance">
-                  Talk your agent through your taste
-                </h1>
-                <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  Walk through your screenshots out loud. Pinch turns what you say into rules for
-                  your agent.
-                </p>
-                <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  <LandingKey>R</LandingKey> records, <LandingKey>Space</LandingKey> pauses, the
-                  arrows turn. It stays on this computer.
-                </p>
-                <div className="mt-5 flex flex-col items-center gap-3">
-                  <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
-                    <Plus className="size-4" aria-hidden />
-                    Add images
-                  </button>
-                  <p className={LANDING_HINT} aria-live="polite">
-                    {dragging ? (
-                      <span className="text-current">Drop to add them.</span>
-                    ) : (
-                      'Or drag images or a Pinch export here, or paste.'
-                    )}
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
-          <p className="m-0 shrink-0 bg-gradient-to-t from-black/85 to-transparent px-6 pt-12 pb-4 text-center text-[13px] leading-relaxed text-white">
-            <span className="mx-auto block max-w-3xl text-balance">
+          {/*
+           * The ring's frame: zero to start from and grown into the free space. The cursor comes in
+           * from outside it, so it clips (D135).
+           */}
+          <div className="relative min-h-[15rem] w-full flex-[1_1_0px] overflow-hidden">
+            <RingGallery
+              pictures={RING_SOURCES}
+              onStart={() => setSpinning(true)}
+              onControl={setRing}
+              className="absolute inset-0 size-full"
+            />
+            <RingDemo ring={ring} talking={talking} targets={RING_TARGETS} />
+          </div>
+          <p className="m-0 flex shrink-0 flex-wrap justify-between gap-x-6 gap-y-1 px-6 pb-4 text-[13px] leading-relaxed text-muted-foreground sm:px-[8vw]">
+            <span className="text-balance">
               {offer
                 ? `Talking through images is free. Start free with ${offer.free} credits; top up anytime. Your voice is never kept.`
                 : 'Free, no account. Images stay in this browser, and your voice is never kept.'}
             </span>
-            <span className="mx-auto mt-1 block">
-              <a
-                href="/terms"
-                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              >
+            <span>
+              <a href="/terms" className={FOOTER_LINK}>
                 Terms
               </a>{' '}
               · Created by{' '}
@@ -1538,7 +1491,7 @@ function EmptyState({
                 href="https://yair-works.vercel.app"
                 target="_blank"
                 rel="noopener"
-                className="-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className={FOOTER_LINK}
               >
                 Yair Cohen
               </a>
@@ -1549,4 +1502,3 @@ function EmptyState({
     </section>
   );
 }
-

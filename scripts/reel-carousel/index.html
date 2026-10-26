@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reel carousel</title>
+    <style>
+      :root {
+        --bg: #111213;
+        --fg: #f2f2f0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        overflow: hidden;
+      }
+      body {
+        font:
+          400 13px/1.3 "Helvetica Neue",
+          Helvetica,
+          Inter,
+          Arial,
+          sans-serif;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        cursor: grab;
+      }
+      canvas:active {
+        cursor: grabbing;
+      }
+      h1 {
+        position: fixed;
+        left: clamp(16px, 8vw, 120px);
+        top: clamp(56px, 15vh, 140px);
+        margin: 0;
+        font-size: clamp(30px, 5.2vw, 64px);
+        font-weight: 400;
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        pointer-events: none;
+        white-space: pre;
+      }
+      button {
+        position: fixed;
+        bottom: 20px;
+        background: none;
+        border: 0;
+        padding: 8px;
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+        opacity: 0.8;
+      }
+      button:hover {
+        opacity: 1;
+      }
+      #add {
+        right: 16px;
+        font-size: 22px;
+        line-height: 1;
+      }
+      #replay {
+        left: 16px;
+      }
+      body.dropping canvas {
+        opacity: 0.5;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="reel"></canvas>
+    <h1 id="title" aria-label="Gallery + Motion"></h1>
+    <button id="replay" type="button">Replay</button>
+    <button id="add" type="button" aria-label="Add images">+</button>
+    <input id="files" type="file" accept="image/*" multiple hidden />
+    <script type="module">
+      import { createReelCarousel } from "./reel-carousel.js"
+
+      const reel = createReelCarousel(document.getElementById("reel"), {
+        images: samples(),
+      })
+
+      // Your own images: pick or drop them, or pass ?images=url1,url2 in the address.
+      const fromQuery = new URLSearchParams(location.search).get("images")
+      if (fromQuery) reel.setImages(fromQuery.split(","))
+      const use = (files) => {
+        const images = [...files].filter((f) => f.type.startsWith("image/"))
+        if (images.length) reel.setImages(images).then(() => replay())
+      }
+      const picker = document.getElementById("files")
+      document.getElementById("add").onclick = () => picker.click()
+      picker.onchange = () => use(picker.files)
+      addEventListener("dragover", (e) => {
+        e.preventDefault()
+        document.body.classList.add("dropping")
+      })
+      addEventListener("dragleave", () =>
+        document.body.classList.remove("dropping"),
+      )
+      addEventListener("drop", (e) => {
+        e.preventDefault()
+        document.body.classList.remove("dropping")
+        use(e.dataTransfer.files)
+      })
+
+      const title = document.getElementById("title")
+      const replay = () => {
+        reel.replay()
+        scramble(title, "Gallery\n+ Motion")
+      }
+      document.getElementById("replay").onclick = replay
+      scramble(title, "Gallery\n+ Motion")
+
+      // Letters resolve left to right out of noise, as the ring zooms in.
+      function scramble(el, text, delay = 80, duration = 650) {
+        const glyphs = "ABCDEFGHJKLMNOPRSTUVWXYZabcdefghkmnoprstuvwxyz+-_/"
+        const t0 = performance.now() + delay
+        cancelAnimationFrame(el._frame)
+        const tick = (now) => {
+          const p = (now - t0) / duration
+          el.textContent = [...text]
+            .map((ch, i) => {
+              const at = (i / text.length) * 0.8
+              if (ch === "\n" || p >= at + 0.2) return ch
+              if (p < at) return " "
+              return ch === " "
+                ? " "
+                : glyphs[(Math.random() * glyphs.length) | 0]
+            })
+            .join("")
+          if (p < 1) el._frame = requestAnimationFrame(tick)
+        }
+        el._frame = requestAnimationFrame(tick)
+      }
+
+      // Stand-in posters so the demo runs without any files.
+      function samples() {
+        const W = 1000,
+          H = 960
+        const card = (paint) => {
+          const c = document.createElement("canvas")
+          c.width = W
+          c.height = H
+          paint(c.getContext("2d"))
+          return c
+        }
+        const caption = (g, color, a, b) => {
+          g.fillStyle = color
+          g.font = "500 18px Helvetica, Arial"
+          g.fillText(a, 48, H - 70)
+          g.fillText(b, 48, H - 46)
+          g.textAlign = "right"
+          g.fillText("Vol. 01 / 24", W - 48, H - 58)
+          g.textAlign = "left"
+        }
+        return [
+          card((g) => {
+            g.fillStyle = "#f4f4f2"
+            g.fillRect(0, 0, W, H)
+            g.fillStyle = "#111"
+            g.font = '300 230px "Helvetica Neue", Helvetica, Arial'
+            ;["123", "456", "789"].forEach((row, i) => {
+              ;[...row].forEach((d, j) => {
+                g.fillText(d, 170 + j * 250, 300 + i * 250)
+              })
+            })
+            caption(g, "#333", "Typeface specimen", "Segment Mono")
+          }),
+          card((g) => {
+            const sky = g.createLinearGradient(0, 0, 0, 540)
+            sky.addColorStop(0, "#d9dbe4")
+            sky.addColorStop(1, "#8b8fa3")
+            g.fillStyle = sky
+            g.fillRect(0, 0, W, 540)
+            g.fillStyle = "#b43c33"
+            g.beginPath()
+            g.arc(620, 400, 170, Math.PI, 0)
+            g.fill()
+            g.fillStyle = "#1a2fd0"
+            g.fillRect(0, 540, W, H - 540)
+            g.fillStyle = "#fff"
+            g.font = "700 150px Helvetica, Arial"
+            g.fillText("BLUE", 48, 700)
+            caption(g, "#cdd3ff", "Exhibition", "Rooms 4–6")
+          }),
+          card((g) => {
+            const grad = g.createLinearGradient(0, 0, 0, H)
+            grad.addColorStop(0, "#2a2a2a")
+            grad.addColorStop(0.35, "#e9e9e9")
+            grad.addColorStop(1, "#f6f6f6")
+            g.fillStyle = grad
+            g.fillRect(0, 0, W, H)
+            g.fillStyle = "#0c0c0c"
+            g.fillRect(300, 240, 150, 420)
+            g.fillRect(300, 400, 380, 160)
+            g.fillRect(590, 180, 90, 560)
+            caption(g, "#555", "Object no. 7", "Anodised steel")
+          }),
+          card((g) => {
+            g.fillStyle = "#0d0d0d"
+            g.fillRect(0, 0, W, H)
+            g.fillStyle = "#d6f53a"
+            for (let i = 0; i < 9; i++)
+              g.fillRect(48, 80 + i * 76, 260 + ((i * 197) % 640), 46)
+            caption(g, "#d6f53a", "Index", "Signals, 2026")
+          }),
+          card((g) => {
+            g.fillStyle = "#121212"
+            g.fillRect(0, 0, W, H)
+            const band = g.createLinearGradient(0, 0, W, 0)
+            ;["#f2a0c0", "#f7d38a", "#ffffff", "#9fb6ff", "#5d4cc9"].forEach(
+              (c, i) => {
+                band.addColorStop(i / 4, c)
+              },
+            )
+            g.fillStyle = band
+            g.save()
+            g.translate(0, 450)
+            g.rotate(-0.12)
+            g.fillRect(-40, -70, W + 80, 140)
+            g.restore()
+            g.filter = "blur(30px)"
+            g.globalAlpha = 0.6
+            g.fillRect(0, 360, W, 160)
+            g.filter = "none"
+            g.globalAlpha = 1
+            caption(g, "#999", "Light study", "Long exposure")
+          }),
+          card((g) => {
+            g.fillStyle = "#ece9e1"
+            g.fillRect(0, 0, W, H)
+            g.fillStyle = "#1b1b1b"
+            g.font = "italic 400 640px Georgia, serif"
+            g.fillText("&", 270, 690)
+            caption(g, "#444", "Ampersand", "Old style")
+          }),
+          card((g) => {
+            g.fillStyle = "#e6e6e6"
+            g.fillRect(0, 0, W, H)
+            for (let r = 0; r < 3; r++)
+              for (let c = 0; c < 4; c++) {
+                g.fillStyle = ["#c9c9c9", "#9da6a0", "#d8cfc2", "#a9b3c4"][
+                  (r + c) % 4
+                ]
+                g.fillRect(48 + c * 230, 60 + r * 250, 206, 226)
+              }
+            caption(g, "#555", "Contact sheet", "12 frames")
+          }),
+          card((g) => {
+            g.fillStyle = "#a8e0c8"
+            g.fillRect(0, 0, W, H)
+            g.fillStyle = "#0f3d2e"
+            g.font = "700 190px Helvetica, Arial"
+            ;["Slow", "Grow", "Glow"].forEach((w, i) => {
+              g.fillText(w, 48, 250 + i * 200)
+            })
+            caption(g, "#0f3d2e", "Garden notes", "Spring")
+          }),
+          card((g) => {
+            g.fillStyle = "#1b1b1d"
+            g.fillRect(0, 0, W, H)
+            g.strokeStyle = "#f2f2f0"
+            g.lineWidth = 3
+            for (let i = 0; i < 16; i++) {
+              g.beginPath()
+              g.arc(W / 2, 450, 30 + i * 24, 0, Math.PI * 2)
+              g.stroke()
+            }
+            caption(g, "#aaa", "Rings", "Plotter drawing")
+          }),
+        ]
+      }
+    </script>
+  </body>
+</html>

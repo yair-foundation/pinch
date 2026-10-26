@@ -45,18 +45,21 @@ const SWAP =
 
 /**
  * The wordmark, named "Pinch" for assistive tech (the two copies are decorative), with a small "TM" at
- * its top right as part of the lockup. Size it by the svg's height.
+ * its top right as part of the lockup. Size it by the svg's height. `ink` sets it in black and white
+ * instead of the theme's text colours, to match the landing's title (D134).
  */
-export function PinchWordmark({ className }: { className?: string }) {
+export function PinchWordmark({ className, ink }: { className?: string; ink?: boolean }) {
   return (
     <span role="img" aria-label="Pinch" className="-my-1.5 inline-grid overflow-hidden py-1.5">
       <span
-        className={cn(SWAP, 'translate-y-0 text-[#3d3d3d] opacity-100 dark:translate-y-full dark:opacity-0')}
+        className={cn(SWAP, 'translate-y-0 opacity-100 dark:translate-y-full dark:opacity-0',
+          ink ? 'text-black' : 'text-[#3d3d3d]')}
       >
         <Lockup className={className} />
       </span>
       <span
-        className={cn(SWAP, 'translate-y-full text-[#d8d8d8] opacity-0 dark:translate-y-0 dark:opacity-100')}
+        className={cn(SWAP, 'translate-y-full opacity-0 dark:translate-y-0 dark:opacity-100',
+          ink ? 'text-white' : 'text-[#d8d8d8]')}
       >
         <Lockup className={className} />
       </span>

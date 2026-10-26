@@ -11,11 +11,11 @@ The visual rules Pinch follows, condensed from the design foundations of the sys
 
 ## Typography
 
-Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`). Text takes a role, never a one-off size:
+Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`), and ABC Favorit Light for the landing's title only (`font-display`, D134). Text takes a role, never a one-off size:
 
 | Role | Current value | Where |
 | --- | --- | --- |
-| Landing headline | 1.4rem regular, snug leading, tight tracking | landing card |
+| Landing headline | ABC Favorit Light, 1.75–2.75rem (3.4vw), 1.04 leading, -0.035em tracking | landing, top left (D133, D134) |
 | Page title | 24px medium, tight tracking | Your rules |
 | Card title | 15px medium | a rule's title |
 | Group label | 13px medium muted, with its count | a topic's rules on Your rules |
@@ -29,7 +29,7 @@ Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`).
 
 ## Colour
 
-Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-muted`, `border-border`, …); no hard-coded greys apart from the landing, which sits on a painting and uses white at set opacities.
+Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-muted`, `border-border`, …); no hard-coded greys apart from the landing's main button (neutral-900, white in dark mode).
 
 | | Light | Dark |
 | --- | --- | --- |
@@ -41,12 +41,12 @@ Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-mu
 
 - Coloured borders only for selection, focus or validation errors, at least 2px. Never for decoration or status.
 - Shadows mean elevation, in light mode only: menus, tooltips, the toast and the drag frame carry a shadow with `dark:shadow-none`; dark mode uses borders and surface contrast. Nothing resting on a surface has a shadow.
-- Radius scale: sm 4, md 6, lg 8, xl 12, 2xl 14, 3xl 20, 4xl 40 (px). Buttons 6px, inputs 8px, panels 10–14px, the landing bezel 32px.
+- Radius scale: sm 4, md 6, lg 8, xl 12, 2xl 14, 3xl 20, 4xl 40 (px). Buttons 6px, inputs 8px, panels 10–14px.
 
 ## Motion
 
-- Short and purposeful: a 300 ms transition on the landing card's drag state, the side folder on the landing (affectUI's Side Folder, turned landscape), the shimmer while rules load, the 700 ms crossfade of the landing painting between themes, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, the pointer parallax on the painting, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). No decorative motion.
-- **Reduced motion is honoured.** The painting, the theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the parallax, the folder, the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
+- Short and purposeful: the landing's ring spinning in, settling and drifting, with its title typing in as it starts, and the cursor and waveform over it showing someone talking through the pictures (D133, D135, the one decorative scene, and the first thing anyone sees), the shimmer while rules load, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). No other decorative motion.
+- **Reduced motion is honoured.** The theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the ring stands settled, the landing's title is there at once, the cursor's demo doesn't run and the waveform stands still; the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
 
 ## Icons
 

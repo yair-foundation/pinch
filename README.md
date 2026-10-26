@@ -93,7 +93,7 @@ src/app/api/pin/         suggest, learn, checks, notes; me, auth/ (google, callb
 src/app/terms/           the terms page
 src/components/pin/      the app (pin-app.tsx), collections (collections.tsx; kept in the browser, collections-store.ts,
                          or the account, cloud-store.ts), Connect agent (connect-agent.tsx), the account menu and its
-                         gate (account.tsx), shimmer, landing folder, wordmark, IndexedDB store, canvas and zip
+                         gate (account.tsx), shimmer, landing ring (WebGL), wordmark, IndexedDB store, canvas and zip
                          rendering, topic tags and their picker
 src/components/site/     theme provider and toggle
 src/components/ui/       button, switch, tooltip (Base UI)
@@ -103,7 +103,7 @@ src/lib/pin/             the pure model, suggestion prompt and filter, export su
 src/lib/                 session, google, account, billing, access, cloud (sign-in, purchases, the gate, the
                          account's collections); blob-doc (JSON documents in Blob), budget (prices, refusal, visitor
                          key), jev (one request to Jev), auth (admin Basic auth, same-origin check), image (sniffing)
-public/pin-notes/        icon.svg (favicon), landing.webp, landing-night.webp (the paintings)
+public/pin-notes/        icon.svg (favicon), ring/ (the landing ring's pictures)
 scripts/                 jev-stub.mjs, format.mjs, rules-bench/ (the rules benchmark: cases, the baseline, the runner)
 docs/                    architecture, decisions, design, status
 ```

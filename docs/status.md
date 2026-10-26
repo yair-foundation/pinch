@@ -44,7 +44,7 @@ Notes carry optional topic chips (Visual, Layout, Copy, Interaction, Flow, Acces
 
 AI placement ("Find in image") and the free-text box were removed on 2026-10-20 (D68), and all 21 findings of an end-to-end review fixed.
 
-Built and live: the landing with the painting (dusk and a dark card in dark mode, night and a light card in light, crossfading on a theme change), parallax and liquid-glass bezel; a Pin / Area / Arrow toolbar; sources as four radio buttons; topic chips on each note; opening an export; Your rules, read from notes into a taste library, sliced by topic, with Connect agent (MCP or a prompt); Google sign-in, Lemon Squeezy and collections in the account (off until configured); the terms page; suggestions with Tab to accept and Esc to dismiss; undo and redo; keyboard shortcuts; anonymous saving of note text with Jev area tags and the owner's JSON read; desktop only; no cap on images a session (D103).
+Built and live: the landing (since D133 a ring of the author's pictures spinning in under a typed-in title; before it a painting with a glass card); a Pin / Area / Arrow toolbar; sources as four radio buttons; topic chips on each note; opening an export; Your rules, read from notes into a taste library, sliced by topic, with Connect agent (MCP or a prompt); Google sign-in, Lemon Squeezy and collections in the account (off until configured); the terms page; suggestions with Tab to accept and Esc to dismiss; undo and redo; keyboard shortcuts; anonymous saving of note text with Jev area tags and the owner's JSON read; desktop only; no cap on images a session (D103).
 
 ## Launching credits (D98)
 

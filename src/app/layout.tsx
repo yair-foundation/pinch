@@ -1,6 +1,7 @@
 import './global.css';
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { ThemeProvider } from '@/components/site/theme-provider';
 import { cn } from '@/lib/utils';
 
@@ -28,11 +29,18 @@ const geistMono = Geist_Mono({
   variable: '--font-mono',
 });
 
+// ABC Favorit Light for the landing's title (D134), as --font-display.
+const favorit = localFont({
+  src: './fonts/ABCFavoritTrial-Light.otf',
+  weight: '300',
+  variable: '--font-display',
+});
+
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <html
       lang="en"
-      className={cn(geist.variable, geistMono.variable, 'font-sans')}
+      className={cn(geist.variable, geistMono.variable, favorit.variable, 'font-sans')}
       suppressHydrationWarning
     >
       <body className="flex flex-col min-h-screen">
