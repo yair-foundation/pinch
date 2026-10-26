@@ -88,6 +88,7 @@ import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
 import { DropFolder } from './drop-folder';
+import { Reel } from './reel';
 import { TopicPicker } from './topic-picker';
 import {
   bitmapOf,
@@ -413,6 +414,9 @@ function Workspace() {
   const [tool, setTool] = useState<Tool>('pin');
   // The batch, or the collections in its place (D79). Per visit.
   const [view, setView] = useState<'batch' | 'collections'>('batch');
+  // A batch is talked through on the reel (D131). A session that already holds typed notes (an
+  // export opened, or work from before) keeps the marking screen, so its notes stay in reach.
+  const narrating = !assets.some(hasMarks);
   const viewRef = useRef(view);
   viewRef.current = view;
   // Who is looking, and their credits (D81, D98). Anyone marks images and reads notes into
@@ -866,7 +870,6 @@ function Workspace() {
         lines.push(`Scaled down ${count(scaled, 'screenshot')} to fit (16 megapixel limit).`);
       if (full) lines.push('Browser storage is full. Remove images or export, then continue.');
       const trouble = failed.length > 0 || skipped > 0 || full;
-      if (!trouble && !before.length && added.length) lines.push(HOW_TO_MARK);
       setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
     [commit, openExport],
@@ -1047,8 +1050,9 @@ function Workspace() {
   // the open note (then leaves the Arrow tool), ⌘Z and ⇧⌘Z undo and redo, ? lists them all.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys.
-      if (dialog || view === 'collections') return;
+      // A dialog holds the keyboard; it closes itself on Escape. The collections have no keys,
+      // and the walkthrough (D131) has its own.
+      if (dialog || view === 'collections' || narrating) return;
       if (e.key === 'Escape') {
         if (isTyping(e.target)) (e.target as HTMLElement).blur();
         else if (!selected && tool !== 'pin') setTool('pin');
@@ -1173,6 +1177,7 @@ function Workspace() {
     undo,
     redo,
     view,
+    narrating,
   ]);
 
   const toggleSuggestions = () => {
@@ -1453,7 +1458,7 @@ function Workspace() {
               'gap-0.5 rounded-full bg-background/80 p-1 shadow-sm ring-1 ring-border/70 backdrop-blur-md transition-colors! duration-700! ease-in-out! motion-reduce:transition-none!',
           )}
         >
-          {batchTools && (
+          {batchTools && !narrating && (
             <p
               className="m-0 mr-2 text-[13px] text-muted-foreground max-[900px]:hidden"
               aria-live="polite"
@@ -1609,6 +1614,16 @@ function Workspace() {
           inert={dialog !== null}
           offer={me?.paywall ? { ...OFFER, price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
+        />
+      ) : narrating ? (
+        // The walkthrough (D131): the batch on a reel, talked through with the microphone on.
+        <Reel
+          assets={assets}
+          urls={urls}
+          index={index}
+          inert={dialog !== null}
+          onIndex={setIndex}
+          onSave={store.saveTake}
         />
       ) : (
         <div inert={dialog !== null} className="flex min-h-0 flex-1">
@@ -1949,6 +1964,13 @@ const LANDING_BUTTON =
   'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors! duration-700! ease-in-out! motion-reduce:transition-none! hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
 const LANDING_HINT = 'm-0 text-center text-[13px] leading-relaxed text-current/80';
 
+/** A key named on the landing card, on the card's own colours. */
+const LandingKey = ({ children }: { children: React.ReactNode }) => (
+  <kbd className="rounded border border-current/20 px-1.5 py-0.5 font-mono text-[12px] text-current">
+    {children}
+  </kbd>
+);
+
 function EmptyState({
   dragging,
   inert,
@@ -2063,11 +2085,14 @@ function EmptyState({
                   className="mx-auto -mt-3 mb-3 w-64 [@media(max-height:760px)]:w-52"
                 />
                 <h1 className="m-0 text-center text-[1.4rem] leading-snug font-normal tracking-tight text-balance">
-                  Talk through screenshots. Your agent learns your taste.
+                  Pinch voice test
                 </h1>
                 <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
-                  Point at what works and what doesn’t, and say why. Pinch turns what you say into
-                  rules for any AI agent.
+                  Talk through screenshots you already noted, pointing at what you mean.
+                </p>
+                <p className="mx-auto mt-2 mb-0 max-w-sm text-center text-sm leading-relaxed text-current/80 text-balance">
+                  <LandingKey>R</LandingKey> records, <LandingKey>Space</LandingKey> pauses, the
+                  arrows turn. It stays on this computer.
                 </p>
                 <div className="mt-5 flex flex-col items-center gap-3">
                   <button type="button" onClick={onChoose} className={LANDING_BUTTON}>

@@ -1,9 +1,11 @@
 import type { Asset } from '@/lib/pin/model';
+import type { Take } from '@/lib/pin/narration';
 
 /*
  * Pinch keeps a session in the browser's IndexedDB: no account, nothing
  * uploaded. Images are stored as Blobs by asset id; the assets and their
- * marks are one record, written after every change.
+ * marks are one record, written after every change. A recorded walkthrough (D131) keeps its
+ * take beside them and its audio with the images, under `take-<id>`.
  *
  * A browser that blocks IndexedDB (private windows, some policies) gets the
  * same interface over memory: the session then lasts until the tab closes,
@@ -14,7 +16,7 @@ const DB = 'pin-notes';
 const IMAGES = 'images';
 const STATE = 'state';
 
-type Memory = { images: Map<string, Blob>; assets: Asset[]; exported?: string };
+type Memory = { images: Map<string, Blob>; assets: Asset[]; exported?: string; takes?: Take[] };
 
 let opening: Promise<IDBDatabase> | null = null;
 let memory: Memory | null = null;
@@ -117,6 +119,30 @@ export const saveExported = (digest: string) =>
     },
   );
 
+/** The walkthroughs recorded on this session, oldest first. */
+export const loadTakes = async () =>
+  ((await run(
+    STATE,
+    'readonly',
+    (s) => s.get('takes'),
+    (m) => m.takes,
+  )) as Take[] | undefined) ?? [];
+
+/** Keep a take and its audio: the audio first, so a take is never listed without it. */
+export async function saveTake(take: Take, audio: Blob) {
+  await putImage(`take-${take.id}`, audio);
+  const takes = [...(await loadTakes()).filter((t) => t.id !== take.id), take];
+  await run(
+    STATE,
+    'readwrite',
+    (s) => s.put(takes, 'takes'),
+    (m) => {
+      m.takes = takes;
+      return 'takes' as IDBValidKey;
+    },
+  );
+}
+
 export const putImage = (id: string, blob: Blob) =>
   run(
     IMAGES,
@@ -163,6 +189,7 @@ export async function clearAll() {
     (s) => s.clear(),
     (m) => {
       m.assets = [];
+      m.takes = [];
       return undefined;
     },
   );
