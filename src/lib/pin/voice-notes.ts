@@ -6,7 +6,8 @@
  * between two rests for "move" or "align", a dot on a rest or wherever the pointer was at
  * "this", or else the whole screen. The voice tags heard are applied in the order they were
  * said: a tag and a source carry on to the screens shown next, a star or topics go to a note,
- * "drop that", "redo this screen" and "not that, this" edit the notes made so far. Running the
+ * "drop that", "redo this screen" and "not that, this" edit the notes made so far; the screens
+ * said "remove it" over are named by `removedScreens`, to take out of the batch (D139). Running the
  * same take again replaces what it made, so reading it twice never doubles a note.
  */
 
@@ -612,6 +613,9 @@ export function applyTake(
         case 'redo':
           notes.splice(0, notes.length, ...notes.filter((m) => m.at > op.start));
           break;
+        // Taken out by `removedScreens`, a step of its own, so Undo brings back just the screen.
+        case 'remove':
+          break;
         case 'repoint': {
           const p = pointerAt(take.pointer, k, op.end);
           if (p) edit(notes.at(-1), (m) => ({ ...m, shape: { kind: 'dot', x: p.x, y: p.y } }));
@@ -650,3 +654,9 @@ export function applyTake(
   }
   return list;
 }
+
+/** The screens of a read take said "remove it" over (D139), to take out of the batch. */
+export const removedScreens = (take: Take, known: readonly string[] = []): string[] =>
+  wordsByScreen(take.shown, take.words ?? [], take.screens.length).flatMap((said, k) =>
+    parseVoiceTags(said, known).ops.some((op) => op.kind === 'remove') ? [take.screens[k].id] : [],
+  );

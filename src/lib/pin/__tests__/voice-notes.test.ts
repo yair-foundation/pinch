@@ -9,6 +9,7 @@ import {
   flipVerdict,
   isWhole,
   placeClaim,
+  removedScreens,
   topicsOfClaim,
   verdictOfClaim,
   voiceNotes,
@@ -289,6 +290,16 @@ describe('voice notes: a take applied', () => {
       take(words, [...rest(0.2, 0.2, 0, 900), [at - 100, 0, 0.6, 0.7]]),
     );
     assert.deepEqual(one.marks[0].shape, { kind: 'dot', x: 0.6, y: 0.7 });
+  });
+
+  it('names the screens said "remove it" over, and leaves the rest', () => {
+    const t = take([
+      ...say('This is a duplicate. … Remove it.'),
+      ...say('The list reads well.', 11_000),
+    ]);
+    assert.deepEqual(removedScreens(t), ['one']);
+    assert.deepEqual(removedScreens(take(say('Remove that.'))), []);
+    assert.equal(applyTake([asset('one'), asset('two')], t).length, 2);
   });
 
   it('leaves out a screen no longer in the batch', () => {

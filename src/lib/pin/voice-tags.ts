@@ -29,6 +29,7 @@ export type VoiceOp = { start: number; end: number } & (
   | { kind: 'topics'; topics: Topic[] }
   | { kind: 'drop'; note: NoteRef }
   | { kind: 'redo' }
+  | { kind: 'remove' }
   | { kind: 'repoint' }
   | { kind: 'next' }
   | { kind: 'back' }
@@ -267,6 +268,25 @@ const REDO = [
   'start over on this one',
   'start this screen over',
 ];
+/** The screen out of the batch (D139): "remove" with "it" or "this", or the screen named. */
+const REMOVE = [
+  'remove it',
+  'remove this',
+  'remove this one',
+  'remove this screen',
+  'remove this image',
+  'remove this screenshot',
+  'remove the screen',
+  'remove the image',
+  'remove it from the batch',
+  'remove this from the batch',
+  'delete this screen',
+  'delete this image',
+  'delete this screenshot',
+  'take it out',
+  'take this out',
+  'take this one out',
+];
 const NEXT = ['next', 'next one', 'next screen', 'go on', 'move on'];
 const BACK = ['back', 'go back', 'previous', 'previous one', 'previous screen', 'last screen'];
 const REPOINT = ['not that this', 'no not that this', 'not that this one', 'not that one this one'];
@@ -308,6 +328,7 @@ function command(c: Clause, known: readonly string[]): Op | null {
   if (NEXT.includes(said)) return { kind: 'next' };
   if (BACK.includes(said)) return { kind: 'back' };
   if (REDO.includes(said)) return { kind: 'redo' };
+  if (REMOVE.includes(said)) return { kind: 'remove' };
   if (STAR.includes(said)) return { kind: 'star' };
   if (UNSTAR.includes(said)) return { kind: 'unstar' };
   // "star the second one", "unstar number two"
@@ -318,6 +339,7 @@ function command(c: Clause, known: readonly string[]): Op | null {
   // "drop that", "delete it", "drop the second one", "scratch that"
   if (DROP.includes(w[0])) {
     const rest = w.slice(1);
+    // "Remove it" and "remove this" take the screen out (above); "remove that" is the note.
     if (['that', 'it', 'this', 'that one', 'this one', 'the last one'].includes(phrase(rest)))
       return { kind: 'drop', note: 'last' };
     const note = noteRef(rest);
@@ -426,5 +448,6 @@ export const VOICE_LEGEND: { say: string[]; does: string; kind: VoiceOp['kind'] 
   { say: ['Drop that', 'Drop the second one'], does: 'Remove a note', kind: 'drop' },
   { say: ['Not that, this'], does: 'Point at the right spot again', kind: 'repoint' },
   { say: ['Redo this screen'], does: 'Talk through it again', kind: 'redo' },
+  { say: ['Remove it'], does: 'Take the screen out of the batch', kind: 'remove' },
   { say: ['Next', 'Back'], does: 'Turn the reel', kind: 'next' },
 ];

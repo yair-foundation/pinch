@@ -78,6 +78,8 @@ export function opLabel(op: VoiceOp): string {
       return `Drop${nth(op.note)}`;
     case 'redo':
       return 'Redo';
+    case 'remove':
+      return 'Removed';
     case 'repoint':
       return 'Repoint';
     case 'next':
