@@ -1,8 +1,8 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, CircleHelp, Download, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, Download, Star, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
-import type { Asset } from '@/lib/pin/model';
+import { type Asset, type Mark, verdictOf } from '@/lib/pin/model';
 import {
   COUNTDOWN,
   clockText,
@@ -17,10 +17,12 @@ import {
   type Wheel,
   wheelTurn,
 } from '@/lib/pin/narration';
-import { opLabel, spoken, wordsByScreen } from '@/lib/pin/transcript';
+import { opLabel, wordsByScreen } from '@/lib/pin/transcript';
+import { isWhole, voiceNotes, voicePrefix } from '@/lib/pin/voice-notes';
 import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
+import { VERDICT_COLOR } from './render';
 
 /*
  * The walkthrough (D131): the batch on a reel, after a View-Master. The screenshot being narrated
@@ -29,20 +31,90 @@ import { hit } from './dialog';
  * or swipe) turn the reel, F goes to the end, and ? or the Keys and voice button opens the legend. While recording, the microphone
  * and the pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
  * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
- * Finish and shown by screen, with the voice tags heard; they aren't turned into notes yet.
+ * Finish and made into notes where the pointer was, with the voice tags heard applied (D137);
+ * the end card lists them by screen, and the middle screenshot shows its notes, numbered.
  */
 
-/** What was said over one screen: its voice tags and the words left for notes. */
-type Heard = { name: string; ops: string[]; rest: string }[];
+/** What was said over one screen: its voice tags, and the notes the take made, numbered. */
+type Heard = { id: string; name: string; ops: string[]; notes: { mark: Mark; n: number }[] }[];
 
-/** The take's words by screen, as the end card shows them. */
-function heardOf(take: Take, words: TimedWord[], known: string[]): Heard {
-  return wordsByScreen(take.shown, words, take.screens.length)
+/** The take by screen, as the end card shows it: what it heard and the notes now in the batch. */
+function heardOf(take: Take, assets: Asset[], known: string[]): Heard {
+  const prefix = voicePrefix(take.id);
+  return wordsByScreen(take.shown, take.words ?? [], take.screens.length)
     .map((said, k) => {
-      const { ops, rest } = parseVoiceTags(said, known);
-      return { name: take.screens[k].name, ops: ops.map(opLabel), rest: spoken(rest) };
+      const { id, name } = take.screens[k];
+      const a = assets.find((x) => x.id === id);
+      const notes = a
+        ? voiceNotes(a)
+            .map((mark, i) => ({ mark, n: i + 1 }))
+            .filter((x) => x.mark.id.startsWith(prefix))
+        : [];
+      return { id, name, ops: parseVoiceTags(said, known).ops.map(opLabel), notes };
     })
-    .filter((s) => s.ops.length || s.rest);
+    .filter((s) => s.ops.length || s.notes.length);
+}
+
+const VERDICT_TEXT = {
+  good: 'text-green-700 dark:text-green-400',
+  bad: 'text-red-700 dark:text-red-400',
+};
+
+/** The notes said on a screen, drawn over it where they were pointed, numbered (D137). */
+function VoiceMarks({ marks }: { marks: Mark[] }) {
+  return (
+    <span aria-hidden className="pointer-events-none absolute inset-0">
+      {marks.map((m, i) => {
+        if (isWhole(m.shape)) return null;
+        const color = VERDICT_COLOR[verdictOf(m)];
+        const s = m.shape;
+        const badge = (
+          <span
+            className="absolute grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full font-mono text-[11px] font-medium text-white shadow-sm"
+            style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%`, background: color }}
+          >
+            {i + 1}
+          </span>
+        );
+        return (
+          <span key={m.id} className="contents">
+            {s.kind === 'area' && (
+              <span
+                className="absolute rounded-md border-2"
+                style={{
+                  left: `${s.x * 100}%`,
+                  top: `${s.y * 100}%`,
+                  width: `${s.w * 100}%`,
+                  height: `${s.h * 100}%`,
+                  borderColor: color,
+                }}
+              />
+            )}
+            {s.kind === 'arrow' && (
+              <svg
+                aria-hidden
+                className="absolute inset-0 size-full overflow-visible"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <line
+                  x1={s.x * 100}
+                  y1={s.y * 100}
+                  x2={s.x2 * 100}
+                  y2={s.y2 * 100}
+                  stroke={color}
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle cx={s.x2 * 100} cy={s.y2 * 100} r={0.8} fill={color} />
+              </svg>
+            )}
+            {badge}
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 type Phase = 'paused' | 'counting' | 'live' | 'saved';
@@ -105,6 +177,7 @@ const Right = () => (
 const POINTING: [how: string, what: string][] = [
   ['Rest the pointer, say “this”', 'A note on that spot'],
   ['Circle something', 'A note on that area'],
+  ['Rest on two spots, say “move” or “align”', 'An arrow between them'],
   ['Point off the screenshot', 'A note on the whole screen'],
 ];
 
@@ -118,6 +191,8 @@ export function Reel({
   inert,
   onIndex,
   onSave,
+  onTake,
+  onFlip,
 }: {
   assets: Asset[];
   urls: Record<string, string>;
@@ -127,6 +202,10 @@ export function Reel({
   onIndex: (i: number) => void;
   /** Keep a finished take and its audio in this browser. */
   onSave: (take: Take, audio: Blob) => Promise<void>;
+  /** Make a read take's notes in the batch, and apply the voice tags heard (D137). */
+  onTake: (take: Take) => void;
+  /** Turn a note's verdict round: what works, or what doesn't. */
+  onFlip: (assetId: string, markId: string) => void;
 }) {
   const [atEnd, setAtEnd] = useState(false);
   const at = atEnd ? assets.length : Math.min(index, assets.length - 1);
@@ -142,7 +221,10 @@ export function Reel({
   const [reading, setReading] = useState<'idle' | 'working' | 'failed'>('idle');
 
   const reel = useRef<HTMLDivElement>(null);
-  const middle = useRef<HTMLImageElement>(null);
+  // Each card's screenshot by its place in the batch; the middle one is the one on show. One ref
+  // passed from card to card as the reel turns could be left on the card that just left.
+  const imgs = useRef<(HTMLImageElement | null)[]>([]);
+  const middle = () => imgs.current[atRef.current] ?? null;
   const level = useRef<HTMLSpanElement>(null);
   // The take in progress: the microphone, the recorder, its clock and what it has kept so far.
   const take = useRef<{
@@ -318,6 +400,7 @@ export function Reel({
       const { words } = (await res.json()) as { words: TimedWord[] };
       const take = { ...done.take, words };
       await onSave(take, done.audio);
+      onTake(take);
       if (!mounted.current) return;
       setSaved({ take, audio: done.audio });
       setReading('idle');
@@ -379,7 +462,7 @@ export function Reel({
   const heard = saved?.take.words
     ? heardOf(
         saved.take,
-        saved.take.words,
+        assets,
         assets.flatMap((a) => (a.screenTag ? [a.screenTag] : [])),
       )
     : null;
@@ -457,16 +540,18 @@ export function Reel({
   // The pointer over the middle screenshot, while recording.
   const onPointerMove = (e: React.PointerEvent) => {
     const t = take.current;
-    if (phase !== 'live' || !t || !middle.current) return;
-    const p = pointOn(middle.current.getBoundingClientRect(), e.clientX, e.clientY);
+    const img = middle();
+    if (phase !== 'live' || !t || !img) return;
+    const p = pointOn(img.getBoundingClientRect(), e.clientX, e.clientY);
     if (!p && t.off) return;
     t.off = !p;
     t.pointer.push([t.clock.time(), atRef.current, p?.[0] ?? null, p?.[1] ?? null]);
   };
   const onPointerDown = (e: React.PointerEvent) => {
     const t = take.current;
-    if (phase !== 'live' || !t || !middle.current || e.target !== middle.current) return;
-    const p = pointOn(middle.current.getBoundingClientRect(), e.clientX, e.clientY);
+    const img = middle();
+    if (phase !== 'live' || !t || !img || e.target !== img) return;
+    const p = pointOn(img.getBoundingClientRect(), e.clientX, e.clientY);
     if (p) t.shown.push({ t: t.clock.time(), screen: atRef.current, click: p });
   };
 
@@ -524,16 +609,22 @@ export function Reel({
             }}
           >
             {urls[a.id] ? (
-              // biome-ignore lint/performance/noImgElement: a screenshot from the browser's storage, as a blob URL
-              <img
-                ref={slot === 0 ? middle : undefined}
-                src={urls[a.id]}
-                alt={slot === 0 ? a.name : ''}
-                width={a.width}
-                height={a.height}
-                draggable={false}
-                className="block max-h-[calc(var(--w)*0.75)] max-w-(--w) rounded-[14px] bg-muted object-contain"
-              />
+              // The box is the picture's own shape, so a point on it is a point on the screenshot.
+              <span className="relative block">
+                {/* biome-ignore lint/performance/noImgElement: a screenshot from the browser's storage, as a blob URL */}
+                <img
+                  ref={(el) => {
+                    imgs.current[k] = el;
+                  }}
+                  src={urls[a.id]}
+                  alt={slot === 0 ? a.name : ''}
+                  width={a.width}
+                  height={a.height}
+                  draggable={false}
+                  className="block h-auto max-h-[calc(var(--w)*0.75)] w-auto max-w-(--w) rounded-[14px] bg-muted"
+                />
+                {slot === 0 && <VoiceMarks marks={voiceNotes(a)} />}
+              </span>
             ) : (
               <span className="block size-full rounded-[14px] bg-muted" />
             )}
@@ -566,7 +657,8 @@ export function Reel({
               <p className="m-0 text-[15px] font-medium text-foreground">Saved in this browser</p>
               <p className="m-0 text-sm text-muted-foreground">
                 {clockText(saved.take.durationMs)} over {saved.take.screens.length}{' '}
-                {saved.take.screens.length === 1 ? 'screen' : 'screens'}. Notes from it come next.
+                {saved.take.screens.length === 1 ? 'screen' : 'screens'}.
+                {!voiceOn && ' Notes from it come next.'}
               </p>
               {reading === 'working' && (
                 <p aria-live="polite" className="m-0 text-sm text-muted-foreground">
@@ -590,10 +682,10 @@ export function Reel({
                   <ol
                     data-reel-scroll
                     aria-label="What you said"
-                    className="m-0 grid max-h-[calc(var(--w)*0.4)] w-[min(36rem,calc(var(--w)-2rem))] list-none gap-3 overflow-y-auto overscroll-contain rounded-lg border border-border p-3 text-left text-sm select-text"
+                    className="m-0 grid max-h-[calc(var(--w)*0.4)] w-[min(36rem,calc(var(--w)-2rem))] list-none gap-3 overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-3 text-left text-sm select-text"
                   >
                     {heard.map((s) => (
-                      <li key={s.name} className="grid gap-1">
+                      <li key={s.id} className="grid gap-1.5">
                         <span className="truncate font-medium text-foreground">{s.name}</span>
                         {s.ops.length > 0 && (
                           <span className="flex flex-wrap gap-1">
@@ -608,7 +700,45 @@ export function Reel({
                             ))}
                           </span>
                         )}
-                        {s.rest && <span className="text-muted-foreground">{s.rest}</span>}
+                        {s.notes.length > 0 && (
+                          <ol className="m-0 grid list-none gap-1.5 p-0">
+                            {s.notes.map(({ mark, n }) => {
+                              const v = verdictOf(mark) === 'bad' ? 'bad' : 'good';
+                              const word = v === 'good' ? 'Works' : 'Doesn’t work';
+                              return (
+                                <li key={mark.id} className="flex items-baseline gap-2">
+                                  <span className="w-4 shrink-0 text-right font-mono text-[12px] text-muted-foreground tabular-nums">
+                                    {n}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Note ${n}: ${word}. Switch`}
+                                    onPointerDown={(e) => e.preventDefault()}
+                                    onClick={() => onFlip(s.id, mark.id)}
+                                    className={cn(
+                                      'shrink-0 rounded-full border border-border px-2 py-0.5 text-[12px] font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                                      VERDICT_TEXT[v],
+                                    )}
+                                  >
+                                    {word}
+                                  </button>
+                                  <span className="text-foreground">
+                                    {mark.good || mark.bad}
+                                    {mark.best && mark.good && (
+                                      <Star
+                                        aria-label="Best example"
+                                        className="ml-1 inline size-3.5 fill-current align-[-2px]"
+                                      />
+                                    )}
+                                    {isWhole(mark.shape) && (
+                                      <span className="text-muted-foreground"> · Whole screen</span>
+                                    )}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        )}
                       </li>
                     ))}
                   </ol>
@@ -757,9 +887,11 @@ export function Reel({
             <div>
               <h3 className="m-0 mb-2 flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
                 Voice
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
-                  Soon
-                </span>
+                {!voiceOn && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
+                    Soon
+                  </span>
+                )}
               </h3>
               {/* Each phrase over what it does, so a long one never squeezes its meaning. */}
               <dl className="m-0 grid gap-2">

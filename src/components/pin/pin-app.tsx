@@ -30,6 +30,7 @@ import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/no
 import { IDLE_TALK } from '@/lib/pin/ring-demo';
 import { RING_PICTURES } from '@/lib/pin/ring-pictures';
 import { unzip } from '@/lib/pin/unzip';
+import { applyTake, flipVerdict } from '@/lib/pin/voice-notes';
 import { updatePrice } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
@@ -1113,6 +1114,21 @@ function Workspace() {
           inert={dialog !== null}
           onIndex={setIndex}
           onSave={store.saveTake}
+          onTake={(take) =>
+            commit((list) =>
+              applyTake(
+                list,
+                take,
+                list.flatMap((a) => (a.screenTag ? [a.screenTag] : [])),
+              ),
+            )
+          }
+          onFlip={(assetId, markId) =>
+            update(assetId, (a) => ({
+              ...a,
+              marks: a.marks.map((m) => (m.id === markId ? flipVerdict(m) : m)),
+            }))
+          }
         />
       )}
       {dialog === 'shortcuts' && (

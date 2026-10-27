@@ -17,7 +17,8 @@ export type Area = { kind: 'area'; x: number; y: number; w: number; h: number };
 export type Arrow = { kind: 'arrow'; x: number; y: number; x2: number; y2: number };
 export type Shape = Dot | Area | Arrow;
 
-export type MarkOrigin = 'user' | 'ai';
+/** Placed by the author, by the AI from the asset's note, or by the pointer while talking (D137). */
+export type MarkOrigin = 'user' | 'ai' | 'voice';
 
 /**
  * What a note is about, so an agent knows whether "this heading" means how it
@@ -93,9 +94,8 @@ export type Mark = {
    * topics; an empty list means they cleared them.
    */
   topics?: Topic[];
-  /** Placed by the user, or by the AI from the asset's note. */
   origin: MarkOrigin;
-  /** For an AI mark: the words of the note it came from. */
+  /** For an AI mark: the words of the note it came from; for a voice mark, the words said. */
   quote?: string;
   /**
    * One of the author's best examples (D108, D110): the note they hold up to follow. Only on a
@@ -596,7 +596,9 @@ function describeShape(shape: Shape, width: number, height: number) {
 const originText = (m: Mark) =>
   m.origin === 'user'
     ? ''
-    : m.confirmed
+    : m.origin === 'voice'
+      ? ' · said aloud, placed where the author pointed'
+      : m.confirmed
       ? " · placed by AI from the author's note, position checked by the author"
       : " · placed by AI from the author's note, position not checked";
 
@@ -678,7 +680,9 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
             cropPixels: cropOf(a, m),
             ...(m.origin === 'ai'
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
-              : {}),
+              : m.origin === 'voice'
+                ? { origin: 'voice' }
+                : {}),
             ...suggestedData(m),
           })),
       };
