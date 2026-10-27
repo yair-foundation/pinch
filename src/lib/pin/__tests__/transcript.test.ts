@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Shown } from '../narration';
-import { opLabel, spoken, wordsByScreen, wordsFromWhisper } from '../transcript';
+import { opLabel, spoken, wordsByScreen, wordsFromChunks, wordsFromWhisper } from '../transcript';
 import type { TimedWord } from '../voice-tags';
 
 const segment = (text: string, from: number, to: number) => ({
@@ -41,6 +41,31 @@ describe('transcript: whisper.cpp', () => {
   it('reads nothing from something else', () => {
     assert.deepEqual(wordsFromWhisper(null), []);
     assert.deepEqual(wordsFromWhisper({ transcription: 'no' }), []);
+  });
+});
+
+describe('transcript: the browser', () => {
+  it('reads its word chunks, in seconds, as timed words in milliseconds', () => {
+    assert.deepEqual(
+      wordsFromChunks([
+        { text: ' Remove', timestamp: [1.2, 1.5] },
+        { text: ' it.', timestamp: [1.5, null] },
+      ]),
+      [
+        { text: 'Remove', start: 1200, end: 1500 },
+        { text: 'it.', start: 1500, end: 1800 },
+      ],
+    );
+  });
+  it('drops what is not speech, and words with no start', () => {
+    assert.deepEqual(
+      wordsFromChunks([
+        { text: ' [BLANK_AUDIO]', timestamp: [0, 2] },
+        { text: ' lost', timestamp: [null, 2] },
+      ]),
+      [],
+    );
+    assert.deepEqual(wordsFromChunks(undefined), []);
   });
 });
 

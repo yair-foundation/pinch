@@ -22,6 +22,7 @@ import { isWhole, voiceNotes, voicePrefix } from '@/lib/pin/voice-notes';
 import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
+import { browserVoiceOn, MODEL_MB, transcribeInBrowser } from './browser-voice';
 import { VERDICT_COLOR } from './render';
 
 /*
@@ -217,8 +218,12 @@ export function Reel({
   const [clock, setClock] = useState('0:00');
   const [saved, setSaved] = useState<{ take: Take; audio: Blob } | null>(null);
   // Speech-to-text: whether it's on here, and reading a take's words.
-  const [voiceOn, setVoiceOn] = useState(false);
+  // Where a take's words are read: Pinch's server on this machine (D136), or this browser (D140).
+  const [engine, setEngine] = useState<'server' | 'browser' | null>(null);
+  const voiceOn = engine !== null;
   const [reading, setReading] = useState<'idle' | 'working' | 'failed'>('idle');
+  // How much of the browser's voice model has come in, while it downloads the first time.
+  const [model, setModel] = useState<number | null>(null);
 
   const reel = useRef<HTMLDivElement>(null);
   // Each card's screenshot by its place in the batch; the middle one is the one on show. One ref
@@ -387,17 +392,27 @@ export function Reel({
     return { take: kept, audio };
   }, [assets, onSave]);
 
-  /** Read a kept take's words on this machine, and keep them with it. */
+  /** The words in a take: on Pinch's server where it has speech-to-text, else in this browser. */
+  const wordsOf = async (audio: Blob): Promise<TimedWord[]> => {
+    if (engine === 'browser')
+      return transcribeInBrowser(audio, (p) => {
+        if (mounted.current) setModel(p < 100 ? p : null);
+      });
+    const res = await fetch('/api/pin/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': audio.type || 'audio/webm' },
+      body: audio,
+    });
+    if (!res.ok) throw new Error();
+    return ((await res.json()) as { words: TimedWord[] }).words;
+  };
+
+  /** Read a kept take's words, and keep them with it. */
   const read = async (done: { take: Take; audio: Blob }) => {
     setReading('working');
     try {
-      const res = await fetch('/api/pin/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': done.audio.type || 'audio/webm' },
-        body: done.audio,
-      });
-      if (!res.ok) throw new Error();
-      const { words } = (await res.json()) as { words: TimedWord[] };
+      const words = await wordsOf(done.audio);
+      if (mounted.current) setModel(null);
       const take = { ...done.take, words };
       await onSave(take, done.audio);
       onTake(take);
@@ -405,7 +420,10 @@ export function Reel({
       setSaved({ take, audio: done.audio });
       setReading('idle');
     } catch {
-      if (mounted.current) setReading('failed');
+      if (mounted.current) {
+        setModel(null);
+        setReading('failed');
+      }
     }
   };
 
@@ -452,11 +470,13 @@ export function Reel({
     return () => clearInterval(id);
   }, [keptMs]);
 
+  // The server's speech-to-text where it has it (D136); this browser's everywhere else (D140).
   useEffect(() => {
+    const own = () => setEngine(browserVoiceOn() ? 'browser' : null);
     fetch('/api/pin/voice')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { available?: boolean } | null) => setVoiceOn(Boolean(d?.available)))
-      .catch(() => undefined);
+      .then((d: { available?: boolean } | null) => (d?.available ? setEngine('server') : own()))
+      .catch(own);
   }, []);
 
   const heard = saved?.take.words
@@ -661,8 +681,10 @@ export function Reel({
                 {!voiceOn && ' Notes from it come next.'}
               </p>
               {reading === 'working' && (
-                <p aria-live="polite" className="m-0 text-sm text-muted-foreground">
-                  Reading the words…
+                <p aria-live="polite" className="m-0 text-sm text-muted-foreground tabular-nums">
+                  {model === null
+                    ? 'Reading the words…'
+                    : `Getting the voice model, once (up to ${MODEL_MB} MB): ${Math.floor(model)}%`}
                 </p>
               )}
               {reading === 'failed' && (

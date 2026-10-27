@@ -80,7 +80,9 @@ export default function Terms() {
         <section>
           <h2>Your content</h2>
           <p>
-            Your screenshots, notes and rules are yours. Images stay in your browser until you
+            Your screenshots, recordings, notes and rules are yours. Recordings of your voice stay
+            in your browser: a voice model, downloaded once from Hugging Face, turns them into
+            words there, and Pinch never receives them. Images stay in your browser until you
             sign in; then your rules keep their screenshots in your account, stored privately for
             you alone, up to 200 MB free and 2 GB once you have bought a pack. To read your notes
             into rules, Pinch sends each note’s words and the close-up of its mark to Anthropic,
