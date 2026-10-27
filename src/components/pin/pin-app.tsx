@@ -30,6 +30,8 @@ import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/no
 import { IDLE_TALK } from '@/lib/pin/ring-demo';
 import { RING_PICTURES } from '@/lib/pin/ring-pictures';
 import { unzip } from '@/lib/pin/unzip';
+import { applyTake, flipVerdict, removedScreens } from '@/lib/pin/voice-notes';
+import { isPdf } from '@/lib/pin/pdf-pages';
 import { updatePrice } from '@/lib/pin/credits';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
@@ -48,6 +50,7 @@ import { cloudBackend } from './cloud-store';
 import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
+import { pdfPages } from './pdf';
 import { Reel } from './reel';
 import {
   buildExport,
@@ -663,8 +666,33 @@ function Workspace() {
   const addFiles = useCallback(
     async (dropped: File[]) => {
       for (const file of dropped.filter(isZip)) await openExport(file);
-      const files = dropped.filter((f) => !isZip(f));
-      if (!files.length) return;
+      // A PDF is its pages, each a screenshot of its own, in order (D139).
+      const files: File[] = [];
+      const unreadable: string[] = [];
+      for (const file of dropped.filter((f) => !isZip(f))) {
+        if (!isPdf(file)) {
+          files.push(file);
+          continue;
+        }
+        try {
+          files.push(
+            ...(await pdfPages(file, (page, pages) =>
+              setStatus({
+                tone: 'info',
+                text: `Reading ${file.name}: page ${page} of ${pages}…`,
+                sticky: true,
+              }),
+            )),
+          );
+        } catch {
+          unreadable.push(`${file.name} (the PDF couldn't be read)`);
+        }
+      }
+      if (!files.length) {
+        if (unreadable.length)
+          setStatus({ tone: 'error', text: `Couldn't read ${unreadable.join(', ')}.` });
+        return;
+      }
       const all = files.filter(isImageFile);
       const skipped = files.length - all.length;
       const skippedLine = skipped ? `Skipped ${count(skipped, 'file')} that aren't images.` : '';
@@ -678,7 +706,7 @@ function Workspace() {
       const added: Asset[] = [];
       const addedUrls: Record<string, string> = {};
       // Files the browser couldn't read, with a reason when there is one to give.
-      const failed: string[] = [];
+      const failed: string[] = [...unreadable];
       let scaled = 0;
       let full = false;
       // New images take the open image's source: a batch is usually from one place.
@@ -1016,7 +1044,7 @@ function Workspace() {
         <input
           ref={fileInput}
           type="file"
-          accept="image/*,.zip,application/zip"
+          accept="image/*,.pdf,application/pdf,.zip,application/zip"
           multiple
           className="sr-only"
           tabIndex={-1}
@@ -1113,6 +1141,31 @@ function Workspace() {
           inert={dialog !== null}
           onIndex={setIndex}
           onSave={store.saveTake}
+          onTake={(take) => {
+            const known = assetsRef.current.flatMap((a) => (a.screenTag ? [a.screenTag] : []));
+            commit((list) => applyTake(list, take, known));
+            // The screens said "remove it" over (D139) go in a step of their own, so Undo
+            // brings them back and keeps the take's notes.
+            const gone = new Set(removedScreens(take, known));
+            const leaving = assetsRef.current.filter((a) => gone.has(a.id));
+            if (!leaving.length) return;
+            commit((list) => list.filter((a) => !gone.has(a.id)));
+            setIndex((i) => Math.min(i, Math.max(0, assetsRef.current.length - 1)));
+            setStatus({
+              tone: 'info',
+              text:
+                leaving.length === 1
+                  ? `Removed ${leaving[0].name}.`
+                  : `Removed ${count(leaving.length, 'screen')}.`,
+              action: { label: 'Undo', run: undo },
+            });
+          }}
+          onFlip={(assetId, markId) =>
+            update(assetId, (a) => ({
+              ...a,
+              marks: a.marks.map((m) => (m.id === markId ? flipVerdict(m) : m)),
+            }))
+          }
         />
       )}
       {dialog === 'shortcuts' && (

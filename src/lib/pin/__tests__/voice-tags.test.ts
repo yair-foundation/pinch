@@ -98,6 +98,14 @@ describe('voice tags: edits and moving', () => {
     assert.deepEqual(ops('Drop the second one.'), [{ kind: 'drop', note: 2 }]);
     assert.deepEqual(ops('Delete number three.'), [{ kind: 'drop', note: 3 }]);
   });
+  it('takes the screen out on "remove it", and leaves "remove that" to the note', () => {
+    assert.deepEqual(ops('Remove it.'), [{ kind: 'remove' }]);
+    assert.deepEqual(ops('Okay, remove this screen please.'), [{ kind: 'remove' }]);
+    assert.deepEqual(ops('Take this out.'), [{ kind: 'remove' }]);
+    assert.deepEqual(ops('Remove that.'), [{ kind: 'drop', note: 'last' }]);
+    assert.deepEqual(ops('Remove the second one.'), [{ kind: 'drop', note: 2 }]);
+    assert.equal(rest('I would remove it from the header.'), 'I would remove it from the header.');
+  });
   it('redoes the screen, points again, and moves', () => {
     assert.deepEqual(ops('Redo this screen.'), [{ kind: 'redo' }]);
     assert.deepEqual(ops('No, not that, this.'), [{ kind: 'repoint' }]);

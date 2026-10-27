@@ -88,5 +88,15 @@ export const sessionCookie = (token: string) =>
 export const testLoginOn = () =>
   process.env.PINCH_TEST_LOGIN === '1' && Boolean(process.env.AUTH_SECRET) && !process.env.VERCEL;
 
+/**
+ * Signing in on this machine without Google (D138): where the test sign-in is on and Google isn't
+ * set up, Sign in signs in as PINCH_LOCAL_EMAIL, so one person can keep rules and connect their
+ * agent to the Pinch running on their own computer.
+ */
+export const localEmail = () =>
+  testLoginOn()
+    ? (process.env.PINCH_LOCAL_EMAIL || 'you@pinch.localhost').trim().toLowerCase()
+    : null;
+
 export const sessionOf = (request: Request) =>
   readSession(cookieOf(request.headers.get('cookie'), SESSION_COOKIE), process.env.AUTH_SECRET);

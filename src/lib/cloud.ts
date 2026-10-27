@@ -16,6 +16,7 @@ import {
   withVerdict,
 } from './pin/runs';
 import { readZipEntries, TAIL_BYTES } from './pin/zip-range';
+import { bytesCodec, keyStore } from './local-store';
 import {
   deleteDocuments,
   hasBlob,
@@ -32,7 +33,8 @@ import {
  * Zips are tens of megabytes, more than a function passes, so the browser
  * moves them straight to and from the store on short-lived presigned URLs,
  * scoped to one path. Without Blob credentials (local runs) the zips live in
- * this process's memory and go through the route instead. The rules the
+ * this process's memory, or in files under PINCH_LOCAL_DATA (D138), and go
+ * through the route instead. The rules the
  * agent proposes wait in one more document beside them (D116), and what
  * each of its runs did with the rules in another (D120), and the readings
  * of notes it made itself in a third (D122).
@@ -179,7 +181,7 @@ export const dropReading = (user: string, id: string) =>
     doc.readings = agentReadingsIn(doc).filter((r) => r.id !== id);
   });
 
-const memory = new Map<string, Uint8Array>();
+const memory = keyStore<Uint8Array>('batches', bytesCodec);
 
 export async function deleteBatch(user: string, id: string) {
   if (!hasBlob()) {
@@ -226,7 +228,8 @@ export const uploadToken = (pathname: string, room = MAX_BATCH_BYTES) =>
 export async function keptBytes(user: string, except = ''): Promise<number> {
   const prefix = userFolder(user);
   if (!hasBlob())
-    return [...memory]
+    return memory
+      .entries()
       .filter(([k]) => k.startsWith(prefix) && k !== except)
       .reduce((n, [, b]) => n + b.length, 0);
   let total = 0;

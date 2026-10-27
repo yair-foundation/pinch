@@ -28,6 +28,7 @@ const noteSchema = z.object({
   shape: shapeSchema,
   crop: z.string().max(300),
   aiSuggested: z.object({ works: use.optional(), doesNotWork: use.optional() }).optional(),
+  origin: z.string().max(20).optional(),
 });
 const assetSchema = z.object({
   number: z.string().max(4),
@@ -88,7 +89,8 @@ function markOf(n: PinchExport['assets'][number]['notes'][number], id: string): 
     label: n.label ?? '',
     good: n.works,
     bad: n.doesNotWork,
-    origin: 'user',
+    // A note said aloud stays one (D137), so the reel still numbers and shows it.
+    origin: n.origin === 'voice' ? 'voice' : 'user',
     ...(n.best && n.works.trim() ? { best: true } : {}),
     ...(topics.length ? { topics } : {}),
     ...(accepted.good || accepted.bad ? { accepted } : {}),

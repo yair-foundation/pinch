@@ -43,7 +43,7 @@ export const logEntrySchema = z.object({
   /** An overall note's text. */
   text: z.string().max(MAX_TEXT).optional(),
   shape: z.enum(['dot', 'area', 'arrow']).optional(),
-  origin: z.enum(['user', 'ai']).optional(),
+  origin: z.enum(['user', 'ai', 'voice']).optional(),
   aiSuggested: z.object({ works: use.optional(), doesNotWork: use.optional() }).optional(),
   source: z.enum(SOURCES.map((s) => s.kind) as [SourceKind, ...SourceKind[]]).optional(),
 });

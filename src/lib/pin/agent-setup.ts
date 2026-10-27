@@ -15,6 +15,15 @@ export type AgentSetup = {
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 
+/**
+ * The server's name in the agent's settings: `pinch`, or `pinch-local` for a Pinch running on
+ * this machine (D138), so the two can sit side by side in one agent.
+ */
+export const serverName = (url: string) => {
+  const host = URL.canParse(url) ? new URL(url).hostname : '';
+  return /^(localhost|127\.0\.0\.1|\[::1\])$|\.localhost$/.test(host) ? 'pinch-local' : 'pinch';
+};
+
 export const AGENT_SETUPS: AgentSetup[] = [
   {
     id: 'claude-code',
@@ -22,7 +31,7 @@ export const AGENT_SETUPS: AgentSetup[] = [
     steps: (url, key) => [
       {
         where: 'Run this in your terminal.',
-        code: `claude mcp add --transport http pinch ${url} --header "Authorization: Bearer ${key}"`,
+        code: `claude mcp add --transport http ${serverName(url)} ${url} --header "Authorization: Bearer ${key}"`,
       },
     ],
   },
@@ -32,7 +41,9 @@ export const AGENT_SETUPS: AgentSetup[] = [
     steps: (url, key) => [
       {
         where: 'Add this to ~/.cursor/mcp.json, inside mcpServers if the file has it already.',
-        code: json({ mcpServers: { pinch: { url, headers: { Authorization: `Bearer ${key}` } } } }),
+        code: json({
+          mcpServers: { [serverName(url)]: { url, headers: { Authorization: `Bearer ${key}` } } },
+        }),
       },
     ],
   },
@@ -44,7 +55,9 @@ export const AGENT_SETUPS: AgentSetup[] = [
         where:
           'Run “MCP: Open User Configuration” and add this, inside servers if it is there already.',
         code: json({
-          servers: { pinch: { type: 'http', url, headers: { Authorization: `Bearer ${key}` } } },
+          servers: {
+            [serverName(url)]: { type: 'http', url, headers: { Authorization: `Bearer ${key}` } },
+          },
         }),
       },
     ],
@@ -55,7 +68,7 @@ export const AGENT_SETUPS: AgentSetup[] = [
     steps: (url, key) => [
       {
         where: 'Add this to ~/.codex/config.toml.',
-        code: `[mcp_servers.pinch]\nurl = "${url}"\nbearer_token_env_var = "PINCH_KEY"`,
+        code: `[mcp_servers.${serverName(url)}]\nurl = "${url}"\nbearer_token_env_var = "PINCH_KEY"`,
       },
       {
         where: 'Then keep your key in your shell, in ~/.zshrc or ~/.bashrc.',
@@ -69,7 +82,7 @@ export const AGENT_SETUPS: AgentSetup[] = [
     steps: (url, key) => [
       {
         where: 'Run this in your terminal.',
-        code: `gemini mcp add --transport http --header "Authorization: Bearer ${key}" pinch ${url}`,
+        code: `gemini mcp add --transport http --header "Authorization: Bearer ${key}" ${serverName(url)} ${url}`,
       },
     ],
   },
@@ -80,7 +93,9 @@ export const AGENT_SETUPS: AgentSetup[] = [
       {
         where: 'Add this to Windsurf’s mcp_config.json, inside mcpServers if it is there already.',
         code: json({
-          mcpServers: { pinch: { serverUrl: url, headers: { Authorization: `Bearer ${key}` } } },
+          mcpServers: {
+            [serverName(url)]: { serverUrl: url, headers: { Authorization: `Bearer ${key}` } },
+          },
         }),
       },
     ],
