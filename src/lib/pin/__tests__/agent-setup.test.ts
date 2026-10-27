@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { AGENT_SETUPS } from '../agent-setup';
+import { AGENT_SETUPS, serverName } from '../agent-setup';
 
 const url = 'https://get-pinch.io/api/pin/mcp';
 const key = 'pk_test123';
@@ -43,6 +43,18 @@ describe('connecting an agent', () => {
       steps('gemini')[0].code,
       `gemini mcp add --transport http --header "Authorization: Bearer ${key}" pinch ${url}`,
     );
+  });
+
+  it('names a Pinch on this machine pinch-local, so it sits beside the live one', () => {
+    assert.equal(serverName(url), 'pinch');
+    assert.equal(serverName('http://localhost:3000/api/pin/mcp'), 'pinch-local');
+    assert.equal(serverName('http://127.0.0.1:3000/api/pin/mcp'), 'pinch-local');
+    assert.equal(serverName('http://pinch.localhost/api/pin/mcp'), 'pinch-local');
+    const local = AGENT_SETUPS.find((a) => a.id === 'claude-code')?.steps(
+      'http://localhost:3000/api/pin/mcp',
+      key,
+    );
+    assert.match(local?.[0].code ?? '', /^claude mcp add --transport http pinch-local /);
   });
 
   it('keeps Codex’s key out of its config file, in the shell', () => {

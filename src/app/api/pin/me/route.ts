@@ -5,7 +5,7 @@ import { hasBlob } from '@/lib/blob-doc';
 import { browserOf, mergeBrowser } from '@/lib/credits';
 import { googleConfigured } from '@/lib/google';
 import { FREE_CREDITS, NOTE_CREDITS, PACK_CREDITS, UPDATE_CREDITS } from '@/lib/pin/credits';
-import { sessionOf, testLoginOn } from '@/lib/session';
+import { localEmail, sessionOf, testLoginOn } from '@/lib/session';
 
 /*
  * What the page needs to know about whoever is looking (D81, D98): whether
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   return Response.json(
     {
       paywall,
-      signIn: googleConfigured(),
+      signIn: googleConfigured() || localEmail() !== null,
       testLogin: testLoginOn(),
       user: session
         ? { email: session.email, name: session.name, picture: session.picture ?? '' }

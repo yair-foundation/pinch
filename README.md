@@ -28,6 +28,21 @@ pnpm build                # next build
 
 `pnpm format <files>` runs Prettier on the files you name, in the style of their folder.
 
+## Using Pinch on your own Mac, free
+
+Talk through screenshots, and have your own agent read the notes into rules, with no paid API (D136, D137, D138):
+
+```bash
+brew install whisper-cpp ffmpeg
+pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… for .env.local
+```
+
+Then in `.env.local`: that `PINCH_WHISPER_MODEL`, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
+
+1. Add screenshots, press R and talk while you point; F, then Enter. The notes show on each screen.
+2. Your rules, Connect agent, Sign in (a local account, no Google), Connect: run the command it shows. It adds the server as `pinch-local`, beside the live `pinch`.
+3. Ask your agent to read your Pinch notes into rules. Open Your rules again to see them.
+
 ## Environment variables
 
 Every variable is optional; the tool runs with none. Copy `.env.example` to `.env.local` for a local run. Never commit `.env*`.

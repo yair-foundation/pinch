@@ -1,4 +1,5 @@
 import { BlobPreconditionFailedError, del, get, list, put } from '@vercel/blob';
+import { jsonCodec, keyStore } from './local-store';
 
 /*
  * Small JSON documents in the private Vercel Blob store, changed by
@@ -8,7 +9,7 @@ import { BlobPreconditionFailedError, del, get, list, put } from '@vercel/blob';
  * share this.
  *
  * Without Blob credentials (local development) the same logic runs on
- * in-memory documents.
+ * documents in memory, or in files under PINCH_LOCAL_DATA (D138).
  *
  * Accounts keep their collections here too (D81): one document per
  * collection under the account's folder, listed by prefix, written whole and
@@ -23,7 +24,7 @@ import { BlobPreconditionFailedError, del, get, list, put } from '@vercel/blob';
 export const strongEtag = (etag: string) => etag.replace(/^W\//, '');
 
 export const hasBlob = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
-const memory = new Map<string, unknown>();
+const memory = keyStore<unknown>('documents', jsonCodec);
 
 export async function readDocument<T>(key: string, empty: T): Promise<{ doc: T; etag?: string }> {
   if (!hasBlob()) return { doc: structuredClone((memory.get(key) as T | undefined) ?? empty) };
