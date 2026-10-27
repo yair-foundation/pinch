@@ -1290,6 +1290,10 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
           'stay in this browser. The close-up of each mark goes to Anthropic with a suggestion, and with its note when you update your rules, never stored on the way; once you sign in, your rules keep theirs in your account.',
         )}
         {item(
+          'Your voice',
+          'stays in this browser: a voice model from Hugging Face, downloaded once, turns it into words here, and the recording is kept only in this browser.',
+        )}
+        {item(
           'Notes',
           'go to Anthropic to find your rules, and their words are kept anonymously for 90 days, topic-tagged by TypeSafe’s Jev.',
         )}

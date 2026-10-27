@@ -1,5 +1,6 @@
 /*
- * What was said in a take (D131, D136): whisper.cpp's output read into timed words, the words
+ * What was said in a take (D131, D136, D140): whisper.cpp's output, or the browser's Whisper words,
+ * read into timed words, the words
  * split by the screen on show when each was said, and the voice tags heard, as short labels.
  */
 
@@ -24,6 +25,24 @@ export function wordsFromWhisper(json: unknown): TimedWord[] {
     if (!text || NOT_SPEECH.test(text) || typeof start !== 'number' || typeof end !== 'number')
       continue;
     words.push({ text, start, end: Math.max(start, end) });
+  }
+  return words;
+}
+
+/** A word as transformers.js gives it in the browser (D140): its text and its times in seconds. */
+type BrowserChunk = { text?: string; timestamp?: [number | null, number | null] };
+
+/** The browser's Whisper words (`return_timestamps: 'word'`) as timed words in milliseconds. */
+export function wordsFromChunks(chunks: readonly BrowserChunk[] | undefined): TimedWord[] {
+  const words: TimedWord[] = [];
+  for (const c of chunks ?? []) {
+    const text = (c.text ?? '').trim();
+    const [from, to] = c.timestamp ?? [null, null];
+    if (!text || NOT_SPEECH.test(text) || typeof from !== 'number') continue;
+    const start = Math.round(from * 1000);
+    // The last word of a recording can come with no end: give it a short one.
+    const end = typeof to === 'number' ? Math.max(start, Math.round(to * 1000)) : start + 300;
+    words.push({ text, start, end });
   }
   return words;
 }
