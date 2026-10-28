@@ -12,6 +12,7 @@ import {
   NotebookPen,
   PlugZap,
   RefreshCw,
+  RotateCcw,
   Star,
   ThumbsDown,
   ThumbsUp,
@@ -83,6 +84,7 @@ import {
   withRule,
   withTitles,
   withoutBatch,
+  resetCollection,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
 import {
@@ -309,6 +311,7 @@ export function CollectionsView({
   onPay,
   onCredits,
   onBack,
+  onReset,
   onStatus,
 }: {
   inert: boolean;
@@ -339,6 +342,8 @@ export function CollectionsView({
   /** An update took credits: read them again. */
   onCredits: () => void;
   onBack: () => void;
+  /** Every rule was reset (D141): the open images go too, so their notes don't come back. */
+  onReset: () => void;
   onStatus: (notice: Notice) => void;
 }) {
   const [c, setC] = useState<Collection | null>(null);
@@ -352,6 +357,8 @@ export function CollectionsView({
   const [removing, setRemoving] = useState<string | null>(null);
   // The batch of notes the author asked to remove, waiting on "are you sure" (D115).
   const [unbatching, setUnbatching] = useState<string | null>(null);
+  // Every rule reset (D141), waiting on "are you sure".
+  const [resetting, setResetting] = useState(false);
   // The rules the agent proposed, waiting to be kept or dropped (D116).
   const [proposals, setProposals] = useState<Proposal[]>([]);
   // A proposal is answered once: a second click before the list updates does nothing.
@@ -1076,6 +1083,49 @@ export function CollectionsView({
     onStatus({ tone: 'info', text: 'Batch removed.' });
   };
   /**
+   * Every rule, note and batch gone (D141), with the batches' screenshots, the agent's readings
+   * and proposals waiting, this browser's copy and the open images; the account, its agent key,
+   * the credits and the briefs stay. No undo: the zips go, so "are you sure" comes first.
+   */
+  const resetAll = async () => {
+    setResetting(false);
+    const now0 = ref.current;
+    if (!now0) return;
+    const zips = now0.batches.map((b) => b.id);
+    // No reading of the agent's joins while the rules go.
+    taking.current = true;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    ref.current = resetCollection(now0, nowIso());
+    setC(ref.current);
+    setSlice(null);
+    setProposals([]);
+    onReset();
+    try {
+      await backend.save(ref.current);
+      await Promise.all(zips.map((id) => backend.deleteBatch(id)));
+      const [readings, proposed] = await Promise.all([
+        backend.readings?.() ?? [],
+        backend.proposals?.() ?? [],
+      ]);
+      await Promise.all([
+        ...readings.map((r) => backend.dropReading?.(r.id)),
+        ...proposed.map((p) => backend.dropProposal?.(p.id)),
+      ]);
+      // A copy still in this browser would move back in at the next sign-in.
+      if (moveFrom) await Promise.all((await moveFrom.list()).map((x) => moveFrom.remove(x)));
+      setMovable([]);
+      onStatus({ tone: 'info', text: 'Your rules were reset.' });
+    } catch {
+      onStatus({
+        tone: 'error',
+        text: 'Your rules were reset here, but not everything was deleted. Reset again to finish.',
+      });
+    } finally {
+      taking.current = false;
+    }
+  };
+  /**
    * One screen tag's set merged into another (D129): its notes take the other's name, with its
    * brief and role where the other has none. The open images follow, so they don't undo it.
    */
@@ -1490,6 +1540,25 @@ export function CollectionsView({
               }}
             />
           )}
+
+          {!slice && (c.rules.length > 0 || c.batches.length > 0 || proposals.length > 0) && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  opener.current = document.activeElement as HTMLElement | null;
+                  setResetting(true);
+                }}
+                className={cn(
+                  button,
+                  'border-transparent text-red-700 hover:bg-red-500/10 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300',
+                )}
+              >
+                <RotateCcw className="size-4" aria-hidden />
+                Reset rules
+              </button>
+            </div>
+          )}
             </>
           )}
         </div>
@@ -1596,6 +1665,49 @@ export function CollectionsView({
             </Dialog>
           );
         })()}
+      {resetting && (
+        <Dialog
+          id="reset-title"
+          title="Reset your rules?"
+          opener={opener.current}
+          onClose={() => setResetting(false)}
+        >
+          <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
+            {count(c.rules.length, 'rule')},{' '}
+            {count(
+              c.batches.reduce((n, b) => n + b.notes.length, 0),
+              'note',
+            )}{' '}
+            and {count(c.batches.length, 'batch', 'batches')} go for good, with their screenshots, from{' '}
+            {backend.kind === 'account' ? 'your account' : 'this browser'}, and so do the images
+            open now.{' '}
+            {backend.kind === 'account'
+              ? 'Your account, your agent’s key and your credits stay.'
+              : 'Your credits stay.'}
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              data-autofocus
+              onClick={() => setResetting(false)}
+              className={button}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void resetAll()}
+              className={cn(
+                hit,
+                'flex min-h-9 items-center gap-2 rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
+              )}
+            >
+              <RotateCcw className="size-4" aria-hidden />
+              Reset
+            </button>
+          </div>
+        </Dialog>
+      )}
       {asking && (
         <Dialog
           id="close-ups-title"

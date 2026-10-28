@@ -31,6 +31,7 @@ import {
   mergeCollection,
   type NoteRef,
   newCollection,
+  resetCollection,
   newNotes,
   noteFingerprint,
   noteKey,
@@ -330,6 +331,25 @@ describe('the taste library', () => {
     assert.equal(imagesOf(c, c.rules[0]), 2);
     assert.equal(originOf(c.rules[0]), 'ai');
     assert.equal(unreadNotes(c).length, 0, 'every note it was given counts as read');
+  });
+
+  it('resets to nothing learned, keeping the briefs, roles and what was exported', () => {
+    const c = {
+      ...read(),
+      briefs: { checkout: 'Calm and quick.' },
+      screenRoles: { checkout: 'target' as const },
+      freeProduct: 'checkout',
+      exports: [],
+    };
+    const r = resetCollection(c, 'later');
+    assert.deepEqual([r.rules, r.batches, r.read, r.checks], [[], [], [], undefined]);
+    assert.deepEqual([r.id, r.name, r.createdAt, r.updatedAt], [c.id, c.name, c.createdAt, 'later']);
+    assert.deepEqual(r.briefs, c.briefs);
+    assert.deepEqual(r.screenRoles, c.screenRoles);
+    assert.equal(r.freeProduct, 'checkout');
+    assert.deepEqual(r.exports, []);
+    assert.equal(unreadNotes(r).length, 0);
+    assert.ok(!('briefs' in resetCollection(read(), 'later')));
   });
 
   it('strengthens a rule, flags a conflict, and keeps a new note once', () => {
