@@ -1331,7 +1331,7 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
   {
     group: 'Recording',
     rows: [
-      { combos: [['R']], what: 'Record, or resume, after a five-second count' },
+      { combos: [['R']], what: 'Record, or resume' },
       { combos: [['Space']], what: 'Pause, or resume' },
       { combos: [['Esc']], what: 'Stop the count' },
     ],

@@ -28,9 +28,10 @@ import { VERDICT_COLOR } from './render';
 /*
  * The walkthrough (D131): the batch on a reel, after a View-Master. The screenshot being narrated
  * sits in the middle; the one before and the one after are tilted at the edges, lower down and
- * fading. R records after a five-second count, Space pauses and resumes, the arrows (or a scroll
- * or swipe) turn the reel, F goes to the end, and ? or the Keys and voice button opens the legend. While recording, the microphone
- * and the pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
+ * fading. R records (the first time in a visit after a five-second count, D143), Space pauses
+ * and resumes at once, the arrows (or a scroll or swipe) turn the reel, F goes to the end, and ?
+ * or the Keys and voice button opens the legend. While recording, the microphone and the
+ * pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
  * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
  * Finish and made into notes where the pointer was, with the voice tags heard applied (D137);
  * the end card lists them by screen, and the middle screenshot shows its notes, numbered.
@@ -182,6 +183,29 @@ const POINTING: [how: string, what: string][] = [
   ['Point off the screenshot', 'A note on the whole screen'],
 ];
 
+/**
+ * Whether this visit has had its count (D143), kept for the tab so a reload doesn't bring it back.
+ * A count stopped with Esc doesn't count.
+ */
+const COUNTED_KEY = 'pinch-counted';
+let countedHere = false;
+const counted = () => {
+  if (countedHere) return true;
+  try {
+    return sessionStorage.getItem(COUNTED_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const markCounted = () => {
+  countedHere = true;
+  try {
+    sessionStorage.setItem(COUNTED_KEY, '1');
+  } catch {
+    // Storage blocked: remembered until the page closes.
+  }
+};
+
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
@@ -331,6 +355,8 @@ export function Reel({
     if (phase !== 'paused' && phase !== 'saved') return;
     if (phase === 'saved') setSaved(null);
     if (!(await open())) return;
+    // Only the first recording of a visit waits for the count (D143): a resume starts at once.
+    if (counted()) return goLive();
     setPhase('counting');
     setCount(COUNTDOWN);
     let n = COUNTDOWN;
@@ -338,6 +364,7 @@ export function Reel({
       n -= 1;
       if (n > 0) return setCount(n);
       clearInterval(countTimer.current);
+      markCounted();
       goLive();
     }, 1000);
   };
@@ -890,7 +917,7 @@ export function Reel({
               <dl className="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
                 {(
                   [
-                    [<Kbd key="r">R</Kbd>, 'Record, or resume, after a five-second count'],
+                    [<Kbd key="r">R</Kbd>, 'Record, or resume'],
                     [<Kbd key="s">Space</Kbd>, 'Pause, or resume'],
                     [<Kbd key="e">Esc</Kbd>, 'Stop the count'],
                     [<Right key="n" />, 'Next screen, also a scroll or swipe'],
