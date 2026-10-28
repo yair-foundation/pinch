@@ -196,6 +196,22 @@ export function newCollection(name: string, id: string, now: string): Collection
   return { id, name, createdAt: now, updatedAt: now, batches: [], rules: [], read: [] };
 }
 
+/**
+ * The collection with nothing learned (D141): no rules, notes, batches or render checks. It keeps
+ * its id and name, the author's briefs and roles for their products, the free plan's product,
+ * and the versions it exported, so an agent holding an old copy hears that the rules are gone.
+ */
+export function resetCollection(c: Collection, now: string): Collection {
+  return {
+    ...newCollection(c.name, c.id, c.createdAt),
+    updatedAt: now,
+    ...(c.screenRoles ? { screenRoles: c.screenRoles } : {}),
+    ...(c.briefs ? { briefs: c.briefs } : {}),
+    ...(c.freeProduct ? { freeProduct: c.freeProduct } : {}),
+    ...(c.exports ? { exports: c.exports } : {}),
+  };
+}
+
 export const noteKey = (r: NoteRef) => `${r.batchId}/${r.note}`;
 
 /**

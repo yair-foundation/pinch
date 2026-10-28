@@ -1123,6 +1123,10 @@ function Workspace() {
           onPay={openPay}
           onCredits={refreshMe}
           onBack={() => setView('batch')}
+          onReset={() => {
+            commit([]);
+            setIndex(0);
+          }}
           onStatus={setStatus}
         />
       ) : !asset ? (
