@@ -6,6 +6,11 @@ import { PIXEL_BUDGET } from './render';
  * exported set of screens is talked through one page at a time. pdf.js is loaded only when a PDF
  * arrives, so the page every visitor opens doesn't carry it. Nothing leaves the browser. The pure
  * parts are in `src/lib/pin/pdf-pages.ts`.
+ *
+ * pdf.js needs more than its own code to draw every page (D142): its WebAssembly decoders for
+ * JPEG 2000 and JBIG2 images (which Preview and Acrobat often use; without them the image is left
+ * out), its colour profiles, the CMaps for Chinese, Japanese and Korean text, and the standard
+ * fonts for text that doesn't embed its own. They come from jsdelivr, at the version installed.
  */
 
 /** A PDF's pages as PNG files, one per page, in order. `onPage` hears each as it is drawn. */
@@ -18,7 +23,14 @@ export async function pdfPages(
     'pdfjs-dist/build/pdf.worker.min.mjs',
     import.meta.url,
   ).toString();
-  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const assets = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/`;
+  const task = pdfjs.getDocument({
+    data: new Uint8Array(await file.arrayBuffer()),
+    wasmUrl: `${assets}wasm/`,
+    iccUrl: `${assets}iccs/`,
+    cMapUrl: `${assets}cmaps/`,
+    standardFontDataUrl: `${assets}standard_fonts/`,
+  });
   const doc = await task.promise;
   const pages: File[] = [];
   try {

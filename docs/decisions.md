@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D141.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D142.
 
 ## Open (need the user)
 
@@ -12,6 +12,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-10-28 — D142 A PDF's pages draw with every image in them (the user: "the pdf's that i have attached are missing the images in them"). Amends D139.** pdf.js draws most of a page with its own code, but JPEG 2000 and JBIG2 images need its WebAssembly decoders, which it loads from `wasmUrl`; without that it skipped them ("OpenJPEG failed to initialize") and the page came in with a blank where the picture was. Preview and Acrobat often save photos and scans that way. Colour profiles (`iccUrl`), the CMaps for Chinese, Japanese and Korean text (`cMapUrl`) and the standard fonts for text that embeds none (`standardFontDataUrl`) are set too, for the same reason. They come from jsdelivr at the version of `pdfjs-dist` installed, as the voice runtime does (D140); the PDF itself still never leaves the browser. Checked with a three-page PDF holding a JPEG, a JPEG 2000 and a JPEG with a Display P3 profile: before, the JPEG 2000 page was blank; after, all three drew in full.
 - **2026-10-28 — D141 Reset rules, at the foot of Your rules (the user: "i need to reset the entire rules in get-pinch.io", then "Build a Reset rules action on Your rules that clears every rule, note, batch and reading but keeps my account, agent key and credits").** Delete account cleared the rules but took the account and the agent's key with them, and a copy left in the browser could move back in at the next sign-in; removing batches and rules one at a time left the taste check's and the agent's.
   - **What goes:** every rule, note and batch (`resetCollection`), the batches' screenshots in the store, the render checks made from the rules, the agent's readings and proposed rules still waiting, any copy of the rules kept in this browser, and the images open now, whose notes would otherwise come back the next time Your rules opens. No Undo: the zips go, so "Reset your rules?" asks first, with the counts.
   - **What stays:** the account, the agent's key (the agent stays connected, to an empty library), the credits, the author's briefs and roles for their products, the free plan's product, and the versions exported (D128), so an agent holding an old copy hears that its rules are gone. The agent's work reports (D120) stay as a record.
