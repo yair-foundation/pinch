@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, CircleHelp, Download, Star, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, Library, Star, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { type Asset, type Mark, verdictOf } from '@/lib/pin/model';
 import {
@@ -12,8 +12,6 @@ import {
   type Shown,
   slotOf,
   type Take,
-  takeFile,
-  takeFileName,
   type Wheel,
   wheelTurn,
 } from '@/lib/pin/narration';
@@ -34,7 +32,8 @@ import { VERDICT_COLOR } from './render';
  * pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
  * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
  * Finish and made into notes where the pointer was, with the voice tags heard applied (D137);
- * the end card lists them by screen, and the middle screenshot shows its notes, numbered.
+ * the end card lists them by screen, and the middle screenshot shows its notes, numbered. From
+ * the end card the notes go to Your rules, where the package is exported (D144).
  */
 
 /** What was said over one screen: its voice tags, and the notes the take made, numbered. */
@@ -60,7 +59,10 @@ function heardOf(take: Take, assets: Asset[], known: string[]): Heard {
 const VERDICT_TEXT = {
   good: 'text-green-700 dark:text-green-400',
   bad: 'text-red-700 dark:text-red-400',
+  both: 'text-amber-700 dark:text-amber-400',
 };
+/** A note's verdict on the end card: a note on one thing can hold both sides (D147). */
+const VERDICT_WORD = { good: 'Works', bad: 'Doesn’t work', both: 'Mixed' };
 
 /** The notes said on a screen, drawn over it where they were pointed, numbered (D137). */
 function VoiceMarks({ marks }: { marks: Mark[] }) {
@@ -218,6 +220,7 @@ export function Reel({
   onSave,
   onTake,
   onFlip,
+  onRules,
 }: {
   assets: Asset[];
   urls: Record<string, string>;
@@ -231,6 +234,8 @@ export function Reel({
   onTake: (take: Take) => void;
   /** Turn a note's verdict round: what works, or what doesn't. */
   onFlip: (assetId: string, markId: string) => void;
+  /** Open Your rules, which keeps the batch's new notes (D87, D144). */
+  onRules: () => void;
 }) {
   const [atEnd, setAtEnd] = useState(false);
   const at = atEnd ? assets.length : Math.min(index, assets.length - 1);
@@ -471,23 +476,6 @@ export function Reel({
     }
   };
 
-  const download = async () => {
-    if (!saved) return;
-    const audio = await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(saved.audio);
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(
-      new Blob([takeFile(saved.take, audio)], { type: 'application/json' }),
-    );
-    a.download = takeFileName(saved.take);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  };
-
   // The clock in the corner, read from the take's own clock, or the kept take's length.
   const keptMs = saved?.take.durationMs ?? 0;
   useEffect(() => {
@@ -513,6 +501,7 @@ export function Reel({
         assets.flatMap((a) => (a.screenTag ? [a.screenTag] : [])),
       )
     : null;
+  const made = heard?.reduce((n, s) => n + s.notes.length, 0) ?? 0;
 
   // Closing the reel mid-take (Your rules, Start over) keeps what was recorded.
   const keepRef = useRef(keep);
@@ -701,7 +690,9 @@ export function Reel({
         <div className="grid justify-items-center gap-3 text-center">
           {phase === 'saved' && saved ? (
             <>
-              <p className="m-0 text-[15px] font-medium text-foreground">Saved in this browser</p>
+              <p className="m-0 text-[15px] font-medium text-foreground">
+                {made ? `${made} ${made === 1 ? 'note' : 'notes'}` : 'Finished'}
+              </p>
               <p className="m-0 text-sm text-muted-foreground">
                 {clockText(saved.take.durationMs)} over {saved.take.screens.length}{' '}
                 {saved.take.screens.length === 1 ? 'screen' : 'screens'}.
@@ -752,8 +743,9 @@ export function Reel({
                         {s.notes.length > 0 && (
                           <ol className="m-0 grid list-none gap-1.5 p-0">
                             {s.notes.map(({ mark, n }) => {
-                              const v = verdictOf(mark) === 'bad' ? 'bad' : 'good';
-                              const word = v === 'good' ? 'Works' : 'Doesn’t work';
+                              const said = verdictOf(mark);
+                              const v = said === 'bad' || said === 'both' ? said : 'good';
+                              const word = VERDICT_WORD[v];
                               return (
                                 <li key={mark.id} className="flex items-baseline gap-2">
                                   <span className="w-4 shrink-0 text-right font-mono text-[12px] text-muted-foreground tabular-nums">
@@ -772,7 +764,7 @@ export function Reel({
                                     {word}
                                   </button>
                                   <span className="text-foreground">
-                                    {mark.good || mark.bad}
+                                    {[mark.good, mark.bad].filter((x) => x.trim()).join(' ')}
                                     {mark.best && mark.good && (
                                       <Star
                                         aria-label="Best example"
@@ -795,13 +787,15 @@ export function Reel({
                   <p className="m-0 text-sm text-muted-foreground">No words heard.</p>
                 ))}
               <div className="mt-1 flex gap-2">
-                <button type="button" onClick={download} className={BUTTON}>
-                  <Download className="size-4" aria-hidden />
-                  Download recording
-                </button>
                 <button type="button" onClick={() => turn(0)} className={BUTTON}>
                   Back to the first
                 </button>
+                {made > 0 && (
+                  <button type="button" onClick={onRules} className={PRIMARY}>
+                    <Library className="size-4" aria-hidden />
+                    Add to your rules
+                  </button>
+                )}
               </div>
             </>
           ) : (

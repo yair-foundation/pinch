@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hand vs Pinch</title>
+    <style>
+      :root {
+        --bg: #fafafa;
+        --fg: #171717;
+        --muted: #737373;
+        --line: #e5e5e5;
+        --card: #ffffff;
+        --pick: #171717;
+        --pick-fg: #fafafa;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0a0a;
+          --fg: #ededed;
+          --muted: #a1a1a1;
+          --line: #262626;
+          --card: #141414;
+          --pick: #ededed;
+          --pick-fg: #0a0a0a;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 24px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--line);
+      }
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      nav {
+        display: flex;
+        gap: 6px;
+        margin-left: auto;
+      }
+      nav button {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      nav button.done {
+        background: var(--line);
+        color: var(--fg);
+      }
+      nav button[aria-current="true"] {
+        border-color: var(--fg);
+        color: var(--fg);
+      }
+      main {
+        padding: 16px 24px 160px;
+      }
+      .task {
+        margin: 0 0 16px;
+        max-width: 80ch;
+        font-size: 15px;
+      }
+      .sides {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .side {
+        min-width: 0;
+      }
+      .side-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .side-head strong {
+        font-weight: 600;
+      }
+      .side-head a {
+        margin-left: auto;
+        color: var(--muted);
+      }
+      .frame {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+      }
+      .frame iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1440px;
+        border: 0;
+        transform-origin: 0 0;
+        background: #fff;
+      }
+      footer {
+        position: fixed;
+        inset: auto 0 0 0;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 16px;
+        align-items: end;
+        padding: 12px 24px;
+        background: var(--bg);
+        border-top: 1px solid var(--line);
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      input,
+      textarea {
+        font: inherit;
+        color: var(--fg);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 8px;
+      }
+      input {
+        width: 80px;
+      }
+      .right {
+        justify-self: end;
+        text-align: right;
+      }
+      .picks {
+        display: flex;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+      }
+      .picks button,
+      .save {
+        min-height: 36px;
+        padding: 0 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+      }
+      .picks button[aria-pressed="true"],
+      .save {
+        background: var(--pick);
+        color: var(--pick-fg);
+        border-color: var(--pick);
+      }
+      .save:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .center {
+        display: grid;
+        gap: 8px;
+        justify-items: center;
+      }
+      .note {
+        width: min(36rem, 40vw);
+      }
+      .done-all {
+        padding: 48px 24px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Which is closer to your taste?</h1>
+      <span class="muted" id="progress"></span>
+      <nav id="nav" aria-label="Pairs"></nav>
+    </header>
+    <main id="main"></main>
+    <footer id="foot" hidden>
+      <label>
+        Changes you'd ask for on the left
+        <input id="changes-left" type="number" min="0" step="1" inputmode="numeric" />
+      </label>
+      <div class="center">
+        <fieldset class="picks">
+          <legend class="sr-only">Closer to your taste</legend>
+          <button type="button" data-pick="left">Left</button>
+          <button type="button" data-pick="same">No difference</button>
+          <button type="button" data-pick="right">Right</button>
+        </fieldset>
+        <textarea id="note" class="note" rows="1" placeholder="Why (optional)"></textarea>
+        <button type="button" class="save" id="save" disabled>Save and next</button>
+      </div>
+      <label class="right">
+        Changes you'd ask for on the right
+        <input id="changes-right" type="number" min="0" step="1" inputmode="numeric" />
+      </label>
+    </footer>
+    <script>
+      // The hand-vs-Pinch test's judging page (D145): two builds of one task side by side, on
+      // random sides, never named. Each verdict saves to results.json as soon as it's given.
+      let state = { tasks: [], pairs: [], answers: {} }
+      let at = 0
+      let pick = null
+      // The open pair's two frames, fitted again when the window changes size.
+      let fitters = []
+      const $ = (id) => document.getElementById(id)
+      addEventListener("resize", () => {
+        for (const f of fitters) f()
+      })
+
+      async function load() {
+        state = await (await fetch("/state")).json()
+        const first = state.pairs.findIndex((p) => !state.answers[p.id])
+        show(first < 0 ? 0 : first)
+      }
+
+      function fit(frame, iframe) {
+        const scale = frame.clientWidth / 1440
+        iframe.style.transform = `scale(${scale})`
+        let height = 900
+        try {
+          height = Math.min(8000, iframe.contentDocument.documentElement.scrollHeight)
+        } catch {}
+        iframe.style.height = `${height}px`
+        frame.style.height = `${height * scale}px`
+      }
+
+      function side(name, id) {
+        const box = document.createElement("section")
+        box.className = "side"
+        box.innerHTML = `<div class="side-head"><strong>${name}</strong><a href="/b/${id}" target="_blank" rel="noopener">Full size</a></div>`
+        const frame = document.createElement("div")
+        frame.className = "frame"
+        const iframe = document.createElement("iframe")
+        iframe.title = `${name} build`
+        iframe.src = `/b/${id}`
+        // Tailwind's CDN lays the page out after load, so measure again once it has.
+        const refit = () => fit(frame, iframe)
+        iframe.addEventListener("load", () => {
+          for (const ms of [0, 600, 2000]) setTimeout(refit, ms)
+        })
+        fitters.push(refit)
+        frame.append(iframe)
+        box.append(frame)
+        return box
+      }
+
+      function show(i) {
+        at = i
+        fitters = []
+        const main = $("main")
+        main.innerHTML = ""
+        const done = state.pairs.filter((p) => state.answers[p.id]).length
+        $("progress").textContent = `${done} of ${state.pairs.length} judged`
+        $("nav").innerHTML = ""
+        state.pairs.forEach((p, k) => {
+          const b = document.createElement("button")
+          b.type = "button"
+          b.textContent = k + 1
+          b.className = state.answers[p.id] ? "done" : ""
+          b.setAttribute("aria-current", String(k === i))
+          b.onclick = () => show(k)
+          $("nav").append(b)
+        })
+        const p = state.pairs[i]
+        if (!p) {
+          main.innerHTML = `<p class="done-all muted">Nothing to judge yet. Build first.</p>`
+          $("foot").hidden = true
+          return
+        }
+        const task = document.createElement("p")
+        task.className = "task"
+        task.textContent = `Task ${p.task + 1}: ${state.tasks[p.task]}`
+        const sides = document.createElement("div")
+        sides.className = "sides"
+        sides.append(side("Left", p.left), side("Right", p.right))
+        main.append(task, sides)
+        const a = state.answers[p.id]
+        pick = a?.pick ?? null
+        $("changes-left").value = a ? a.changes.left : ""
+        $("changes-right").value = a ? a.changes.right : ""
+        $("note").value = a?.note ?? ""
+        $("foot").hidden = false
+        sync()
+        scrollTo(0, 0)
+      }
+
+      function sync() {
+        for (const b of document.querySelectorAll("[data-pick]"))
+          b.setAttribute("aria-pressed", String(b.dataset.pick === pick))
+        const n = (id) => $(id).value !== "" && Number($(id).value) >= 0
+        $("save").disabled = !(pick && n("changes-left") && n("changes-right"))
+      }
+
+      for (const b of document.querySelectorAll("[data-pick]"))
+        b.onclick = () => {
+          pick = b.dataset.pick
+          sync()
+        }
+      $("changes-left").oninput = sync
+      $("changes-right").oninput = sync
+
+      $("save").onclick = async () => {
+        const p = state.pairs[at]
+        const answer = {
+          pick,
+          changes: {
+            left: Math.round(Number($("changes-left").value)),
+            right: Math.round(Number($("changes-right").value)),
+          },
+          ...($("note").value.trim() ? { note: $("note").value.trim() } : {}),
+        }
+        $("save").disabled = true
+        const res = await fetch("/answer", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pair: p.id, answer }),
+        }).catch(() => null)
+        if (!res?.ok) {
+          sync()
+          alert("That didn't save. Is the judge still running?")
+          return
+        }
+        state.answers[p.id] = answer
+        const next = state.pairs.findIndex((x, k) => k > at && !state.answers[x.id])
+        const any = state.pairs.findIndex((x) => !state.answers[x.id])
+        if (next >= 0 || any >= 0) show(next >= 0 ? next : any)
+        else {
+          show(at)
+          $("main").insertAdjacentHTML(
+            "afterbegin",
+            `<p class="done-all">All judged. Run score to see which input won.</p>`,
+          )
+        }
+      }
+
+      load()
+    </script>
+  </body>
+</html>

@@ -8,8 +8,10 @@ import {
   claimsOf,
   flipVerdict,
   isWhole,
+  leanOfClaim,
   placeClaim,
   removedScreens,
+  sidesOf,
   topicsOfClaim,
   verdictOfClaim,
   voiceNotes,
@@ -84,6 +86,27 @@ describe('voice notes: works or avoid', () => {
   it('takes a plain description as what works', () => {
     assert.equal(verdictOfClaim('The price sits under the title.'), 'good');
   });
+  it('reads a wish for something else against what is there, and keeping it for it', () => {
+    assert.ok(leanOfClaim("I'd want a lighter serif here.") < 0);
+    assert.ok(leanOfClaim("I'd rather see one accent.") < 0);
+    assert.ok(leanOfClaim("That's exactly the voice I want.") > 0);
+    assert.ok(leanOfClaim("I'd keep it.") > 0);
+    assert.ok(leanOfClaim("It doesn't shout.") > 0);
+  });
+  it('reads a whole note: a plain description takes the side of the rest (D147)', () => {
+    assert.deepEqual(
+      sidesOf(['The balance is set in a medium sans.', "I'd want a light serif."]),
+      { good: '', bad: "The balance is set in a medium sans. I'd want a light serif." },
+    );
+    assert.deepEqual(sidesOf(['The button is small and flat.', "It's lovely."]), {
+      good: "The button is small and flat. It's lovely.",
+      bad: '',
+    });
+    assert.deepEqual(sidesOf(['The card is lovely.', 'The label is too small.']), {
+      good: 'The card is lovely.',
+      bad: 'The label is too small.',
+    });
+  });
   it('flips, and a flipped note is no longer a best example', () => {
     const m = flipVerdict({
       id: 'a',
@@ -145,6 +168,12 @@ describe('voice notes: where the pointer was', () => {
       y2: 0.6,
     });
   });
+  it('ends a rest where the pointer left the screenshot, not at the end of the sentence', () => {
+    const c = claim('The footer is too busy.', 2000);
+    const pointer: PointerSample[] = [...rest(0.5, 0.1, 0, 1800), ...rest(0.5, 0.9, 1900, 4000)];
+    assert.deepEqual(placeClaim(c, pointer, 0, size), { kind: 'dot', x: 0.5, y: 0.9 });
+  });
+
   it('is about the whole screen with no pointer on it', () => {
     assert.ok(isWhole(placeClaim(claim('The whole thing feels calm'), [], 0, size)));
     const off: PointerSample[] = [[0, 0, null, null]];
@@ -203,6 +232,52 @@ describe('voice notes: a take applied', () => {
     assert.equal(one.marks[0].quote, 'The button is too heavy.');
     assert.ok(one.marks[0].id.startsWith(voicePrefix('aaaa-bbbb')));
     assert.equal(two.marks[0].good, 'The list reads well.');
+  });
+
+  it('makes one note of all that was said about one thing (D147)', () => {
+    const words = say("The balance is set in a medium sans. I'd want a light serif.");
+    const [one] = applyTake([asset('one'), asset('two')], take(words, circle(0.5, 0.5, 0.1, 0)));
+    assert.equal(one.marks.length, 1);
+    const [m] = one.marks;
+    assert.equal(m.shape.kind, 'area');
+    assert.equal(m.good, '');
+    assert.equal(m.bad, "The balance is set in a medium sans. I'd want a light serif.");
+    assert.equal(m.quote, m.bad);
+  });
+
+  it('keeps both sides of one thing in its note, and a contrast in it', () => {
+    const words = say("The button is small and flat. It's an obvious action but it doesn't shout.");
+    const [one] = applyTake(
+      [asset('one'), asset('two')],
+      take(words, rest(0.3, 0.7, 0, words.at(-1)?.end ?? 0)),
+    );
+    assert.equal(one.marks.length, 1);
+    assert.equal(
+      one.marks[0].good,
+      "The button is small and flat. It's an obvious action. It doesn't shout.",
+    );
+  });
+
+  it('starts a note for another thing pointed at, and picks up "it" with nothing pointed at', () => {
+    const first = say('The header is lovely.');
+    const second = say('The footer is too busy.', 2000);
+    const pointed = applyTake(
+      [asset('one'), asset('two')],
+      take([...first, ...second], [...rest(0.5, 0.1, 0, 1800), ...rest(0.5, 0.9, 1900, 4000)]),
+    );
+    assert.deepEqual(
+      voiceNotes(pointed[0]).map((m) => [m.good, m.bad]),
+      [
+        ['The header is lovely.', ''],
+        ['', 'The footer is too busy.'],
+      ],
+    );
+    const [unpointed] = applyTake(
+      [asset('one'), asset('two')],
+      take(say("The header is calm. It's the best part.")),
+    );
+    assert.equal(unpointed.marks.length, 1);
+    assert.equal(unpointed.marks[0].good, "The header is calm. It's the best part.");
   });
 
   it('replaces what the same take made before', () => {

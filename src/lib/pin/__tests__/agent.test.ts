@@ -97,9 +97,16 @@ describe('Pinch for agents (MCP)', () => {
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } },
       async () => null,
     )) as {
-      result: { protocolVersion: string; capabilities: object; serverInfo: { name: string } };
+      result: {
+        protocolVersion: string;
+        capabilities: object;
+        serverInfo: { name: string };
+        instructions: string;
+      };
     };
     assert.equal(r.result.protocolVersion, '2025-03-26');
+    assert.doesNotMatch(r.result.instructions, /propose_rule|report_work/, 'gone since D144');
+    assert.match(r.result.instructions, /the rule as returned wins: update your notes/);
     assert.deepEqual(r.result.capabilities, { tools: { listChanged: false } });
     assert.equal(r.result.serverInfo.name, 'pinch');
     const later = (await answer(
@@ -129,8 +136,6 @@ describe('Pinch for agents (MCP)', () => {
         'get_design_rules',
         'get_rule_evidence',
         'get_render_checks',
-        'propose_rule',
-        'report_work',
         'get_notes_to_read',
         'submit_reading',
         'list_rule_topics',
@@ -478,58 +483,13 @@ describe('a rule’s whole screenshots over MCP (D99)', () => {
   });
 });
 
-describe('a rule the agent proposes (D116)', () => {
-  const propose = (args: unknown, saved: unknown[], store = true) =>
-    answer(
-      {
-        jsonrpc: '2.0',
-        id: 9,
-        method: 'tools/call',
-        params: { name: 'propose_rule', arguments: args },
-      },
-      async () => library(),
-      undefined,
-      store ? { id: () => 'p1', save: async (p) => void saved.push(p) } : undefined,
-    );
-
-  it('waits for the person, a change kept by its rule’s lasting key', async () => {
-    const saved: { rule?: string; was?: string; text: string }[] = [];
-    const r = await propose(
-      { rule: 'R2', text: 'Separate sections with space only.', why: 'They said so today.' },
-      saved,
-    );
-    assert.match(textOf(r), /^Proposed a change to R2\. It waits on Your rules in Pinch/);
-    assert.equal(saved.length, 1);
-    const r2 = rulesOf(library())[1].rule;
-    assert.equal(saved[0].rule, r2.id);
-    assert.equal(saved[0].was, r2.text);
-    const fresh = await propose({ text: 'AI boxes are white.', why: 'Agreed.' }, saved);
-    assert.match(textOf(fresh), /it isn’t one of their rules until they keep it/);
-  });
-
-  it('says what is wrong, and stores nothing', async () => {
-    const saved: unknown[] = [];
-    const r = (await propose({ text: 'x', why: 'y', rule: 'R40' }, saved)) as {
-      result: { isError?: boolean };
-    };
-    assert.equal(r.result.isError, true);
-    assert.match(textOf(r), /No rule R40/);
-    assert.equal(saved.length, 0);
-    const off = (await propose({ text: 'x', why: 'y' }, saved, false)) as {
-      result: { isError?: boolean };
-    };
-    assert.equal(off.result.isError, true);
-  });
-});
-
 describe('a run of the agent, recorded (D120)', () => {
-  const call = (name: string, args: unknown, events: RunEvent[], log = true) =>
+  const call = (name: string, args: unknown, events: RunEvent[]) =>
     answer(
       { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name, arguments: args } },
       async () => library(),
       async () => new Map(),
-      { id: () => 'p1', save: async () => undefined },
-      log ? { id: () => 'w1', add: (e) => void events.push(e) } : undefined,
+      { add: (e) => void events.push(e) },
     );
 
   it('writes down what each call asked for and got, by the rules’ lasting keys', async () => {
@@ -538,7 +498,6 @@ describe('a run of the agent, recorded (D120)', () => {
     await call('get_rule_evidence', { rule: 'R1' }, events);
     await call('get_rule_evidence', { rule: 'R40' }, events);
     await call('get_render_checks', {}, events);
-    await call('propose_rule', { text: 'AI boxes are white.', why: 'Agreed.' }, events);
     await call('list_rule_topics', {}, events);
     const served = numberedRules(library(), pickOf({ topics: ['copy'], tags: ['Acme'] }));
     assert.deepEqual(events, [
@@ -551,53 +510,17 @@ describe('a run of the agent, recorded (D120)', () => {
       },
       { kind: 'evidence', rule: rulesOf(library())[0].rule.id },
       { kind: 'checks' },
-      { kind: 'proposal', id: 'p1' },
     ]);
   });
 
-  it('takes the agent’s report of a piece of work, rules by number, and says what wasn’t a rule', async () => {
+  it('no longer takes rules proposed or work reported (D144)', async () => {
     const events: RunEvent[] = [];
-    const [r1, r2] = rulesOf(library());
-    const r = await call(
-      'report_work',
-      {
-        work: 'Inbox, fragment',
-        followed: ['R1', 'r2', 'R99'],
-        setAside: [{ rule: 'R2', why: 'The author asked for a dense list here.' }],
-        checksRun: 6,
-        failedChecks: [{ check: 'contrast', rules: ['R1'] }],
-        openCalls: ['Lavender or white ground: lavender keeps R138.'],
-      },
-      events,
-    );
-    assert.match(textOf(r), /^Reported\. .*Left out, not rules: R99\./);
-    assert.deepEqual(events, [
-      {
-        kind: 'report',
-        report: {
-          id: 'w1',
-          at: (events[0] as { report: { at: string } }).report.at,
-          work: 'Inbox, fragment',
-          followed: [r1.rule.id, r2.rule.id],
-          setAside: [{ rule: r2.rule.id, why: 'The author asked for a dense list here.' }],
-          failed: [{ check: 'contrast', rules: [r1.rule.id] }],
-          checksRun: 6,
-          open: ['Lavender or white ground: lavender keeps R138.'],
-        },
-      },
-    ]);
-  });
-
-  it('asks for what was made, and isn’t there without a record', async () => {
-    const events: RunEvent[] = [];
-    const none = (await call('report_work', { followed: ['R1'] }, events)) as {
-      result: { isError?: boolean };
-    };
-    assert.equal(none.result.isError, true);
-    const off = (await call('report_work', { work: 'x' }, events, false)) as {
-      result: { isError?: boolean };
-    };
-    assert.equal(off.result.isError, true);
+    for (const name of ['propose_rule', 'report_work']) {
+      const r = (await call(name, { text: 'x', why: 'y', work: 'z' }, events)) as {
+        error: { message: string };
+      };
+      assert.match(r.error.message, /Unknown tool/);
+    }
     assert.equal(events.length, 0);
   });
 });

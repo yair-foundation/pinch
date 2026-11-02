@@ -2,12 +2,12 @@ import { type Collection, type ExportedRule, rulesOf } from './learnings';
 
 /*
  * What the agent did with the rules (D120). Each connection of the agent (one MCP session) is a
- * run, kept in the account beside its proposals: Pinch writes down what each call asked for and
- * got (the rules served, the close-ups opened, the render checks, the rules proposed), and the
- * agent adds what it made and how the rules went (`report_work`). The person judges each piece
- * of work on Your rules, so the rules set aside, failing their checks or in work judged off show
- * up, and so do the rules no run was ever served. Rule keys, topics, the person's own tags and
- * short lines from the agent only: no images, file names or links. Pure.
+ * run, kept in the account: Pinch writes down what each call asked for and got (the rules
+ * served, the close-ups opened, the render checks, the notes read). Until D144 the agent also
+ * reported what it made (`report_work`) and proposed rules, and the person judged each piece of
+ * work on Your rules; those runs, verdicts and corrections are kept, and the corrections still
+ * reach the agent. Rule keys, topics, the person's own tags and short lines from the agent only:
+ * no images, file names or links. Pure.
  */
 
 export type Verdict = 'good' | 'close' | 'off';
@@ -281,7 +281,7 @@ export function correctionsLines(runs: readonly Run[]): string[] {
   const list = correctionsOf(runs);
   if (!list.length) return [];
   return [
-    'The author’s corrections on earlier work their agents reported, newest first. Don’t repeat what they correct. Where one is about their taste and no rule holds it, ask them whether to keep it as a rule, and on a yes call propose_rule:',
+    'The author’s corrections on earlier work their agents reported, newest first. Don’t repeat what they correct. Where one is about their taste and no rule holds it, suggest they say it over a screenshot in Pinch, so it becomes a rule:',
     ...list.map(
       (x) => `- On “${x.work}” (${x.verdict === 'off' ? 'off' : 'close'}, ${x.at.slice(0, 10)}): ${x.correction}`,
     ),

@@ -336,7 +336,8 @@ describe('taste settled in conversation goes back to Pinch (D117)', () => {
     for (const text of [rulesText(c, rulesOf(c)), read('/design-rules.md'), read('/index.md')])
       assert.ok(text.includes(KEEP_IN_PINCH));
     assert.match(read('/index.md'), /\n7\. When the author settles something about their taste/);
-    assert.match(KEEP_IN_PINCH, /propose_rule/);
+    assert.match(KEEP_IN_PINCH, /say it over a screenshot in Pinch/);
+    assert.doesNotMatch(KEEP_IN_PINCH, /propose_rule/, 'the agent no longer proposes rules (D144)');
   });
 });
 

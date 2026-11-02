@@ -56,6 +56,8 @@ export const learnRequestSchema = z.object({
           .optional(),
         /** One of the author's best examples (D110). */
         best: z.boolean().optional(),
+        /** Said aloud, sorted into works or doesn't by its words, which the reading checks (D147). */
+        said: z.boolean().optional(),
         /**
          * The note's close-up with its mark drawn on, a JPEG in base64 (D98). One too large is
          * dropped, not the request: the note is read from its words.
@@ -151,7 +153,9 @@ export const learnSchema = z.object({
               rule: z.string().describe('The rule this answer makes, one sentence.'),
             }),
           )
-          .describe('With a question: two to four answers, the most likely first. Else empty.'),
+          .describe(
+            'With a question: two to four answers, the most likely first, each one quality the designer can pick alongside the others. Else empty.',
+          ),
         principles: z
           .array(z.string())
           .describe(
@@ -160,6 +164,11 @@ export const learnSchema = z.object({
       }),
     )
     .describe('New rules the new notes teach.'),
+  turned: z
+    .array(z.string())
+    .describe(
+      'The ids of notes marked saidAloud whose words say the opposite of the field they are in: praise filed under whatDoesnt, or a fault under whatWorks. Else empty.',
+    ),
 });
 
 export type LearnResult = z.infer<typeof learnSchema>;
@@ -174,7 +183,9 @@ How to read the notes:
 - One judgment, one rule. When several notes say the same thing, even about different screens and in different words, they make one rule that draws on all of them. "Too many outlines", "These borders feel heavy" and "Love how spacing separates these sections" make one rule: "Separate sections with spacing; use few, light borders."
 - When a new note says what a library rule already says, it strengthens that rule: list it under strengthen. Don't write the rule again. Only when it says the same thing, not something near it; when in doubt, write a new rule.
 - A note can say more than one thing; then it goes in more than one rule.
+- A note marked saidAloud was spoken while the designer pointed, and Pinch sorted it into whatWorks or whatDoesnt by its words alone, which is often wrong. Read what its words praise and what they fault, whatever field they are in, and read it into rules that way. When its words say the opposite of the field it is in, list its id in turned.
 - A note marked bestExample is one the designer holds up as the one to follow: let its specifics shape the rule's wording, and when it pulls against an ordinary note, follow it.
+- Weigh each note against the others. What several notes share is the designer's taste; one note's praise of one arrangement is one example of it. When a single note praises something other notes go against, don't make it a rule that pulls against theirs: fold it into their rule as the case where it holds, or keep its rule as narrow as the note (that element, on that kind of screen).
 - Keep the context. Notes can pull different ways in different places: "I like dense tables" and "This onboarding feels crowded" are both true. Write a rule for each and say where it holds ("in data tables", "in onboarding"); never merge them into one vague preference.
 - When a new note contradicts a library rule and no context explains the difference, propose the rule the note teaches, set conflictsWith to that rule's id, and say in one sentence what the two disagree on, in words the designer reads: name the rules by what they say, never by id. Never change the library rule.
 - Library rules may carry the designer's own edits: strengthen them, never reword them. Never write again a rule with status dismissed; a note that says the same strengthens it instead.
@@ -234,6 +245,7 @@ export function learnPrompt(req: Pick<LearnRequest, 'notes' | 'rules'>): string 
     ...(n.works.trim() ? { whatWorks: n.works.trim() } : {}),
     ...(n.doesNotWork.trim() ? { whatDoesnt: n.doesNotWork.trim() } : {}),
     ...(n.best && n.works.trim() ? { bestExample: true } : {}),
+    ...(n.said ? { saidAloud: true } : {}),
   }));
   return `${library}\n\nThe new notes:\n\n${JSON.stringify(notes)}`;
 }
@@ -291,6 +303,8 @@ export type CleanReading = {
     question?: RuleQuestion;
     principles?: string[];
   }[];
+  /** Notes said aloud whose words say the other side from the one they were filed under (D147). */
+  turned?: string[];
 };
 
 /** A rule's title as kept: one line, 60 characters at most, without a closing full stop. */
@@ -370,7 +384,7 @@ function questionOf(ask: string, options: LearnResult['propose'][number]['option
  * three of the foundation's principles, by their ids.
  */
 export function cleanReading(
-  r: LearnResult,
+  r: Omit<LearnResult, 'turned'> & { turned?: string[] },
   noteIds: readonly string[],
   ruleIds: readonly string[],
 ): CleanReading {
@@ -409,8 +423,10 @@ export function cleanReading(
       ...(principles.length ? { principles } : {}),
     });
   }
+  const turned = notesOf(r.turned ?? []);
   return {
     strengthen: [...strengthen].map(([rule, notes]) => ({ rule, notes: [...notes] })),
     propose,
+    ...(turned.length ? { turned } : {}),
   };
 }

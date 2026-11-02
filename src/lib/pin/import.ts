@@ -148,5 +148,6 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       ...(cleanScreenTag(a.tag) ? { screenTag: cleanScreenTag(a.tag) } : {}),
       crop: n.crop,
       ...(n.best && n.works.trim() ? { best: true as const } : {}),
+      ...(n.origin === 'voice' ? { said: true as const } : {}),
     })),
   );

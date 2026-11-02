@@ -71,6 +71,7 @@ export const readingPrompt = (c: Collection, todo: NoteToRead[]) =>
       topics: note.topics,
       source: note.source,
       ...(note.best ? { best: true } : {}),
+      ...(note.said ? { said: true } : {}),
     })),
   });
 
@@ -106,6 +107,7 @@ export const agentReadingSchema = z.object({
     )
     .default([])
     .describe(learnSchema.shape.propose.description ?? ''),
+  turned: learnSchema.shape.turned.default([]),
 });
 
 /** `submit_reading`'s input, as JSON Schema. */
@@ -183,7 +185,9 @@ export function agentReadingsIn(doc: unknown): AgentReading[] {
 
 /**
  * The collection with an agent's reading applied as the page applies Pinch's own: only the notes
- * still in it and still unread, and only the rules still there.
+ * still in it and still unread, and only the rules still there. The rules it proposes take ids
+ * from the reading's own (D146), so the server, reading ahead of the page, and the page give
+ * them the same ones, and a later reading can strengthen them.
  */
 export function applyAgentReading(
   c: Collection,
@@ -199,5 +203,15 @@ export function applyAgentReading(
     notes.set(key, { batchId: key.slice(0, i), note: key.slice(i + 1) });
   }
   if (!notes.size) return c;
-  return applyReading(c, r.reading, notes, now, newId);
+  const propose = r.reading.propose.map((p, i) => ({ ...p, id: `${r.id}-${i}` }));
+  return applyReading(c, { ...r.reading, propose }, notes, now, newId);
 }
+
+/**
+ * The collection as the page will have it once it applies the readings still waiting, in order
+ * (D146): the notes they read are no longer unread, and the rules they propose are there. The
+ * agent reads on from this, so a second batch of notes neither comes back the same nor
+ * duplicates the first batch's rules.
+ */
+export const withReadings = (c: Collection, waiting: readonly AgentReading[]) =>
+  waiting.reduce((x, r) => applyAgentReading(x, r, r.at, () => r.id), c);

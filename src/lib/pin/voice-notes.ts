@@ -1,10 +1,13 @@
 /*
  * Notes from what was said (D131, D137): a take's words, once read, become notes on its
  * screens, placed by the pointer, never by a model. Each sentence of the words left after the
- * voice tags is a claim, split again at "but"; it says what works or what to avoid by the words
- * in it, and it lands where the pointer was while it was said: an area round a circle, an arrow
- * between two rests for "move" or "align", a dot on a rest or wherever the pointer was at
- * "this", or else the whole screen. The voice tags heard are applied in the order they were
+ * voice tags is a claim, split again at "but", and it lands where the pointer was while it was
+ * said: an area round a circle, an arrow between two rests for "move" or "align", a dot on a
+ * rest or wherever the pointer was at "this", or else the whole screen. A claim that goes on
+ * about the thing the last one was on (pointed at again, or "it", "that" with nothing pointed
+ * at) joins its note, so a note is all that was said about one thing (D147); its parts say
+ * what works or what to avoid by the words in them, read across the whole note, so a plain
+ * description takes the side of the rest of what was said. The voice tags heard are applied in the order they were
  * said: a tag and a source carry on to the screens shown next, a star or topics go to a note,
  * "drop that", "redo this screen" and "not that, this" edit the notes made so far; the screens
  * said "remove it" over are named by `removedScreens`, to take out of the batch (D139). Running the
@@ -160,6 +163,39 @@ const PRAISE = new Set([
   'tidy',
   'confident',
   'sharp',
+  'exactly',
+  'gorgeous',
+  'stunning',
+  'honest',
+  'warm',
+  'warmth',
+  'quiet',
+  'restrained',
+  'refined',
+  'thoughtful',
+  'inviting',
+  'charming',
+  'effortless',
+  'keep',
+  'nails',
+  'nailed',
+  'enjoy',
+  'likes',
+  'loves',
+  // What a thing does when it works, so "it doesn't scan" is a fault.
+  'scan',
+  'scans',
+  'fit',
+  'fits',
+  'land',
+  'lands',
+  'flow',
+  'flows',
+  'help',
+  'helps',
+  'sense',
+  'read',
+  'reads',
 ]);
 const FAULT = new Set([
   'too',
@@ -218,7 +254,63 @@ const FAULT = new Set([
   'clunky',
   'cluttered',
   'jarring',
+  'shout',
+  'shouts',
+  'shouting',
+  'shouty',
+  'scream',
+  'screams',
+  'cliché',
+  'cliche',
+  'clichéd',
+  'gimmick',
+  'gimmicky',
+  'tacky',
+  'cheesy',
+  'garish',
+  'gaudy',
+  'fussy',
+  'salesy',
+  'dull',
+  'bland',
+  'illegible',
+  'unreadable',
+  'needs',
 ]);
+/** A wish for something else ("I'd want", "I'd set it in…") says what's there doesn't work. */
+const WISH_FROM = new Set(["i'd", 'id', 'would', "we'd", "i'll"]);
+const WISH = new Set([
+  'want',
+  'prefer',
+  'rather',
+  'like',
+  'love',
+  'see',
+  'make',
+  'change',
+  'swap',
+  'set',
+  'go',
+  'use',
+  'drop',
+  'move',
+  'try',
+  'pick',
+  'add',
+  'remove',
+  'cut',
+  'push',
+  'replace',
+  'simplify',
+  'tone',
+  'turn',
+  'put',
+  'give',
+  'lose',
+  'split',
+]);
+/** "Like" after these, or before "a", compares ("looks like a sticker sheet"); it doesn't praise. */
+const LIKENS = new Set(['look', 'looks', 'feel', 'feels', 'read', 'reads', 'seem', 'seems', 'sound', 'sounds', 'just', 'more', 'less']);
 const NEGATION = new Set([
   'not',
   "don't",
@@ -236,22 +328,49 @@ const NEGATION = new Set([
 ]);
 
 /**
- * Whether a claim says what works or what to avoid, by the words in it: a word of praise counts
- * for it and a fault against it, each turned round by a "not" just before; "not bad" is praise.
- * Even, as a plain description is, it's what works: the author said it about a screen they chose.
+ * How far a claim leans to what works (above 0) or what to avoid (below), by the words in it: a
+ * word of praise counts for it and a fault against it, each turned round by a "not" just
+ * before, so "not bad" is praise and "doesn't shout" too, and "it doesn't scan" a fault; a wish
+ * for something else ("I'd want a lighter one", "I'd set it in…") counts against what's there,
+ * but "I'd keep it" for it. A negation with nothing to turn ("not decorated", "no boxes") says
+ * nothing either way (D147). 0 is a plain description.
  */
-export function verdictOfClaim(text: string): 'good' | 'bad' {
+export function leanOfClaim(text: string): number {
   const said = text.split(/\s+/).map(norm).filter(Boolean);
   let score = 0;
   said.forEach((w, i) => {
-    const sign = PRAISE.has(w) ? 1 : FAULT.has(w) ? -1 : 0;
+    const wish = WISH.has(w) && said.slice(Math.max(0, i - 2), i).some((x) => WISH_FROM.has(x));
+    const likens =
+      w === 'like' && (LIKENS.has(said[i - 1] ?? '') || ['a', 'an'].includes(said[i + 1] ?? ''));
+    if (likens) return;
+    const sign = wish ? -1 : PRAISE.has(w) ? 1 : FAULT.has(w) ? -1 : 0;
     if (!sign) return;
     const negated = said.slice(Math.max(0, i - 2), i).some((x) => NEGATION.has(x));
     score += negated ? -sign : sign;
   });
-  // A bare negation with nothing to turn ("it doesn't scan") is a fault.
-  if (!score && said.some((w) => NEGATION.has(w))) return 'bad';
-  return score < 0 ? 'bad' : 'good';
+  return score;
+}
+
+/**
+ * Whether a claim on its own says what works or what to avoid. Even, as a plain description is,
+ * it's what works: the author said it about a screen they chose.
+ */
+export const verdictOfClaim = (text: string): 'good' | 'bad' =>
+  leanOfClaim(text) < 0 ? 'bad' : 'good';
+
+/**
+ * A note's parts sorted into what works and what to avoid, read across the whole note (D147):
+ * a part that leans takes its own side, and a plain description takes the side the note leans
+ * to as a whole, so "The balance is in a medium sans. I'd want a light serif." is all to avoid.
+ */
+export function sidesOf(parts: readonly string[]): { good: string; bad: string } {
+  const leans = parts.map(leanOfClaim);
+  const whole = leans.reduce((a, b) => a + b, 0);
+  const side = (lean: number) => (lean ? lean > 0 : whole >= 0);
+  return {
+    good: parts.filter((_, i) => side(leans[i])).join(' '),
+    bad: parts.filter((_, i) => !side(leans[i])).join(' '),
+  };
 }
 
 const TOPIC_OF: Record<string, Topic> = {
@@ -344,9 +463,13 @@ const REST_MIN = 450;
 /** A word's pointer is read this long either side of it, as pointing leads and lags speech. */
 const LEAD = 400;
 
-/** The pointer's path over one screen between two times, broken where it left the screenshot. */
+/**
+ * The pointer's path over one screen between two times, broken where it left the screenshot,
+ * each with when it ended: where it left, or the end of the window (D147: a rest before the
+ * pointer left lasted until it left, not to the end of the window).
+ */
 function pathsOn(pointer: readonly PointerSample[], screen: number, from: number, to: number) {
-  const paths: Point[][] = [];
+  const paths: { points: Point[]; until: number }[] = [];
   let path: Point[] = [];
   let before: Point | null = null;
   for (const [t, s, x, y] of pointer) {
@@ -360,14 +483,14 @@ function pathsOn(pointer: readonly PointerSample[], screen: number, from: number
       before = null;
     }
     if (s !== screen || x === null || y === null) {
-      if (path.length) paths.push(path);
+      if (path.length) paths.push({ points: path, until: t });
       path = [];
       continue;
     }
     path.push({ t, x, y });
   }
   if (before) path.push(before);
-  if (path.length) paths.push(path);
+  if (path.length) paths.push({ points: path, until: to });
   return paths;
 }
 
@@ -453,10 +576,10 @@ export function placeClaim(
   const to = claim.end + LEAD / 2;
   const paths = pathsOn(pointer, screen, from, to);
   for (const path of paths) {
-    const loop = loopOf(path, size);
+    const loop = loopOf(path.points, size);
     if (loop) return loop;
   }
-  const rests = paths.flatMap((p) => restsOf(p, to, size));
+  const rests = paths.flatMap((p) => restsOf(p.points, p.until, size));
   if (MOVES.test(claim.text) && rests.length >= 2) {
     const [a, b] = [rests[0], rests[rests.length - 1]];
     if (dist(a, b, size) >= 0.05) return arrowFrom(a.x, a.y, b.x, b.y);
@@ -474,6 +597,54 @@ export function placeClaim(
   if (longest) return { kind: 'dot', x: longest.x, y: longest.y };
   return WHOLE;
 }
+
+/** How long a pause may be inside one note: a longer one starts the next, whatever is said. */
+const CONTINUE_GAP = 2500;
+/** Words that pick up what was just said, so a sentence with nothing pointed at goes on about it. */
+const ANAPHOR = new Set([
+  'it',
+  "it's",
+  'its',
+  'that',
+  "that's",
+  'this',
+  'they',
+  "they're",
+  'these',
+  'those',
+  'which',
+  'and',
+  'also',
+  'same',
+]);
+
+/** How much of the bigger of two areas the smaller covers, and the smaller covers of it. */
+function overlapOf(a: Area, b: Area) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  if (w <= 0 || h <= 0) return 0;
+  return (w * h) / (a.w * a.h + b.w * b.h - w * h);
+}
+
+/**
+ * Whether a claim goes on about the thing a note is on (D147): pointed at again (a dot on its
+ * area or by its dot, a circle round its dot or over its area), or, with nothing pointed at,
+ * picked up by "it", "that", "these". A move is a note of its own.
+ */
+export function sameThing(last: Shape, next: Shape, text: string, size: Size): boolean {
+  if (isWhole(next)) return ANAPHOR.has(norm(text.split(/\s+/)[0] ?? ''));
+  if (isWhole(last) || last.kind === 'arrow' || next.kind === 'arrow') return false;
+  const inside = (a: Area, p: { x: number; y: number }) =>
+    p.x >= a.x - 0.02 && p.x <= a.x + a.w + 0.02 && p.y >= a.y - 0.02 && p.y <= a.y + a.h + 0.02;
+  if (last.kind === 'dot' && next.kind === 'dot') return dist(last, next, size) <= 0.06;
+  if (last.kind === 'area' && next.kind === 'dot') return inside(last, next);
+  if (last.kind === 'dot' && next.kind === 'area') return inside(next, last);
+  return last.kind === 'area' && next.kind === 'area' && overlapOf(last, next) >= 0.5;
+}
+
+/** A note's place as more is said about it: the circle over a dot, a place over the whole screen. */
+const placeAgain = (last: Shape, next: Shape): Shape =>
+  isWhole(last) || (last.kind === 'dot' && next.kind === 'area') ? next : last;
 
 /** Whether a point is on a note's place, as "star this" or "drop that" means it. */
 function under(shape: Shape, p: { x: number; y: number }, size: Size) {
@@ -538,6 +709,8 @@ export function applyTake(
       ...ops.map((op) => ({ t: op.start, op })),
     ].sort((a, b) => a.t - b.t);
     const notes = made[k];
+    // What the last claim said and when it ended, to join the next one about the same thing.
+    let last = null as { id: string; end: number; parts: string[] } | null;
     const target = (ref: NoteRef | undefined, t: number): Mark | undefined => {
       const all: Mark[] = [...before, ...notes];
       if (typeof ref === 'number') return all[ref - 1];
@@ -561,19 +734,38 @@ export function applyTake(
     for (const e of events) {
       if ('claim' in e) {
         const { claim } = e;
-        const verdict = verdictOfClaim(claim.text);
-        const topics = topicsOfClaim(claim.text);
-        notes.push({
-          id: nextId(),
-          shape: placeClaim(claim, take.pointer, k, size),
+        const shape = placeClaim(claim, take.pointer, k, size);
+        const before = last;
+        const i = before ? notes.findIndex((m) => m.id === before.id) : -1;
+        const prev: Made | undefined = notes[i];
+        const joins: boolean =
+          !!before &&
+          !!prev &&
+          claim.start - before.end <= CONTINUE_GAP &&
+          sameThing(prev.shape, shape, claim.text, size);
+        const parts: string[] = joins && before ? [...before.parts, claim.text] : [claim.text];
+        const sides = sidesOf(parts);
+        const topics = sortTopics([
+          ...(joins ? (prev.topics ?? []) : []),
+          ...topicsOfClaim(claim.text),
+        ]);
+        const note: Made = {
+          ...(joins ? prev : {}),
+          id: joins ? prev.id : nextId(),
+          shape: joins ? placeAgain(prev.shape, shape) : shape,
           label: '',
-          good: verdict === 'good' ? claim.text : '',
-          bad: verdict === 'bad' ? claim.text : '',
+          good: sides.good,
+          bad: sides.bad,
           ...(topics.length ? { topics } : {}),
           origin: 'voice',
-          quote: claim.text,
-          at: claim.start,
-        });
+          quote: parts.join(' '),
+          at: joins ? prev.at : claim.start,
+        };
+        // Starred before, it stays a best example only while it still says what works.
+        if (note.best && !note.good) delete note.best;
+        if (joins) notes[i] = note;
+        else notes.push(note);
+        last = { id: note.id, end: claim.end, parts };
         continue;
       }
       const { op } = e;

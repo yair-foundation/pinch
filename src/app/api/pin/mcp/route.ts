@@ -3,10 +3,10 @@ import { after } from 'next/server';
 import { agentHasPro } from '@/lib/access';
 import { userOfAgentKey } from '@/lib/agent-keys';
 import {
-  addProposal,
   addReading,
   batchFiles,
   listCollections,
+  listReadings,
   listRuns,
   recordRun,
   validId,
@@ -22,12 +22,12 @@ import { agentName, type RunEvent } from '@/lib/pin/runs';
  * the account's key as `Authorization: Bearer pk_…`; any account, bought or
  * free, at any balance (D98). Its tools hand over the account's rules, read from the store
  * at each call, so the agent always has the current ones, and a rule's
- * close-ups from the account's own batch zips (D94); a rule the agent proposes
- * waits in the account for the person (D116). Each connection is a run
+ * close-ups from the account's own batch zips (D94). Each connection is a run
  * (D120): `initialize` hands out an `Mcp-Session-Id` the agent sends back,
  * and what its calls asked for and got goes into the account's record of
  * runs once the reply is out. The agent may read the person's notes into
- * rules itself (D122); its reading waits in the account for the page. On the
+ * rules itself (D122); its reading waits in the account for the page, and it
+ * reads on from the readings waiting (D146). On the
  * free plan the agent gets the rules of one product (D123). With the rules
  * come the author's corrections on its earlier work (D125). No AI
  * runs here, and nothing about the call is logged but its method.
@@ -75,7 +75,6 @@ export async function POST(request: Request) {
   const runId = session || `d${now.slice(0, 10).replace(/-/g, '')}`;
   const events: RunEvent[] = [];
   const log = {
-    id: newId,
     add: (e: RunEvent) => void events.push(e),
     runs: () => listRuns(user),
   };
@@ -99,9 +98,13 @@ export async function POST(request: Request) {
       m && typeof m === 'object' ? m : {},
       rules,
       (id, paths) => batchFiles(user, id, paths),
-      { id: newId, save: (p) => addProposal(user, p) },
       log,
-      { id: newId, save: (r) => addReading(user, r), rules: all },
+      {
+        id: newId,
+        save: (r) => addReading(user, r),
+        rules: all,
+        waiting: () => listReadings(user),
+      },
     );
     if (r) replies.push(r);
   }

@@ -3,13 +3,9 @@
 import {
   Check,
   ChevronDown,
-  FileText,
   Cloud,
   Download,
   Pencil,
-  ListChecks,
-  Merge,
-  NotebookPen,
   PlugZap,
   RefreshCw,
   RotateCcw,
@@ -44,8 +40,6 @@ import {
   applyReading,
   type Batch,
   type BatchNote,
-  batchLabel,
-  batchReach,
   byTopic,
   confirmRule,
   type Collection,
@@ -58,7 +52,6 @@ import {
   newNotes,
   noteAt,
   printOf,
-  originOf,
   ownWords,
   picked,
   screenOf,
@@ -83,7 +76,6 @@ import {
   withScreenTags,
   withRule,
   withTitles,
-  withoutBatch,
   resetCollection,
 } from '@/lib/pin/learnings';
 import { sourceLabel, TOPICS, type Topic, topicLabel } from '@/lib/pin/model';
@@ -95,43 +87,21 @@ import {
   checksStale,
   withChecks,
 } from '@/lib/pin/checks';
-import { keepProposal, type Proposal } from '@/lib/pin/proposals';
 import { withExported } from '@/lib/pin/changes';
-import {
-  type Report,
-  type Run,
-  type Verdict,
-  withCorrection,
-  withVerdict,
-} from '@/lib/pin/runs';
 import { reviewCells } from '@/lib/pin/review-sheets';
 import {
-  briefOf,
-  MAX_BRIEF,
-  roleOf,
-  SCREEN_ROLES,
-  type ScreenRole,
   screenNames,
   screenSets,
-  sourceRoleOf,
-  sourceSets,
-  withBrief,
-  withMergedTag,
-  withScreenRole,
-  withSourceRole,
 } from '@/lib/pin/screen-index';
-import { answerOf, TASTE, withTaste } from '@/lib/pin/taste';
 import { unzip } from '@/lib/pin/unzip';
 import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
-import { AgentRuns } from './agent-runs';
 import { Library } from './library';
 import type { CollectionsBackend } from './collections-backend';
 import { ConnectDialog } from './connect-agent';
 import { Dialog, hit } from './dialog';
 import { closeUpForReading, download, reviewSheets } from './render';
 import { RuleSkeleton, ShimmerText } from './shimmer';
-import { TasteCheck } from './taste-check';
 import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
@@ -197,26 +167,33 @@ const link =
  * Whatever on a rule waits for its author (a question, a reading to confirm, a conflict), asked
  * one way (D102), after the selection prompt the owner chose: the question in a band at the top,
  * the answers as rows with a radio, each with a line on what it does, and the action at the foot,
- * once one is picked. Neutral throughout: no icon, no colour.
+ * once one is picked. With `onPicks`, the rows are checkboxes and any number can be picked
+ * (D144). Neutral throughout: no icon, no colour.
  */
 function Choices({
   name,
   title,
   note,
   options,
+  onPicks,
   action,
   aside,
 }: {
   name: string;
   title: string;
   note?: string;
-  options: { label: string; detail: string; pick: () => void }[];
+  /** Each answer; `pick` is what one picked does, where only one can be. */
+  options: { label: string; detail: string; pick?: () => void }[];
+  /** Several can be picked, and the foot's button hands them all over, in the rows' order. */
+  onPicks?: (picks: number[]) => void;
   /** The foot's button: "Answer", "Confirm", "Settle". */
   action: string;
-  /** Beside the button, at the foot's start: where the rule holds, what the agent does meanwhile. */
+  /** Beside the button, at the foot's start: what the agent does meanwhile, or another way out. */
   aside?: React.ReactNode;
 }) {
-  const [chosen, setChosen] = useState<number | null>(null);
+  const [chosen, setChosen] = useState<number[]>([]);
+  const toggle = (i: number) =>
+    setChosen((x) => (x.includes(i) ? x.filter((y) => y !== i) : [...x, i].sort((a, b) => a - b)));
   return (
     <fieldset className="m-0 min-w-0 overflow-hidden rounded-xl border border-border p-0 text-[13px]">
       <legend className="sr-only">{title}</legend>
@@ -232,13 +209,27 @@ function Choices({
               key={o.label}
               className="flex cursor-pointer gap-3 px-4 py-3 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
             >
-              <input
-                type="radio"
-                name={name}
-                checked={chosen === i}
-                onChange={() => setChosen(i)}
-                className="mt-0.5 size-4 shrink-0 cursor-pointer appearance-none rounded-full border border-foreground/30 transition-[border] duration-150 checked:border-[5px] checked:border-foreground motion-reduce:transition-none"
-              />
+              <span className="relative mt-0.5 size-4 shrink-0">
+                <input
+                  type={onPicks ? 'checkbox' : 'radio'}
+                  name={name}
+                  checked={chosen.includes(i)}
+                  onChange={() => (onPicks ? toggle(i) : setChosen([i]))}
+                  className={cn(
+                    'peer block size-4 cursor-pointer appearance-none border border-foreground/30 duration-150 motion-reduce:transition-none',
+                    onPicks
+                      ? 'rounded-[4px] transition-colors checked:border-foreground checked:bg-foreground'
+                      : 'rounded-full transition-[border] checked:border-[5px] checked:border-foreground',
+                  )}
+                />
+                {onPicks && (
+                  <Check
+                    aria-hidden
+                    strokeWidth={3}
+                    className="pointer-events-none absolute inset-0 m-auto size-3 text-background opacity-0 peer-checked:opacity-100"
+                  />
+                )}
+              </span>
               <span className="min-w-0 space-y-0.5">
                 <span className="block text-sm text-foreground">{o.label}</span>
                 <span className="block leading-relaxed text-muted-foreground">{o.detail}</span>
@@ -252,8 +243,8 @@ function Choices({
         {options.length > 0 && (
           <button
             type="button"
-            disabled={chosen === null}
-            onClick={() => chosen !== null && options[chosen]?.pick()}
+            disabled={!chosen.length}
+            onClick={() => (onPicks ? onPicks(chosen) : options[chosen[0]]?.pick?.())}
             className={primary}
           >
             {action}
@@ -265,15 +256,10 @@ function Choices({
 }
 
 /**
- * What the page slices rules by: a topic, one of the author's tags, a principle, a screenshot's
- * tag (D100), or nothing.
+ * What the page slices rules by: a topic, one of the author's tags, a screenshot's tag (D100),
+ * or nothing. Slicing by principle went with D144.
  */
-type Slice =
-  | { topic: Topic | null }
-  | { tag: string | null }
-  | { principle: string }
-  | { screen: string }
-  | null;
+type Slice = { topic: Topic | null } | { tag: string | null } | { screen: string } | null;
 const sliceKey = (s: Slice) =>
   !s
     ? 'all'
@@ -281,9 +267,7 @@ const sliceKey = (s: Slice) =>
       ? `topic:${s.topic ?? ''}`
       : 'tag' in s
         ? `tag:${s.tag ?? ''}`
-        : 'screen' in s
-          ? `screen:${s.screen.toLowerCase()}`
-          : `principle:${s.principle}`;
+        : `screen:${s.screen.toLowerCase()}`;
 const pickOf = (s: Slice): RulePick =>
   !s
     ? {}
@@ -291,9 +275,7 @@ const pickOf = (s: Slice): RulePick =>
       ? { topics: [s.topic] }
       : 'tag' in s
         ? { tags: [s.tag] }
-        : 'screen' in s
-          ? { screen: [s.screen] }
-          : { principles: [s.principle] };
+        : { screen: [s.screen] };
 
 export function CollectionsView({
   inert,
@@ -301,7 +283,6 @@ export function CollectionsView({
   moveFrom,
   openPrints,
   openScreens,
-  onRenameScreenTag,
   openBest,
   onOpenBest,
   batchZip,
@@ -323,8 +304,6 @@ export function CollectionsView({
   openPrints: string[];
   /** The open images' notes' screen tags, by the same fingerprint (D100). */
   openScreens: ReadonlyMap<string, string | undefined>;
-  /** A screen tag merged into another (D129), carried to the open images so they don't undo it. */
-  onRenameScreenTag: (from: string, into: string) => void;
   /** The best examples marked or unmarked on the open images, by the same fingerprint (D110). */
   openBest: ReadonlyMap<string, boolean>;
   /** A best example marked here, carried to its note on an open image (D110). */
@@ -355,22 +334,12 @@ export function CollectionsView({
   const [connecting, setConnecting] = useState(false);
   // The rule the author asked to remove, waiting on "are you sure".
   const [removing, setRemoving] = useState<string | null>(null);
-  // The batch of notes the author asked to remove, waiting on "are you sure" (D115).
-  const [unbatching, setUnbatching] = useState<string | null>(null);
   // Every rule reset (D141), waiting on "are you sure".
   const [resetting, setResetting] = useState(false);
-  // The rules the agent proposed, waiting to be kept or dropped (D116).
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  // A proposal is answered once: a second click before the list updates does nothing.
-  const answered = useRef(new Set<string>());
-  // What the agent's runs did with the rules (D120).
-  const [runs, setRuns] = useState<Run[]>([]);
   // The rules, or the library of references they come from (D124).
   const [tab, setTab] = useState<'rules' | 'references'>('rules');
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
-  // The taste check, open (D102).
-  const [tasting, setTasting] = useState(false);
   const [movable, setMovable] = useState<Collection[]>([]);
   const [slice, setSlice] = useState<Slice>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -429,37 +398,6 @@ export function CollectionsView({
       flush();
     };
   }, [save]);
-
-  // The agent may propose and work while the page is open: read again when the page comes back.
-  useEffect(() => {
-    const read = backend.proposals;
-    if (!read) return;
-    let live = true;
-    const load = () => {
-      read()
-        .then((p) => {
-          if (live) setProposals(p);
-        })
-        .catch(() => undefined);
-      backend
-        .runs?.()
-        .then((r) => {
-          if (live) setRuns(r);
-        })
-        .catch(() => undefined);
-    };
-    const back = () => {
-      if (document.visibilityState === 'visible') load();
-    };
-    load();
-    document.addEventListener('visibilitychange', back);
-    window.addEventListener('focus', load);
-    return () => {
-      live = false;
-      document.removeEventListener('visibilitychange', back);
-      window.removeEventListener('focus', load);
-    };
-  }, [backend]);
 
   // What the agent read itself joins the rules as Pinch's own reading does (D122): once the
   // rules are here, and whenever the page comes back into view.
@@ -768,6 +706,7 @@ export function CollectionsView({
             topics: note.topics,
             source: note.source,
             ...(note.best ? { best: true } : {}),
+            ...(note.said ? { said: true } : {}),
             ...(crop ? { crop } : {}),
           };
         });
@@ -1069,23 +1008,10 @@ export function CollectionsView({
       },
     });
   };
-  // Removed, a batch leaves the rules, and its zip goes once that is saved (D115). No undo: the
-  // zip is gone, so "are you sure" comes first.
-  const removeBatch = (id: string) => {
-    setUnbatching(null);
-    change((c) => withoutBatch(c, id, nowIso()), true);
-    const now = ref.current;
-    if (now)
-      backend
-        .save(now)
-        .then(() => backend.deleteBatch(id))
-        .catch(() => undefined);
-    onStatus({ tone: 'info', text: 'Batch removed.' });
-  };
   /**
    * Every rule, note and batch gone (D141), with the batches' screenshots, the agent's readings
-   * and proposals waiting, this browser's copy and the open images; the account, its agent key,
-   * the credits and the briefs stay. No undo: the zips go, so "are you sure" comes first.
+   * and any proposals left from before D144, this browser's copy and the open images; the
+   * account, its agent key, the credits and the briefs stay. No undo: the zips go, so "are you sure" comes first.
    */
   const resetAll = async () => {
     setResetting(false);
@@ -1099,7 +1025,6 @@ export function CollectionsView({
     ref.current = resetCollection(now0, nowIso());
     setC(ref.current);
     setSlice(null);
-    setProposals([]);
     onReset();
     try {
       await backend.save(ref.current);
@@ -1124,15 +1049,6 @@ export function CollectionsView({
     } finally {
       taking.current = false;
     }
-  };
-  /**
-   * One screen tag's set merged into another (D129): its notes take the other's name, with its
-   * brief and role where the other has none. The open images follow, so they don't undo it.
-   */
-  const mergeTag = (from: string, into: string) => {
-    onRenameScreenTag(from, into);
-    change((x) => withMergedTag(x, from, into, nowIso()), true);
-    onStatus({ tone: 'info', text: `Merged “${from}” into “${into}”.` });
   };
   /** A reference's screen tag, written on all its notes (D124). */
   const tagReference = (r: Reference, tag: string) =>
@@ -1166,64 +1082,6 @@ export function CollectionsView({
         );
     onStatus({ tone: 'info', text: last ? 'Reference and its batch removed.' : 'Reference removed.' });
   };
-  // Kept, a proposal becomes a rule, and leaves the account's list once the rule is saved (D116).
-  const keepProposed = (p: Proposal) => {
-    if (answered.current.has(p.id)) return;
-    answered.current.add(p.id);
-    setProposals((x) => x.filter((y) => y.id !== p.id));
-    change((c) => keepProposal(c, p, nowIso(), newId), true);
-    const now = ref.current;
-    if (now)
-      backend
-        .save(now)
-        .then(() => backend.dropProposal?.(p.id))
-        .catch(() => undefined);
-    onStatus({
-      tone: 'info',
-      text: p.rule ? 'Rule changed. Your agent gets it now.' : 'Rule kept. Your agent gets it now.',
-    });
-  };
-  const dropProposed = (p: Proposal) => {
-    if (answered.current.has(p.id)) return;
-    answered.current.add(p.id);
-    setProposals((x) => x.filter((y) => y.id !== p.id));
-    backend.dropProposal?.(p.id).catch(() =>
-      onStatus({ tone: 'error', text: 'That didn’t reach your account, so it may show again.' }),
-    );
-  };
-  /** The person's verdict on a piece of the agent's work (D120), or taken back. */
-  const judgeWork = (run: Run, report: Report, verdict: Verdict | null) => {
-    setRuns((x) => withVerdict({ runs: x, agents: [] }, run.id, report.id, verdict).runs);
-    backend.judge?.(run.id, report.id, verdict).catch(() =>
-      onStatus({ tone: 'error', text: 'Your verdict didn’t reach your account. Try again.' }),
-    );
-  };
-  /** What was wrong with a piece of work judged close or off (D125): your agent gets it next. */
-  const correctWork = (run: Run, report: Report, correction: string) => {
-    setRuns((x) => withCorrection({ runs: x, agents: [] }, run.id, report.id, correction).runs);
-    backend.correct?.(run.id, report.id, correction).catch(() =>
-      onStatus({ tone: 'error', text: 'That didn’t reach your account. Try again.' }),
-    );
-  };
-  const removeRun = (run: Run) => {
-    setRuns((x) => x.filter((r) => r.id !== run.id));
-    backend.dropRun?.(run.id).catch(() =>
-      onStatus({ tone: 'error', text: 'That didn’t reach your account, so it may show again.' }),
-    );
-  };
-  const openTaste = () => {
-    opener.current = document.activeElement as HTMLElement | null;
-    setTasting(true);
-  };
-  /** The taste check's picks, kept as the author's own rules (D102). */
-  const keepTaste = (answers: Record<string, string>) => {
-    setTasting(false);
-    change((c) => withTaste(c, answers, nowIso(), newId), true);
-    onStatus({
-      tone: 'info',
-      text: `Kept ${count(Object.keys(answers).length, 'pick')} as rules. Your agent gets them.`,
-    });
-  };
   const card = (r: Rule) => (
     <li key={r.id}>
       <RuleCard
@@ -1233,7 +1091,7 @@ export function CollectionsView({
         pullsAgainst={r.conflict ? textOf(r.conflict.ruleId) : ''}
         isNew={r.createdAt >= since.current}
         onChange={(x, now) => change((c) => withRule(c, r.id, x, nowIso()), now)}
-        onAnswer={(i) => change((c) => answerRule(c, r.id, i, nowIso()), true)}
+        onAnswer={(picks) => change((c) => answerRule(c, r.id, picks, nowIso(), newId), true)}
         onConfirm={() => change((c) => confirmRule(c, r.id, nowIso()), true)}
         onBest={(ref, best) => {
           change((c) => withBest(c, ref, best, nowIso()), true);
@@ -1275,7 +1133,7 @@ export function CollectionsView({
     <>
       <main
         inert={
-          inert || connecting || removing !== null || unbatching !== null || asking || tasting
+          inert || connecting || removing !== null || asking
         }
         className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-7 px-6 py-8">
@@ -1283,34 +1141,30 @@ export function CollectionsView({
             <div className="flex flex-wrap items-start gap-3">
               <div className="min-w-0 flex-1 space-y-1">
                 <h2 className="text-2xl leading-tight font-medium tracking-tight">Your rules</h2>
-                <p className="text-sm text-muted-foreground">
-                  What Pinch understands about your taste.
-                  {waits > 0 && ` ${waits} waiting for you.`}
-                </p>
+                {waits > 0 && (
+                  <p className="text-sm text-muted-foreground">{waits} waiting for you.</p>
+                )}
               </div>
-              <button type="button" onClick={openTaste} className={button}>
-                <ListChecks className="size-4" aria-hidden />
-                Taste check
-              </button>
-              <button
-                type="button"
-                onClick={exportAll}
-                disabled={busy !== null || (!c.rules.length && !c.batches.length)}
-                className={button}
-              >
-                <Download className="size-4" aria-hidden />
-                {busy === 'export' ? 'Exporting…' : 'Export'}
-              </button>
               <button
                 type="button"
                 onClick={() => {
                   opener.current = document.activeElement as HTMLElement | null;
                   setConnecting(true);
                 }}
-                className={primary}
+                className={button}
               >
                 <PlugZap className="size-4" aria-hidden />
                 Connect agent
+              </button>
+              {/* The package is what a walkthrough ends in (D144): the main step here. */}
+              <button
+                type="button"
+                onClick={exportAll}
+                disabled={busy !== null || (!c.rules.length && !c.batches.length)}
+                className={primary}
+              >
+                <Download className="size-4" aria-hidden />
+                {busy === 'export' ? 'Exporting…' : 'Export'}
               </button>
             </div>
 
@@ -1436,10 +1290,6 @@ export function CollectionsView({
             />
           ) : (
             <>
-          {proposals.length > 0 && (
-            <Proposed proposals={proposals} onKeep={keepProposed} onDrop={dropProposed} />
-          )}
-
           {live.length > 0 && <SliceBar collection={c} slice={slice} onSlice={setSlice} />}
 
           {(reading || busy === 'add') && !live.length && (
@@ -1455,17 +1305,10 @@ export function CollectionsView({
 
           {!c.batches.length && !c.rules.length && busy !== 'add' ? (
             <div className="space-y-3 rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
-              <p>
-                Mark what to learn and what to avoid on your images. Pinch reads your notes here,
-                finds the patterns and turns them into rules. Or start with a dozen quick picks.
-              </p>
+              <p>Talk through your screenshots. What you say becomes your rules here.</p>
               <div className="flex flex-wrap justify-center gap-2">
                 <button type="button" onClick={onBack} className={button}>
                   Back to your images
-                </button>
-                <button type="button" onClick={openTaste} className={button}>
-                  <ListChecks className="size-4" aria-hidden />
-                  Taste check
                 </button>
               </div>
             </div>
@@ -1491,57 +1334,7 @@ export function CollectionsView({
             <p className="text-center text-sm text-muted-foreground">No rules here yet.</p>
           )}
 
-          {!slice && sourceSets(c).length + screenSets(c).length > 0 && (
-            <ScreenRoles
-              sets={[
-                ...sourceSets(c).map((s) => ({
-                  key: `source:${s.source}`,
-                  name: sourceLabel(s.source),
-                  notes: s.notes,
-                  role: sourceRoleOf(c, s.source),
-                  onRole: (role: ScreenRole | null) =>
-                    change((x) => withSourceRole(x, s.source, role, nowIso()), true),
-                })),
-                ...screenSets(c).map((s) => ({
-                  ...s,
-                  key: `tag:${s.name}`,
-                  role: roleOf(c, s.name),
-                  onRole: (role: ScreenRole | null) =>
-                    change((x) => withScreenRole(x, s.name, role, nowIso()), true),
-                  brief: briefOf(c, s.name),
-                  onBrief: (text: string) =>
-                    change((x) => withBrief(x, s.name, text, nowIso()), true),
-                  onMerge: (into: string) => mergeTag(s.name, into),
-                })),
-              ]}
-            />
-          )}
-
-          {!slice && runs.length > 0 && (
-            <AgentRuns
-              collection={c}
-              runs={runs}
-              onJudge={judgeWork}
-              onCorrect={correctWork}
-              onRemove={removeRun}
-            />
-          )}
-
-          {!slice && c.batches.length > 0 && (
-            <Batches
-              batches={c.batches.map((b, i) => ({
-                id: b.id,
-                label: batchLabel(i, b),
-                notes: b.notes.length,
-              }))}
-              onRemove={(id) => {
-                opener.current = document.activeElement as HTMLElement | null;
-                setUnbatching(id);
-              }}
-            />
-          )}
-
-          {!slice && (c.rules.length > 0 || c.batches.length > 0 || proposals.length > 0) && (
+          {!slice && (c.rules.length > 0 || c.batches.length > 0) && (
             <div className="flex justify-end">
               <button
                 type="button"
@@ -1571,19 +1364,6 @@ export function CollectionsView({
           opener={opener.current}
           onClose={() => setConnecting(false)}
           onCopy={copyRules}
-        />
-      )}
-      {tasting && (
-        <TasteCheck
-          answered={Object.fromEntries(
-            TASTE.flatMap((q) => {
-              const a = answerOf(c, q.id);
-              return a ? [[q.id, a]] : [];
-            }),
-          )}
-          opener={opener.current}
-          onClose={() => setTasting(false)}
-          onDone={keepTaste}
         />
       )}
       {removing !== null && (
@@ -1620,51 +1400,6 @@ export function CollectionsView({
           </div>
         </Dialog>
       )}
-      {unbatching !== null &&
-        (() => {
-          const i = c.batches.findIndex((b) => b.id === unbatching);
-          const b = c.batches[i];
-          if (!b) return null;
-          const reach = batchReach(c, b.id);
-          return (
-            <Dialog
-              id="remove-batch-title"
-              title="Remove this batch?"
-              opener={opener.current}
-              onClose={() => setUnbatching(null)}
-            >
-              <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
-                {batchLabel(i, b)}: {count(reach.notes, 'note')} on {count(reach.images, 'image')},
-                deleted from {backend.kind === 'account' ? 'your account' : 'this browser'}.
-                {reach.rules > 0 &&
-                  ` ${count(reach.rules, 'rule')} came from them alone and ${reach.rules === 1 ? 'goes' : 'go'} too.`}
-                {reach.fewer > 0 &&
-                  ` ${count(reach.fewer, 'rule')} ${reach.fewer === 1 ? 'keeps' : 'keep'} ${reach.fewer === 1 ? 'its' : 'their'} other notes.`}
-              </p>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  data-autofocus
-                  onClick={() => setUnbatching(null)}
-                  className={button}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeBatch(b.id)}
-                  className={cn(
-                    hit,
-                    'flex min-h-9 items-center gap-2 rounded-md bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/20',
-                  )}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                  Remove
-                </button>
-              </div>
-            </Dialog>
-          );
-        })()}
       {resetting && (
         <Dialog
           id="reset-title"
@@ -1782,11 +1517,6 @@ function SliceBar({
         ]
       : []),
   ];
-  const areas = PRINCIPLES.map((p) => ({
-    slice: { principle: p.id } as Slice,
-    label: p.area,
-    n: live.filter((r) => r.principles?.includes(p.id)).length,
-  })).filter((o) => o.n);
   const screens = screenTagsIn(c, live);
   const chipOf = (o: { slice: Slice; label: string; n: number; topic?: Topic }) => {
     const on = sliceKey(o.slice) === sliceKey(slice);
@@ -1817,16 +1547,6 @@ function SliceBar({
         <legend className="sr-only">Show rules about</legend>
         <div className="flex flex-wrap gap-2">{options.map(chipOf)}</div>
       </fieldset>
-      {areas.length > 0 && (
-        <fieldset className="min-w-0 border-0 p-0">
-          <legend
-            className="float-left flex h-7 items-center pr-2 text-[13px] text-muted-foreground"
-          >
-            By principle
-          </legend>
-          <div className="flex flex-wrap gap-2">{areas.map(chipOf)}</div>
-        </fieldset>
-      )}
       {screens.length > 0 && (
         <fieldset className="min-w-0 border-0 p-0">
           <legend
@@ -1869,8 +1589,8 @@ function RuleCard({
   isNew: boolean;
   /** A change to the rule; written at once with `now`, else a moment after typing stops. */
   onChange: (change: Partial<Rule>, now?: boolean) => void;
-  /** The author picks one of the answers to the rule's question (D90). */
-  onAnswer: (option: number) => void;
+  /** The author picks the answers to the rule's question that hold (D90, D144). */
+  onAnswer: (picks: number[]) => void;
   /** The author confirms Pinch's reading of a rule (D91). */
   onConfirm: () => void;
   /** The author settles its conflict (D102): each rule in its place, or this one wins. */
@@ -1887,22 +1607,10 @@ function RuleCard({
   const images = imagesOf(c, r);
   const shows = screenOf(c, r);
   const id = `rule-${r.id}`;
-  const origin = originOf(r);
   const why = (r.principles ?? []).flatMap((p) => PRINCIPLES.find((x) => x.id === p) ?? []);
   const unsettled = r.conflict && !r.conflict.settled;
-  // Where a rule holds, which the card doesn't otherwise show (D93): the author can widen a place
-  // Pinch set to everywhere, in one click, while it waits for them or while they edit (D102).
+  // Where a rule holds goes to the agent, and the card shows it only in a conflict (D93, D144).
   const place = r.context.trim();
-  const everywhere = (
-    <button type="button" onClick={() => onChange({ context: '' }, true)} className={link}>
-      Make it everywhere
-    </button>
-  );
-  const widen = place ? (
-    <p className="m-0 text-muted-foreground">
-      Holds {place}. {everywhere}
-    </p>
-  ) : null;
   const edit = () => {
     started.current = r.text;
     setEditing(true);
@@ -1927,13 +1635,12 @@ function RuleCard({
       {/* The rule's name and words beside the pencil; everything under them spans the card. */}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1.5">
-          {(isNew || unsettled || r.fresh || origin === 'ai-edited') && (
+          {(isNew || unsettled || r.fresh) && (
             <div className="flex flex-wrap items-center gap-2 pb-1 text-[13px] text-muted-foreground">
               {isNew && <span className={badge}>New</span>}
-              {/* Plain words like "Edited by you": the conflict's own box says the rest. */}
+              {/* Plain words: the conflict's own box says the rest. */}
               {unsettled && <span>Conflict</span>}
               {r.fresh ? <span className={badge}>+{count(r.fresh, 'new note')}</span> : null}
-              {origin === 'ai-edited' && <span>Edited by you</span>}
             </div>
           )}
           {r.title && (
@@ -1944,26 +1651,17 @@ function RuleCard({
               {r.text}
             </p>
           ) : (
-            // The rule's words, behind a document icon in a small box, its first line beside it.
-            <div className="flex gap-2.5">
-              <span className={r.title ? 'mt-0.5' : undefined}>
-                <SmallIcon>
-                  <FileText />
-                </SmallIcon>
-              </span>
-              <p
-                id={`${id}-text`}
-                className={cn(
-                  'min-w-0',
-                  r.title
-                    ? 'text-sm leading-relaxed text-muted-foreground'
-                    : 'text-[15px] leading-snug',
-                  !r.title && (waiting(r) ? 'text-muted-foreground' : 'text-foreground'),
-                )}
-              >
-                {r.text}
-              </p>
-            </div>
+            // The rule's words under its name, as the agent gets them (D144: no icon beside them).
+            <p
+              id={`${id}-text`}
+              className={cn(
+                'min-w-0',
+                r.title ? 'text-sm leading-relaxed text-muted-foreground' : 'text-[15px] leading-snug',
+                !r.title && (waiting(r) ? 'text-muted-foreground' : 'text-foreground'),
+              )}
+            >
+              {r.text}
+            </p>
           )}
         </div>
         <button
@@ -2014,7 +1712,6 @@ function RuleCard({
             topics={r.topics}
             onChange={(topics) => onChange({ topics }, true)}
           />
-          {widen && <div className="text-[13px]">{widen}</div>}
         </div>
       ) : r.topics.length > 0 || r.tags.length > 0 || shows.length > 0 ? (
         <div className="space-y-2">
@@ -2053,22 +1750,22 @@ function RuleCard({
         </div>
       ) : null}
 
-      {/* Each answer with what it makes, so a pick says exactly what it commits to (D102). */}
+      {/*
+       * Each answer with what it makes, so a pick says exactly what it commits to (D102). Answers
+       * rarely exclude each other, so any that hold can be picked (D144).
+       */}
       {r.question && !editing && (
         <Choices
           name={`${id}-ask`}
           title={r.question.ask}
-          note="Your agent gets this rule once you answer."
-          aside={widen}
+          aside={
+            <button type="button" onClick={edit} className={link}>
+              Something else
+            </button>
+          }
           action="Answer"
-          options={[
-            ...r.question.options.map((o, i) => ({
-              label: o.answer,
-              detail: o.rule,
-              pick: () => onAnswer(i),
-            })),
-            { label: 'Something else', detail: 'Write it in your own words.', pick: edit },
-          ]}
+          options={r.question.options.map((o) => ({ label: o.answer, detail: o.rule }))}
+          onPicks={onAnswer}
         />
       )}
 
@@ -2077,7 +1774,6 @@ function RuleCard({
           name={`${id}-meant`}
           title="Is this what you meant?"
           note="Your agent gets this rule once you confirm it."
-          aside={widen}
           action="Confirm"
           options={[
             {
@@ -2310,185 +2006,6 @@ function Evidence({
   );
 }
 
-
-/**
- * What each set of screenshots is for (D110, D111): a role for each source, then each screen tag
- * (whatever its spelling), so the agent weighs the set right; a tag's own role comes first. The
- * target style is still everything the notes say works.
- */
-function ScreenRoles({
-  sets,
-}: {
-  sets: {
-    key: string;
-    name: string;
-    notes: number;
-    role?: ScreenRole;
-    onRole: (role: ScreenRole | null) => void;
-    /** A screen tag's set has a brief (D121); a source doesn't. */
-    brief?: string;
-    onBrief?: (text: string) => void;
-    /** A screen tag's set can merge into another (D129). */
-    onMerge?: (into: string) => void;
-  }[];
-}) {
-  // The set whose brief is being written, and the words so far.
-  const [writing, setWriting] = useState<{ key: string; text: string } | null>(null);
-  // The set being merged, and the set it goes into once chosen.
-  const [merging, setMerging] = useState<{ key: string; into: string } | null>(null);
-  const tags = sets.filter((x) => x.onMerge).map((x) => x.name);
-  const finish = (save: boolean) => {
-    const s = writing && sets.find((x) => x.key === writing.key);
-    if (save && s && writing.text.trim() !== (s.brief ?? '')) s.onBrief?.(writing.text);
-    setWriting(null);
-  };
-  return (
-    <section aria-labelledby="screen-roles" className="space-y-2.5">
-      <h3
-        id="screen-roles"
-        className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
-      >
-        Roles and briefs
-      </h3>
-      <ul className="list-none divide-y divide-border rounded-xl border border-border px-4 py-1">
-        {sets.map((s, i) => (
-          <li key={s.key} className="space-y-2 py-2">
-            {/* The controls wrap below a name they would otherwise squeeze out. */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <label htmlFor={`role-${i}`} className="flex min-w-36 flex-1 items-baseline gap-2">
-              <span className="truncate text-sm text-foreground">{s.name}</span>
-              <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
-                {s.notes}
-              </span>
-            </label>
-            <div className="ml-auto flex shrink-0 items-center gap-3">
-            {s.onMerge && tags.length > 1 && (
-              <button
-                type="button"
-                aria-label={`Merge ${s.name} into another`}
-                aria-expanded={merging?.key === s.key}
-                title="Merge"
-                onClick={() => setMerging(merging?.key === s.key ? null : { key: s.key, into: '' })}
-                className={cn(
-                  hit,
-                  'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-                )}
-              >
-                <Merge className="size-4" aria-hidden />
-              </button>
-            )}
-            {s.onBrief && (
-              <button
-                type="button"
-                aria-label={`Brief for ${s.name}`}
-                aria-expanded={writing?.key === s.key}
-                title="Brief"
-                onClick={() =>
-                  writing?.key === s.key
-                    ? finish(true)
-                    : setWriting({ key: s.key, text: s.brief ?? '' })
-                }
-                className={cn(
-                  hit,
-                  'flex size-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-                  s.brief ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                <NotebookPen className="size-4" aria-hidden />
-              </button>
-            )}
-            <select
-              id={`role-${i}`}
-              value={s.role ?? ''}
-              onChange={(e) => s.onRole((e.target.value as ScreenRole) || null)}
-              className={cn(field, 'w-auto shrink-0 py-1.5 text-[13px]')}
-            >
-              <option value="">No role</option>
-              {SCREEN_ROLES.map((r) => (
-                <option key={r.role} value={r.role}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-            </div>
-            </div>
-            {merging?.key === s.key && (
-              <div className="flex items-center gap-2">
-                <select
-                  aria-label={`Merge ${s.name} into`}
-                  // biome-ignore lint/a11y/noAutofocus: opening the merge is asking to choose
-                  autoFocus
-                  value={merging.into}
-                  onChange={(e) => setMerging({ key: s.key, into: e.target.value })}
-                  className={cn(field, 'min-w-0 flex-1 py-1.5 text-[13px]')}
-                >
-                  <option value="" disabled>
-                    Merge into
-                  </option>
-                  {tags
-                    .filter((t) => t !== s.name)
-                    .map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                </select>
-                <button type="button" onClick={() => setMerging(null)} className={small}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!merging.into}
-                  onClick={() => {
-                    s.onMerge?.(merging.into);
-                    setMerging(null);
-                  }}
-                  className={cn(primary, 'min-h-8 text-[13px]')}
-                >
-                  Merge
-                </button>
-              </div>
-            )}
-            {writing?.key === s.key ? (
-              <textarea
-                aria-label={`Brief for ${s.name}`}
-                // biome-ignore lint/a11y/noAutofocus: opening the brief is asking to write it
-                autoFocus
-                value={writing.text}
-                rows={3}
-                maxLength={MAX_BRIEF}
-                placeholder="What it’s for and how it should feel"
-                onChange={(e) => setWriting({ key: s.key, text: e.target.value })}
-                onBlur={() => finish(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    finish(true);
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    finish(false);
-                  }
-                }}
-                className={cn(field, 'resize-y text-[13px]')}
-              />
-            ) : (
-              s.brief && (
-                <button
-                  type="button"
-                  onClick={() => setWriting({ key: s.key, text: s.brief ?? '' })}
-                  className="line-clamp-2 w-full rounded-sm text-left text-[13px] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:text-foreground"
-                >
-                  {s.brief}
-                </button>
-              )
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 /**
  * The free plan's one product (D123): which one the agent gets, picked here, and what Pro adds.
  */
@@ -2533,101 +2050,5 @@ function FreePlan({
         </a>
       )}
     </div>
-  );
-}
-
-/**
- * The rules the agent proposed (D116), each with what it replaces, where it holds and what was
- * agreed, to keep or drop. Nothing reaches the agent until it is kept.
- */
-function Proposed({
-  proposals,
-  onKeep,
-  onDrop,
-}: {
-  proposals: Proposal[];
-  onKeep: (p: Proposal) => void;
-  onDrop: (p: Proposal) => void;
-}) {
-  return (
-    <section aria-labelledby="proposed" className="space-y-2.5">
-      <h3
-        id="proposed"
-        className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
-      >
-        From your agent
-        <span className="font-mono font-normal text-muted-foreground/70">{proposals.length}</span>
-      </h3>
-      <ol className="list-none space-y-3 p-0">
-        {proposals.map((p) => (
-          <li key={p.id} className="space-y-2 rounded-xl border border-border px-4 py-3">
-            {p.was && (
-              <p className="m-0 text-[13px] text-muted-foreground line-through decoration-muted-foreground/50">
-                {p.was}
-              </p>
-            )}
-            <p className="m-0 text-[15px] leading-snug text-foreground">{p.text}</p>
-            {p.where && <p className="m-0 text-[13px] text-muted-foreground">{p.where}</p>}
-            <p className="m-0 text-[13px] text-muted-foreground">{p.why}</p>
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => onDrop(p)} className={button}>
-                Drop
-              </button>
-              <button type="button" onClick={() => onKeep(p)} className={primary}>
-                <Check className="size-4" aria-hidden />
-                Keep
-              </button>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-/**
- * The batches of notes the rules are read from (D115), each by its folder's name in the package
- * and its count of notes, with Remove for one added by mistake or to test.
- */
-function Batches({
-  batches,
-  onRemove,
-}: {
-  batches: { id: string; label: string; notes: number }[];
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <section aria-labelledby="batches" className="space-y-2.5">
-      <h3
-        id="batches"
-        className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
-      >
-        Batches
-      </h3>
-      <ul className="list-none divide-y divide-border rounded-xl border border-border px-4 py-1">
-        {batches.map((b) => (
-          <li key={b.id} className="flex items-center gap-3 py-1.5">
-            <span className="flex min-w-0 flex-1 items-baseline gap-2">
-              <span className="truncate text-sm text-foreground">{b.label}</span>
-              <span className="shrink-0 font-mono text-[13px] text-muted-foreground/70">
-                {b.notes}
-              </span>
-            </span>
-            <button
-              type="button"
-              aria-label={`Remove ${b.label}`}
-              title="Remove"
-              onClick={() => onRemove(b.id)}
-              className={cn(
-                hit,
-                'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-muted hover:text-foreground',
-              )}
-            >
-              <Trash2 className="size-4" aria-hidden />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }

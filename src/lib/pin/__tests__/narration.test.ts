@@ -6,9 +6,6 @@ import {
   createClock,
   pointOn,
   slotOf,
-  type Take,
-  takeFile,
-  takeFileName,
   wheelTurn,
 } from '../narration';
 
@@ -91,26 +88,9 @@ describe('pointOn', () => {
 });
 
 describe('the take', () => {
-  const take: Take = {
-    id: 't1',
-    version: 1,
-    recordedAt: '2026-10-26T09:41:07.000Z',
-    durationMs: 61_000,
-    mimeType: 'audio/webm',
-    screens: [{ id: 'a', name: 'home.png', width: 1440, height: 900 }],
-    shown: [{ t: 0, screen: 0 }],
-    pointer: [[10, 0, 0.5, 0.5]],
-  };
   it('reads the clock as minutes and seconds', () => {
     assert.equal(clockText(0), '0:00');
     assert.equal(clockText(61_999), '1:01');
     assert.equal(clockText(600_000), '10:00');
-  });
-  it('downloads with its audio and a name from its time', () => {
-    assert.deepEqual(JSON.parse(takeFile(take, 'data:audio/webm;base64,AA')), {
-      ...take,
-      audio: 'data:audio/webm;base64,AA',
-    });
-    assert.equal(takeFileName(take), 'pinch-voice-2026-10-26-09-41.json');
   });
 });

@@ -243,6 +243,11 @@ describe('reading an export', () => {
       ],
     );
     assert.deepEqual(notes[2].topics, ['visual', 'layout']);
+    assert.equal(notes[0].said, undefined, 'typed, not said');
+    // A note said aloud is marked, so the reading checks the side it was filed on (D147).
+    const exp = readExport(exportFiles());
+    exp.assets[0].notes[0].origin = 'voice';
+    assert.equal(batchNotes(exp)[0].said, true);
   });
 });
 
@@ -526,14 +531,31 @@ describe('the taste library', () => {
     assert.match(text, /^ {3}Explained by: One focal point, Colour carries meaning\.$/m);
     assert.doesNotMatch(text, /Pinch's reading/);
 
-    const answered = answerRule(confirmed, q.id, 1, 'later');
+    const answered = answerRule(confirmed, q.id, [1], 'later', newId);
     const a = answered.rules[0];
     assert.equal(a.text, 'Make headings clearly larger than body text.');
     assert.equal(a.basis, 'stated');
     assert.equal(a.question, undefined);
     assert.equal(originOf(a), 'ai', 'picked, not rewritten');
     assert.equal(rulesOf(answered).length, 2, 'answered, the agent gets it');
-    assert.equal(answerRule(asking, q.id, 5, 'later'), asking, 'no such answer, no change');
+    assert.equal(answerRule(asking, q.id, [5], 'later', newId), asking, 'no such answer, no change');
+    assert.equal(answerRule(asking, q.id, [], 'later', newId), asking, 'nothing picked, no change');
+
+    // Answers rarely exclude each other: each one picked is a rule on the same notes (D144).
+    const both = answerRule(confirmed, q.id, [1, 0, 1], 'later', newId);
+    assert.deepEqual(
+      both.rules.slice(0, 2).map((r) => r.text),
+      ['Keep headings short.', 'Make headings clearly larger than body text.'],
+      'in the answers’ order, side by side',
+    );
+    const [one, two] = both.rules;
+    assert.notEqual(one.id, two.id);
+    assert.deepEqual(two.evidence, one.evidence, 'the same notes');
+    assert.deepEqual(two.topics, one.topics);
+    assert.equal(two.question, undefined);
+    assert.equal(two.basis, 'stated');
+    assert.equal(two.createdAt, 'later');
+    assert.equal(rulesOf(both).length, 3, 'both answers, and the confirmed rule');
 
     assert.deepEqual(
       asking.rules.filter((r) => picked(r, { principles: ['colour'] })).map((r) => r.id),
@@ -608,7 +630,10 @@ describe('the taste library', () => {
       /^R1\. Lead with a short headline that states the price\. \(where: on pricing cards\)/m,
     );
     assert.match(text, /^ {3}- note 01\.1 on Pricing\.png \(Competitor\): works: "Short headline\."$/m);
-    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\]$/m);
+    // A rule from one note says so, and the rules most notes share lead (D147).
+    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\] \(from one note\)$/m);
+    assert.match(text, /^Core taste, the rules the most notes share: R1 \(2 notes\)\. Where rules pull apart, follow the one more notes share/m);
+    assert.match(text, /Never show a screen you haven't rendered and checked/);
   });
 
   it('picks the rules a task needs, and copies them as text', () => {

@@ -269,11 +269,12 @@ export const OUTSIDE_TARGET =
 
 /**
  * What the agent does with taste the author settles with it in conversation (D117): it goes back
- * to Pinch, not only into the agent's own notes, so every agent and session gets it. Said in the
- * rules text, `design-rules.md` and `index.md`, beside the MCP server's own instructions.
+ * to Pinch, not only into the agent's own notes, so every agent and session gets it. The agent
+ * no longer proposes it to Pinch itself (D144): the author says it over a screenshot there. Said
+ * in the rules text, `design-rules.md` and `index.md`.
  */
 export const KEEP_IN_PINCH =
-  "When the author settles something about their taste with you that these rules don't hold, or hold otherwise (a correction, a choice between two rules, a new preference), keep it in Pinch, not only in your own notes or files, so every agent and session gets it: ask whether to keep it, and on a yes call Pinch's propose_rule tool when you're connected to Pinch (it waits there for the author to keep or drop); otherwise ask them to add it in Pinch.";
+  "When the author settles something about their taste with you that these rules don't hold, or hold otherwise (a correction, a choice between two rules, a new preference), suggest they say it over a screenshot in Pinch, so it becomes one of their rules for every agent and session, not only a line in your own notes or files.";
 
 /**
  * The rules as Pinch gives them now win over the agent's own notes of them (D118): an agent that
@@ -291,12 +292,21 @@ export const OPEN_CALLS =
   "When you report on your work, end with the decisions that need the author's call, one line each with the options, after the rules you set aside: their answers are what to keep in Pinch.";
 
 /**
+ * The agent checks its own work before the author sees it (D147): rendered, compared against the
+ * rules and the close-ups behind them, fixed and rendered again. A manual process never does
+ * this, and it is where the changes the author asks for fall. In the rules text, and so in
+ * `design-rules.md` and `get_design_rules`, and at the head of the review line.
+ */
+export const CHECK_FIRST =
+  "Never show a screen you haven't rendered and checked: render it, compare the render against these rules and the close-ups of the rules it touches, fix what breaks and render again, until no rule you follow is broken.";
+
+/**
  * How the agent reviews its own render (D126): what it shows first, then the rules against that,
  * so it doesn't see what the rules lead it to expect. In `checks.md` step 7, `index.md`'s reading
- * order and the MCP server's instructions.
+ * order and the MCP server's instructions, after checking first (D147).
  */
 export const REVIEW_LINE =
-  'Review each render in two passes. First write what it shows, without the rules: what is there, what draws the eye first, the sizes, colours and spacing as they are. Then go through the rules against that description, naming each rule a part keeps or breaks. Judged straight from the rules, a render shows what the rules lead you to expect.';
+  `${CHECK_FIRST} Review each render in two passes. First write what it shows, without the rules: what is there, what draws the eye first, the sizes, colours and spacing as they are. Then go through the rules against that description, naming each rule a part keeps or breaks. Judged straight from the rules, a render shows what the rules lead you to expect.`;
 
 /**
  * How several pieces of work stay in step (D119): one tracker, and one agent per piece, with shared

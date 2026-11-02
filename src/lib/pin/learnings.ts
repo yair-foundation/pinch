@@ -25,6 +25,7 @@ import { type ReviewList, reviewCells, reviewFile, reviewPages, reviewSpan } fro
 import {
   briefsLines,
   briefsOf,
+  CHECK_FIRST,
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
   OPEN_CALLS,
@@ -71,6 +72,8 @@ export type BatchNote = {
   crop: string;
   /** The author holds this note up as the one to follow (D108). Only on a note that says what works. */
   best?: true;
+  /** Said aloud (D131): its works or doesn't was sorted by its words, so a reading may turn it (D147). */
+  said?: true;
 };
 
 export type Batch = {
@@ -223,9 +226,19 @@ export const noteFingerprint = (image: string, works: string, doesNotWork: strin
 
 const fingerprintOf = (n: BatchNote) => noteFingerprint(n.image, n.works, n.doesNotWork);
 
-/** The fingerprints of every note the collection holds. */
+/**
+ * The fingerprints of every note the collection holds, either way round: a note a reading turned
+ * (D147) is still the one on the open image, which wasn't.
+ */
 export const knownNotes = (c: Collection) =>
-  new Set(c.batches.flatMap((b) => b.notes.map(fingerprintOf)));
+  new Set(
+    c.batches.flatMap((b) =>
+      b.notes.flatMap((n) => [
+        fingerprintOf(n),
+        noteFingerprint(n.image, n.doesNotWork, n.works),
+      ]),
+    ),
+  );
 
 /** The notes of a batch the collection doesn't hold yet. */
 export const newNotes = (c: Collection, notes: BatchNote[]) => {
@@ -565,6 +578,8 @@ export const imagesOf = (c: Collection, r: Rule) =>
 export type Reading = {
   strengthen: { rule: string; notes: string[] }[];
   propose: {
+    /** The new rule's id, where it must be known before (an agent's reading, D146); else made. */
+    id?: string;
     rule: string;
     title?: string;
     context: string;
@@ -578,6 +593,8 @@ export type Reading = {
     principles?: string[];
     locked?: boolean;
   }[];
+  /** Notes said aloud whose words say the other side from where they were filed (D147). */
+  turned?: string[];
 };
 
 /**
@@ -620,7 +637,7 @@ export function applyReading(
     if (!evidence.length || (!p.locked && !p.rule.trim())) continue;
     const other = p.conflictsWith ? c.rules.find((r) => r.id === p.conflictsWith) : undefined;
     rules.push({
-      id: newId(),
+      id: p.id ?? newId(),
       text: p.locked ? '' : p.rule.trim(),
       ...(p.title?.trim() && !p.locked ? { title: p.title.trim() } : {}),
       context: p.locked ? '' : p.context.trim(),
@@ -641,7 +658,24 @@ export function applyReading(
   }
   const read = new Set(c.read);
   for (const ref of notes.values()) read.add(noteKey(ref));
-  return { ...c, updatedAt: now, rules, read: [...read] };
+  // Notes said aloud that the reading found filed the wrong way round are turned (D147).
+  const turn = new Set(
+    (reading.turned ?? []).flatMap((id) => {
+      const ref = notes.get(id);
+      return ref ? [noteKey(ref)] : [];
+    }),
+  );
+  const batches = turn.size
+    ? c.batches.map((b) => ({
+        ...b,
+        notes: b.notes.map((n) => {
+          if (!n.said || !turn.has(noteKey({ batchId: b.id, note: n.ref }))) return n;
+          const { best: _best, ...rest } = n;
+          return { ...rest, works: n.doesNotWork, doesNotWork: n.works };
+        }),
+      }))
+    : c.batches;
+  return { ...c, updatedAt: now, rules, read: [...read], batches };
 }
 
 /** Titles named for rules that had none (D95); a rule given one meanwhile keeps its own. */
@@ -694,13 +728,43 @@ export function settleConflict(
 }
 
 /**
- * The author answers a rule's question: the rule becomes that answer's, as if they had said it
- * (D90), and their agent gets it from now on.
+ * The author answers a rule's question, with one answer or several, since they rarely exclude
+ * each other (D144): the rule becomes the first answer's, as if they had said it (D90), and each
+ * further answer is a rule of its own on the same notes, beside it, so every rule stays one
+ * sentence. Their agent gets them from now on.
  */
-export function answerRule(c: Collection, id: string, option: number, now: string): Collection {
-  const o = c.rules.find((r) => r.id === id)?.question?.options[option];
-  if (!o) return c;
-  return withRule(c, id, ownWords({ text: o.rule, drafted: o.rule, title: undefined }), now);
+export function answerRule(
+  c: Collection,
+  id: string,
+  picks: number[],
+  now: string,
+  newId: () => string,
+): Collection {
+  const options = c.rules.find((r) => r.id === id)?.question?.options ?? [];
+  const [first, ...more] = [...new Set(picks)]
+    .sort((a, b) => a - b)
+    .flatMap((i) => options[i] ?? []);
+  if (!first) return c;
+  const answered = withRule(
+    c,
+    id,
+    ownWords({ text: first.rule, drafted: first.rule, title: undefined }),
+    now,
+  );
+  const at = answered.rules.findIndex((r) => r.id === id);
+  const base = answered.rules[at];
+  const added: Rule[] = more.map((o) => ({
+    ...base,
+    id: newId(),
+    text: o.rule,
+    drafted: o.rule,
+    title: undefined,
+    conflict: undefined,
+    fresh: undefined,
+    createdAt: now,
+  }));
+  if (!added.length) return answered;
+  return { ...answered, rules: answered.rules.toSpliced(at + 1, 0, ...added) };
 }
 
 /**
@@ -881,7 +945,8 @@ export function rulesText(
 ): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${CHECK_FIRST} ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
+    ...(coreLine(rules) ? [coreLine(rules)] : []),
     ...(rolesLine(c) ? [rolesLine(c)] : []),
     ...briefsLines(c, screen),
     ...more,
@@ -891,7 +956,7 @@ export function rulesText(
     const about = [...r.rule.topics.map(topicLabel), ...r.rule.tags].join(', ');
     lines.push(
       '',
-      `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}`,
+      `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}${r.notes.length === 1 ? ' (from one note)' : ''}`,
     );
     const against = r.rule.conflict && numbers.get(r.rule.conflict.ruleId);
     if (r.rule.conflict && against) lines.push(`   ${pullLine(r.rule, against)}`);
@@ -903,6 +968,19 @@ export function rulesText(
     for (const n of r.notes) lines.push(`   - ${fromLine(n)}: ${said(n.note)}`);
   }
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * The designer's core taste, for the agent to weigh rules by (D147): the rules the most notes
+ * share, up to eight, and how to weigh them against a rule drawn from one note.
+ */
+function coreLine(rules: ExportedRule[]): string {
+  const core = rules
+    .filter((r) => r.notes.length >= 2)
+    .sort((a, b) => b.notes.length - a.notes.length)
+    .slice(0, 8);
+  if (!core.length) return '';
+  return `Core taste, the rules the most notes share: ${core.map((r) => `${r.id} (${r.notes.length} notes)`).join(', ')}. Where rules pull apart, follow the one more notes share; a rule from one note is one example of the taste, as narrow as that note.`;
 }
 
 /**
