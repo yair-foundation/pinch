@@ -5,7 +5,7 @@
 // (D137). Then the designer checks the end card, as a person would: a note whose works or doesn't
 // came out other than they meant is switched.
 //
-//   node --import tsx scripts/hand-vs-pinch/simulate/take.ts <designer.json> <sizes.json> <session.json>
+//   node --import tsx scripts/hand-vs-pinch/simulate/take.ts <designer.json> <sizes.json> <session.json> [--as-filed]
 //
 // designer.json is what designer-prompt.md asks for; sizes.json maps each screenshot's file name
 // to [width, height]. The session goes into the browser's IndexedDB `pin-notes`: the assets under
@@ -28,7 +28,9 @@ type Note = {
   text: string
   box: { x: number; y: number; w: number; h: number }
 }
-const [designerFile, sizesFile, out] = process.argv.slice(2)
+const [designerFile, sizesFile, out, flag] = process.argv.slice(2)
+// With --as-filed, the notes stay as Pinch filed them, unchecked, to see what a reading catches.
+const check = flag !== "--as-filed"
 const d = JSON.parse(readFileSync(designerFile, "utf8")) as { notes: Note[] }
 const sizes: Record<string, [number, number]> = JSON.parse(
   readFileSync(sizesFile, "utf8"),
@@ -123,18 +125,35 @@ const take: Take = {
 let made = applyTake(assets, take)
 const removed = removedScreens(take, [])
 // The end card's check: a note whose works or doesn't came out other than the designer meant is
-// switched. Pinch splits what was said at full stops, so each part is checked against its note.
-const flat = (x: string) => x.replace(/\s+/g, " ").trim()
+// switched. Each note is matched to the designer's note on its screen it shares most words with
+// (a note can join what was said in several sentences, D147). A note holding both sides is left
+// as it is: the designer may have said both.
+const wordsOf = (x: string) => new Set(x.toLowerCase().match(/[a-z']+/g) ?? [])
+const meantOf = (screen: string, quote: string) => {
+  const mine = wordsOf(quote)
+  let best: Note | undefined
+  let most = 0
+  for (const s of said) {
+    if (s.note.screen !== screen) continue
+    const shared = [...wordsOf(s.note.text)].filter((w) => mine.has(w)).length
+    if (shared > most) {
+      most = shared
+      best = s.note
+    }
+  }
+  return best
+}
 let flipped = 0
+let mixed = 0
 made = made.map((a) => ({
   ...a,
   marks: a.marks.map((m) => {
-    const note = said.find(
-      (s) =>
-        s.note.screen === a.name &&
-        flat(s.note.text).includes(flat(m.quote ?? "")),
-    )?.note
-    if (!note) return m
+    const note = meantOf(a.name, m.quote ?? "")
+    if (!note || !check) return m
+    if (m.good.trim() && m.bad.trim()) {
+      mixed++
+      return m
+    }
     const meant = note.verdict === "works" ? "good" : "bad"
     const got = m.good.trim() ? "good" : "bad"
     if (meant === got) return m
@@ -155,6 +174,7 @@ console.log(
     notesMade: marks.length,
     shapes: kinds,
     flipped,
+    mixed,
     screensRemoved: removed,
     minutes: +(t / 60000).toFixed(1),
   }),

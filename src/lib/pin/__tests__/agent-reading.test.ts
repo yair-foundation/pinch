@@ -16,7 +16,15 @@ import {
   withReadings,
 } from '../agent-reading';
 import { MAX_LEARN_NOTES } from '../learn';
-import { type BatchNote, type Collection, newCollection, type Rule, unreadNotes } from '../learnings';
+import {
+  type BatchNote,
+  type Collection,
+  knownNotes,
+  newCollection,
+  noteFingerprint,
+  type Rule,
+  unreadNotes,
+} from '../learnings';
 
 const note = (ref: string, works: string, doesNotWork = ''): BatchNote => ({
   ref,
@@ -99,7 +107,7 @@ describe('notes for the agent to read (D122)', () => {
       properties: Record<string, unknown>;
       required?: string[];
     };
-    assert.deepEqual(Object.keys(schema.properties), ['read', 'strengthen', 'propose']);
+    assert.deepEqual(Object.keys(schema.properties), ['read', 'strengthen', 'propose', 'turned']);
     assert.deepEqual(schema.required, ['read']);
     assert.equal('$schema' in schema, false);
   });
@@ -293,5 +301,47 @@ describe('reading on from the readings waiting (D146)', () => {
     );
     const shape = (c: Collection) => c.rules.map((r) => [r.id, r.evidence.map((e) => e.note)]);
     assert.deepEqual(shape(withReadings(many(), saved)), shape(page), 'what the agent read on from');
+  });
+});
+
+describe('a note said aloud, turned by the reading (D147)', () => {
+  // Said aloud and filed by its words under what works, though it is a fault.
+  const said = (): Collection => {
+    const c = library();
+    const [first, second, third] = c.batches[0].notes;
+    const wrong = {
+      ...second,
+      works: "'Let's go' tells me nothing.",
+      doesNotWork: '',
+      best: true as const,
+      said: true as const,
+    };
+    return { ...c, batches: [{ ...c.batches[0], notes: [first, wrong, third] }] };
+  };
+
+  it('is marked for the reading, which is told to judge it by its words', () => {
+    assert.match(readingPrompt(said(), notesToRead(said())), /"saidAloud":true/);
+  });
+
+  it('turns only a note said aloud, and only one it read', () => {
+    const r = reading(
+      { read: ['b1/02.1', 'b1/03.1'], turned: ['b1/02.1', 'b1/03.1', 'b1/09.9'] },
+      said(),
+    );
+    assert.deepEqual(r.reading.turned, ['b1/02.1', 'b1/03.1']);
+    const after = applyAgentReading(said(), r, at, () => 'x');
+    const [, turned, typed] = after.batches[0].notes;
+    assert.equal(turned.works, '');
+    assert.equal(turned.doesNotWork, "'Let's go' tells me nothing.");
+    assert.equal(turned.best, undefined, 'a fault is no best example');
+    assert.equal(
+      typed.doesNotWork,
+      'Four accent colours fight each other.',
+      'typed notes stay as written',
+    );
+    // The open image still has it the old way round, and it is still known, so never added again.
+    assert.ok(
+      knownNotes(after).has(noteFingerprint(turned.image, "'Let's go' tells me nothing.", '')),
+    );
   });
 });

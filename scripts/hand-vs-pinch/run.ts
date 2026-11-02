@@ -10,7 +10,9 @@
 // The builds run on the author's own Claude Code (`claude -p`), not the API: no key and no spend
 // beyond their plan. Each runs in a folder of its own outside <dir>, holding only its input, with
 // no MCP servers (Pinch's included), skills or slash commands, and only Read, Write, Glob and
-// Grep. The same prompt goes to both inputs (`buildPrompt`). Build again to redo any that failed.
+// Grep, and `node render.mjs` to draw its page and look at it (D147), as an agent at work can.
+// The same prompt goes to both inputs (`buildPrompt`). Build again to redo any that failed.
+// CHROME names the browser that draws the pages, if it isn't Google Chrome on a Mac.
 import { spawn } from "node:child_process"
 import {
   cpSync,
@@ -46,6 +48,15 @@ const PORT = Number(process.env.PORT) || 3130
 const AT_ONCE = 3
 const BUILD_MINUTES = 20
 const IMAGE = /\.(png|jpe?g|webp|gif)$/i
+const CHROME =
+  process.env.CHROME ??
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+/** What a build runs to see its page: headless Chrome draws index.html into render.png. */
+const RENDER = `import { execFileSync } from "node:child_process"
+import { resolve } from "node:path"
+execFileSync(${JSON.stringify(CHROME)}, ["--headless=new", "--hide-scrollbars", "--window-size=1440,2400", "--virtual-time-budget=8000", "--screenshot=" + resolve("render.png"), "file://" + resolve("index.html")], { stdio: "ignore" })
+console.log("Drew render.png, 1440 by 2400.")
+`
 
 if (!dirArg || !["init", "build", "judge", "score"].includes(command)) {
   console.error(
@@ -135,16 +146,19 @@ async function runBuild(
   const work = mkdtempSync(path.join(tmpdir(), "hand-vs-pinch-"))
   try {
     await fillInput(b.arm, path.join(work, "input"))
+    writeFileSync(path.join(work, "render.mjs"), RENDER)
     const args = [
       "-p",
       buildPrompt(task),
       "--tools",
-      "Read,Write,Glob,Grep",
+      "Read,Write,Glob,Grep,Bash",
       "--allowedTools",
       "Read",
       "Write",
       "Glob",
       "Grep",
+      "Bash(node render.mjs)",
+      "Bash(node render.mjs:*)",
       "--permission-mode",
       "acceptEdits",
       "--strict-mcp-config",

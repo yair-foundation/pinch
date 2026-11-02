@@ -706,6 +706,7 @@ export function CollectionsView({
             topics: note.topics,
             source: note.source,
             ...(note.best ? { best: true } : {}),
+            ...(note.said ? { said: true } : {}),
             ...(crop ? { crop } : {}),
           };
         });

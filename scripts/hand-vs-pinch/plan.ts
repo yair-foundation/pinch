@@ -92,6 +92,8 @@ ${task.trim()}
 - No external images: draw with inline SVG or CSS, and write realistic text.
 - Where the guidance says nothing, use your own judgment.
 
+You can see what you build: \`node render.mjs\` draws ./index.html 1440px wide into ./render.png, which you can open.
+
 Write ./index.html and nothing else. Don't ask questions: no one is there to answer them.`
 
 /** The author's verdict on one pair, as the judging page saves it. */

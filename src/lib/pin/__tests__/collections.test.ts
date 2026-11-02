@@ -243,6 +243,11 @@ describe('reading an export', () => {
       ],
     );
     assert.deepEqual(notes[2].topics, ['visual', 'layout']);
+    assert.equal(notes[0].said, undefined, 'typed, not said');
+    // A note said aloud is marked, so the reading checks the side it was filed on (D147).
+    const exp = readExport(exportFiles());
+    exp.assets[0].notes[0].origin = 'voice';
+    assert.equal(batchNotes(exp)[0].said, true);
   });
 });
 
@@ -625,7 +630,10 @@ describe('the taste library', () => {
       /^R1\. Lead with a short headline that states the price\. \(where: on pricing cards\)/m,
     );
     assert.match(text, /^ {3}- note 01\.1 on Pricing\.png \(Competitor\): works: "Short headline\."$/m);
-    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\]$/m);
+    // A rule from one note says so, and the rules most notes share lead (D147).
+    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\] \(from one note\)$/m);
+    assert.match(text, /^Core taste, the rules the most notes share: R1 \(2 notes\)\. Where rules pull apart, follow the one more notes share/m);
+    assert.match(text, /Never show a screen you haven't rendered and checked/);
   });
 
   it('picks the rules a task needs, and copies them as text', () => {

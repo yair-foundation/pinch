@@ -71,6 +71,7 @@ export const readingPrompt = (c: Collection, todo: NoteToRead[]) =>
       topics: note.topics,
       source: note.source,
       ...(note.best ? { best: true } : {}),
+      ...(note.said ? { said: true } : {}),
     })),
   });
 
@@ -106,6 +107,7 @@ export const agentReadingSchema = z.object({
     )
     .default([])
     .describe(learnSchema.shape.propose.description ?? ''),
+  turned: learnSchema.shape.turned.default([]),
 });
 
 /** `submit_reading`'s input, as JSON Schema. */

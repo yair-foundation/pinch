@@ -121,6 +121,29 @@ By the verdict set in advance, that is **better, not dramatically better**, prov
 - **Works or doesn't is often wrong.** Guessed from the words, it was wrong on 26 of the 66 sentences. Praise such as "it doesn't shout" was read as a fault, and a plain description before a complaint was read as praise. A person would have to switch two notes in five on the end card.
 - **A sentence can lose its subject.** Each sentence becomes its own note. So a second sentence such as "That's calm and readable and I'd keep it" stands alone, with "that" for its subject and a dot for its place.
 
+### The same run again, after D147, 2026-11-02
+
+The same made-up designer, notes, hand notes and tasks. Pinch now makes one note per thing pointed at, reads works or doesn't across the note, weighs rules by how many notes share them, and tells the agent to render and check its work before showing it. Both versions' builds could render their page this time.
+
+- Pinch's own code made 34 notes from the 34 said, not 66. The designer switched 1 on the end card (2 came out mixed), against 26.
+- An agent read them into 17 rules in one session, against 28 from 66 notes in three.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 8% | 92% |
+| Changes the designer would ask for | 17.5 | 7 |
+| Taste points followed, of 14 (mean per judgment) | 9.3 | 11.6 |
+| Taste points broken (mean per judgment) | 2.9 | 0.8 |
+
+Pinch won 5 pairs and tied 1, and its builds needed 60% fewer changes. On quality, that meets the bar for **dramatically better** set in advance; the verdict still needs the minutes, which only the author can give. The hand builds did no better than in the first run (2.9 taste points broken, against 2.6), so being able to render didn't help them: nothing told them what to check a render against.
+
+**A caveat.** The reading's new guidance on weighing notes was written after the first run lost on this designer's colour blocks. Until it was removed after this run, it used that case as its example. Flat blocks running edge to edge were broken 7 times with Pinch in the first run and 2 in this one. Leaving that point out, Pinch's builds broke the other taste points 17 times in the first run and 8 in this one, so most of the gain doesn't rest on it. A run with a designer none of this was tuned on is the honest check.
+
+**Works or doesn't, on a designer none of this was tuned on.** A second session invented a more critical designer, with 36 notes, 20 of them complaints.
+
+- The words alone filed 15 notes the wrong way round; the old per-sentence reading got 40 of 76 sentences wrong.
+- An agent reading them as said aloud (D147) turned 14 of the 15, and turned 2 that were right, leaving 3 of 36 on the wrong side.
+
 **Limits.**
 
 - One made-up designer, whose notes name each element clearly. That is generous to the hand version.

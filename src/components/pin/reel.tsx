@@ -59,7 +59,10 @@ function heardOf(take: Take, assets: Asset[], known: string[]): Heard {
 const VERDICT_TEXT = {
   good: 'text-green-700 dark:text-green-400',
   bad: 'text-red-700 dark:text-red-400',
+  both: 'text-amber-700 dark:text-amber-400',
 };
+/** A note's verdict on the end card: a note on one thing can hold both sides (D147). */
+const VERDICT_WORD = { good: 'Works', bad: 'Doesn’t work', both: 'Mixed' };
 
 /** The notes said on a screen, drawn over it where they were pointed, numbered (D137). */
 function VoiceMarks({ marks }: { marks: Mark[] }) {
@@ -740,8 +743,9 @@ export function Reel({
                         {s.notes.length > 0 && (
                           <ol className="m-0 grid list-none gap-1.5 p-0">
                             {s.notes.map(({ mark, n }) => {
-                              const v = verdictOf(mark) === 'bad' ? 'bad' : 'good';
-                              const word = v === 'good' ? 'Works' : 'Doesn’t work';
+                              const said = verdictOf(mark);
+                              const v = said === 'bad' || said === 'both' ? said : 'good';
+                              const word = VERDICT_WORD[v];
                               return (
                                 <li key={mark.id} className="flex items-baseline gap-2">
                                   <span className="w-4 shrink-0 text-right font-mono text-[12px] text-muted-foreground tabular-nums">
@@ -760,7 +764,7 @@ export function Reel({
                                     {word}
                                   </button>
                                   <span className="text-foreground">
-                                    {mark.good || mark.bad}
+                                    {[mark.good, mark.bad].filter((x) => x.trim()).join(' ')}
                                     {mark.best && mark.good && (
                                       <Star
                                         aria-label="Best example"

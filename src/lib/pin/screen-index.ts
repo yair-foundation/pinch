@@ -292,12 +292,21 @@ export const OPEN_CALLS =
   "When you report on your work, end with the decisions that need the author's call, one line each with the options, after the rules you set aside: their answers are what to keep in Pinch.";
 
 /**
+ * The agent checks its own work before the author sees it (D147): rendered, compared against the
+ * rules and the close-ups behind them, fixed and rendered again. A manual process never does
+ * this, and it is where the changes the author asks for fall. In the rules text, and so in
+ * `design-rules.md` and `get_design_rules`, and at the head of the review line.
+ */
+export const CHECK_FIRST =
+  "Never show a screen you haven't rendered and checked: render it, compare the render against these rules and the close-ups of the rules it touches, fix what breaks and render again, until no rule you follow is broken.";
+
+/**
  * How the agent reviews its own render (D126): what it shows first, then the rules against that,
  * so it doesn't see what the rules lead it to expect. In `checks.md` step 7, `index.md`'s reading
- * order and the MCP server's instructions.
+ * order and the MCP server's instructions, after checking first (D147).
  */
 export const REVIEW_LINE =
-  'Review each render in two passes. First write what it shows, without the rules: what is there, what draws the eye first, the sizes, colours and spacing as they are. Then go through the rules against that description, naming each rule a part keeps or breaks. Judged straight from the rules, a render shows what the rules lead you to expect.';
+  `${CHECK_FIRST} Review each render in two passes. First write what it shows, without the rules: what is there, what draws the eye first, the sizes, colours and spacing as they are. Then go through the rules against that description, naming each rule a part keeps or breaks. Judged straight from the rules, a render shows what the rules lead you to expect.`;
 
 /**
  * How several pieces of work stay in step (D119): one tracker, and one agent per piece, with shared
