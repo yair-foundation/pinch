@@ -269,11 +269,12 @@ export const OUTSIDE_TARGET =
 
 /**
  * What the agent does with taste the author settles with it in conversation (D117): it goes back
- * to Pinch, not only into the agent's own notes, so every agent and session gets it. Said in the
- * rules text, `design-rules.md` and `index.md`, beside the MCP server's own instructions.
+ * to Pinch, not only into the agent's own notes, so every agent and session gets it. The agent
+ * no longer proposes it to Pinch itself (D144): the author says it over a screenshot there. Said
+ * in the rules text, `design-rules.md` and `index.md`.
  */
 export const KEEP_IN_PINCH =
-  "When the author settles something about their taste with you that these rules don't hold, or hold otherwise (a correction, a choice between two rules, a new preference), keep it in Pinch, not only in your own notes or files, so every agent and session gets it: ask whether to keep it, and on a yes call Pinch's propose_rule tool when you're connected to Pinch (it waits there for the author to keep or drop); otherwise ask them to add it in Pinch.";
+  "When the author settles something about their taste with you that these rules don't hold, or hold otherwise (a correction, a choice between two rules, a new preference), suggest they say it over a screenshot in Pinch, so it becomes one of their rules for every agent and session, not only a line in your own notes or files.";
 
 /**
  * The rules as Pinch gives them now win over the agent's own notes of them (D118): an agent that

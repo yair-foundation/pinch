@@ -526,14 +526,31 @@ describe('the taste library', () => {
     assert.match(text, /^ {3}Explained by: One focal point, Colour carries meaning\.$/m);
     assert.doesNotMatch(text, /Pinch's reading/);
 
-    const answered = answerRule(confirmed, q.id, 1, 'later');
+    const answered = answerRule(confirmed, q.id, [1], 'later', newId);
     const a = answered.rules[0];
     assert.equal(a.text, 'Make headings clearly larger than body text.');
     assert.equal(a.basis, 'stated');
     assert.equal(a.question, undefined);
     assert.equal(originOf(a), 'ai', 'picked, not rewritten');
     assert.equal(rulesOf(answered).length, 2, 'answered, the agent gets it');
-    assert.equal(answerRule(asking, q.id, 5, 'later'), asking, 'no such answer, no change');
+    assert.equal(answerRule(asking, q.id, [5], 'later', newId), asking, 'no such answer, no change');
+    assert.equal(answerRule(asking, q.id, [], 'later', newId), asking, 'nothing picked, no change');
+
+    // Answers rarely exclude each other: each one picked is a rule on the same notes (D144).
+    const both = answerRule(confirmed, q.id, [1, 0, 1], 'later', newId);
+    assert.deepEqual(
+      both.rules.slice(0, 2).map((r) => r.text),
+      ['Keep headings short.', 'Make headings clearly larger than body text.'],
+      'in the answers’ order, side by side',
+    );
+    const [one, two] = both.rules;
+    assert.notEqual(one.id, two.id);
+    assert.deepEqual(two.evidence, one.evidence, 'the same notes');
+    assert.deepEqual(two.topics, one.topics);
+    assert.equal(two.question, undefined);
+    assert.equal(two.basis, 'stated');
+    assert.equal(two.createdAt, 'later');
+    assert.equal(rulesOf(both).length, 3, 'both answers, and the confirmed rule');
 
     assert.deepEqual(
       asking.rules.filter((r) => picked(r, { principles: ['colour'] })).map((r) => r.id),

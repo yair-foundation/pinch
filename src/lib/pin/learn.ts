@@ -151,7 +151,9 @@ export const learnSchema = z.object({
               rule: z.string().describe('The rule this answer makes, one sentence.'),
             }),
           )
-          .describe('With a question: two to four answers, the most likely first. Else empty.'),
+          .describe(
+            'With a question: two to four answers, the most likely first, each one quality the designer can pick alongside the others. Else empty.',
+          ),
         principles: z
           .array(z.string())
           .describe(

@@ -13,6 +13,7 @@ import {
   readingInputSchema,
   readingPrompt,
   withAgentReading,
+  withReadings,
 } from '../agent-reading';
 import { MAX_LEARN_NOTES } from '../learn';
 import { type BatchNote, type Collection, newCollection, type Rule, unreadNotes } from '../learnings';
@@ -159,7 +160,8 @@ describe('the agent’s reading (D122)', () => {
       after.rules.find((x) => x.id === 'ra')?.evidence.map((e) => e.note),
       ['01.1', '02.1'],
     );
-    const made = after.rules.find((x) => x.id === 'new1');
+    // Named from the reading, not made up, so the server and the page agree on it (D146).
+    const made = after.rules.find((x) => x.id === 'g1-0');
     assert.equal(made?.text, 'Keep to one accent colour.');
     assert.equal(made?.title, 'One accent colour');
     assert.deepEqual(applyAgentReading(after, r, at, () => 'again'), after, 'once only');
@@ -182,7 +184,6 @@ describe('reading with the agent over MCP (D122)', () => {
       { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args } },
       async () => library(),
       files,
-      undefined,
       undefined,
       { id: () => 'g1', save: async (r) => void saved.push(r) },
     ) as Promise<{ result: { content: { type: string; text?: string }[]; isError?: boolean } }>;
@@ -217,5 +218,80 @@ describe('reading with the agent over MCP (D122)', () => {
 
   it('is pointed to when notes wait', () => {
     assert.match(topicsText(library()), /2 notes wait to be read into rules: call get_notes_to_read/);
+  });
+});
+
+describe('reading on from the readings waiting (D146)', () => {
+  // 33 notes, none read: more than one reading takes.
+  const many = (): Collection => {
+    const c = library();
+    const notes = Array.from({ length: 33 }, (_, i) =>
+      note(`${String(i + 1).padStart(2, '0')}.1`, `Note ${i + 1} works.`),
+    );
+    return { ...c, batches: [{ ...c.batches[0], notes, images: 33 }], read: [] };
+  };
+  const keys = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, i) => `b1/${String(from + i).padStart(2, '0')}.1`);
+  type Reply = { result: { content: { type: string; text?: string }[]; isError?: boolean } };
+  const session = () => {
+    const saved: AgentReading[] = [];
+    const call = (name: string, args: unknown = {}) =>
+      answer(
+        { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args } },
+        async () => many(),
+        undefined,
+        undefined,
+        {
+          id: () => `g${saved.length + 1}`,
+          save: async (r) => void saved.push(r),
+          waiting: async () => saved,
+        },
+      ) as Promise<Reply>;
+    return { saved, call };
+  };
+  const words = (r: Reply) => r.result.content[0].text ?? '';
+
+  it('hands over the next notes, not the same ones, while the page hasn’t applied the last reading', async () => {
+    const { saved, call } = session();
+    assert.match(words(await call('get_notes_to_read')), /30 of 33 notes waiting\./);
+    const first = await call('submit_reading', {
+      read: keys(1, 30),
+      propose: [{ rule: 'Keep it calm.', notes: ['b1/01.1'], topics: ['visual'] }],
+    });
+    assert.match(words(first), /3 more notes wait: call get_notes_to_read again\./);
+    assert.match(words(await call('list_rule_topics')), /3 notes wait to be read into rules/);
+
+    const next = words(await call('get_notes_to_read'));
+    assert.match(next, /3 of 3 notes waiting\./);
+    assert.match(next, /b1\/31\.1/);
+    assert.doesNotMatch(next, /b1\/01\.1/);
+    assert.match(next, /g1-0/, 'the rule the waiting reading proposed is in the library');
+
+    // The second reading strengthens the first one's rule, which isn't on the page yet.
+    const second = await call('submit_reading', {
+      read: keys(31, 33),
+      strengthen: [{ rule: 'g1-0', notes: ['b1/31.1'] }],
+    });
+    assert.match(words(second), /^Kept: 3 notes read, 0 new rules, 1 strengthened\./);
+    assert.doesNotMatch(words(second), /more notes? waits?/);
+    assert.equal(words(await call('get_notes_to_read')), 'No notes are waiting to be read.');
+    assert.doesNotMatch(words(await call('list_rule_topics')), /wait to be read/);
+
+    // The same notes again are refused, so no rule is read twice.
+    const again = await call('submit_reading', { read: keys(1, 30) });
+    assert.equal(again.result.isError, true);
+    assert.equal(saved.length, 2);
+
+    // The page applies both, in order, with ids of its own to hand: the rule is the same one.
+    let n = 0;
+    const page = saved.reduce((c, r) => applyAgentReading(c, r, at, () => `page${++n}`), many());
+    assert.deepEqual(unreadNotes(page), []);
+    const calm = page.rules.find((r) => r.id === 'g1-0');
+    assert.deepEqual(
+      calm?.evidence.map((e) => e.note),
+      ['01.1', '31.1'],
+    );
+    const shape = (c: Collection) => c.rules.map((r) => [r.id, r.evidence.map((e) => e.note)]);
+    assert.deepEqual(shape(withReadings(many(), saved)), shape(page), 'what the agent read on from');
   });
 });

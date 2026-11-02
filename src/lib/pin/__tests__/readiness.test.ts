@@ -186,8 +186,7 @@ describe('the author’s corrections on earlier work (D125)', () => {
       { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_design_rules' } },
       async () => library(),
       undefined,
-      undefined,
-      { id: () => 'r1', add: () => {}, runs: async () => runs },
+      { add: () => {}, runs: async () => runs },
     )) as { result: { content: { text: string }[] } };
     assert.match(
       r.result.content[0].text,
@@ -250,7 +249,6 @@ describe('the rules’ version (D125)', () => {
         params: { name: 'list_rule_topics', arguments: { version: rulesVersion(c) } },
       },
       async () => fewer,
-      undefined,
       undefined,
       undefined,
       { id: () => 'x', save: async () => {}, rules: async () => c },

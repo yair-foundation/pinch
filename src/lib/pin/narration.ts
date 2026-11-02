@@ -102,10 +102,3 @@ export type Take = {
   /** What was said, once speech-to-text has read it (D136). */
   words?: TimedWord[];
 };
-
-/** A take's file to download: the take with its audio as a data URL, as the narration test reads it. */
-export const takeFile = (take: Take, audio: string | null) => JSON.stringify({ ...take, audio });
-
-/** The file's name: the take's time, to the minute. */
-export const takeFileName = (take: Take) =>
-  `pinch-voice-${take.recordedAt.slice(0, 16).replace(/[:T]/g, '-')}.json`;

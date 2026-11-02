@@ -25,7 +25,6 @@ import {
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { noteFingerprint } from '@/lib/pin/learnings';
-import { screenGroup, } from '@/lib/pin/screen-index';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import { IDLE_TALK } from '@/lib/pin/ring-demo';
 import { RING_PICTURES } from '@/lib/pin/ring-pictures';
@@ -817,15 +816,6 @@ function Workspace() {
     };
   }, [addFiles]);
 
-  /** A screen tag merged into another on Your rules (D129): the open images take the new name. */
-  const renameScreenTag = (from: string, into: string) => {
-    const moves = (a: Asset) =>
-      Boolean(cleanScreenTag(a.screenTag)) &&
-      screenGroup(cleanScreenTag(a.screenTag)) === screenGroup(from);
-    if (!assetsRef.current.some(moves)) return;
-    commit((list) => list.map((a) => (moves(a) ? { ...a, screenTag: into } : a)));
-  };
-
   const tagged = assets.filter(hasMarks);
   const allMarks = tagged.flatMap((a) => a.marks.filter((m) => verdictOf(m) !== 'empty'));
 
@@ -1113,7 +1103,6 @@ function Workspace() {
           moveFrom={cloudKey ? browserBackend : undefined}
           openPrints={openPrints}
           openScreens={openScreens}
-          onRenameScreenTag={renameScreenTag}
           openBest={openBest}
           onOpenBest={setOpenBest}
           batchZip={batchZip}
@@ -1170,6 +1159,7 @@ function Workspace() {
               marks: a.marks.map((m) => (m.id === markId ? flipVerdict(m) : m)),
             }))
           }
+          onRules={() => setView('collections')}
         />
       )}
       {dialog === 'shortcuts' && (

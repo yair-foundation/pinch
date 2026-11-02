@@ -565,6 +565,8 @@ export const imagesOf = (c: Collection, r: Rule) =>
 export type Reading = {
   strengthen: { rule: string; notes: string[] }[];
   propose: {
+    /** The new rule's id, where it must be known before (an agent's reading, D146); else made. */
+    id?: string;
     rule: string;
     title?: string;
     context: string;
@@ -620,7 +622,7 @@ export function applyReading(
     if (!evidence.length || (!p.locked && !p.rule.trim())) continue;
     const other = p.conflictsWith ? c.rules.find((r) => r.id === p.conflictsWith) : undefined;
     rules.push({
-      id: newId(),
+      id: p.id ?? newId(),
       text: p.locked ? '' : p.rule.trim(),
       ...(p.title?.trim() && !p.locked ? { title: p.title.trim() } : {}),
       context: p.locked ? '' : p.context.trim(),
@@ -694,13 +696,43 @@ export function settleConflict(
 }
 
 /**
- * The author answers a rule's question: the rule becomes that answer's, as if they had said it
- * (D90), and their agent gets it from now on.
+ * The author answers a rule's question, with one answer or several, since they rarely exclude
+ * each other (D144): the rule becomes the first answer's, as if they had said it (D90), and each
+ * further answer is a rule of its own on the same notes, beside it, so every rule stays one
+ * sentence. Their agent gets them from now on.
  */
-export function answerRule(c: Collection, id: string, option: number, now: string): Collection {
-  const o = c.rules.find((r) => r.id === id)?.question?.options[option];
-  if (!o) return c;
-  return withRule(c, id, ownWords({ text: o.rule, drafted: o.rule, title: undefined }), now);
+export function answerRule(
+  c: Collection,
+  id: string,
+  picks: number[],
+  now: string,
+  newId: () => string,
+): Collection {
+  const options = c.rules.find((r) => r.id === id)?.question?.options ?? [];
+  const [first, ...more] = [...new Set(picks)]
+    .sort((a, b) => a - b)
+    .flatMap((i) => options[i] ?? []);
+  if (!first) return c;
+  const answered = withRule(
+    c,
+    id,
+    ownWords({ text: first.rule, drafted: first.rule, title: undefined }),
+    now,
+  );
+  const at = answered.rules.findIndex((r) => r.id === id);
+  const base = answered.rules[at];
+  const added: Rule[] = more.map((o) => ({
+    ...base,
+    id: newId(),
+    text: o.rule,
+    drafted: o.rule,
+    title: undefined,
+    conflict: undefined,
+    fresh: undefined,
+    createdAt: now,
+  }));
+  if (!added.length) return answered;
+  return { ...answered, rules: answered.rules.toSpliced(at + 1, 0, ...added) };
 }
 
 /**
