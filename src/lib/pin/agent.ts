@@ -6,6 +6,7 @@ import {
   READING_GUIDE,
   readingInputSchema,
   readingPrompt,
+  tidyPrompt,
   withReadings,
 } from './agent-reading';
 import { type Changes, changesLines, changesSince } from './changes';
@@ -21,6 +22,7 @@ import {
   rulesText,
   rulesVersion,
   tagsOf,
+  tidyDue,
   unreadNotes,
   waiting,
 } from './learnings';
@@ -133,7 +135,7 @@ export const TOOLS = [
     name: 'get_notes_to_read',
     title: 'Get notes to read into rules',
     description:
-      'The person’s notes that haven’t been read into rules yet, as many as fit in one answer with their close-ups, the rules they have so far, and the method Pinch’s own reading follows, so you can read them into rules on your own allowance instead of Pinch’s credits. Read them as it says, then call submit_reading. Call it when the person asks you to read their notes, or list_rule_topics says notes are waiting.',
+      'The person’s notes that haven’t been read into rules yet, as many as fit in one answer with their close-ups, the rules they have so far, and the method Pinch’s own reading follows, so you can read them into rules on your own allowance instead of Pinch’s credits. Read them as it says, then call submit_reading. Once every note is read, it asks you once to tidy the rules. Call it when the person asks you to read their notes, or list_rule_topics says notes are waiting.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -151,7 +153,7 @@ export const TOOLS = [
     name: 'submit_reading',
     title: 'Submit a reading of notes',
     description:
-      'Your reading of the notes get_notes_to_read gave you, in the shape it describes: every note you read, the rules they strengthen and the new rules they teach. It waits in Pinch and becomes part of the person’s rules when they next open Your rules, as Pinch’s own reading does; rules read from vague words, or with a question, wait for them to confirm. Use the ids exactly as given.',
+      'Your reading of the notes get_notes_to_read gave you, in the shape it describes: every note you read, the rules they strengthen and the new rules they teach; or, when it asked you to tidy the rules, the tidy alone. It waits in Pinch and becomes part of the person’s rules when they next open Your rules, as Pinch’s own reading does; rules read from vague words, or with a question, wait for them to confirm. Use the ids exactly as given.',
     inputSchema: readingInputSchema(),
     annotations: {
       readOnlyHint: false,
@@ -607,6 +609,9 @@ export async function notesContent(
   method = true,
 ): Promise<{ content: Content[] }> {
   const todo = c ? notesToRead(c) : [];
+  // Every note read: the rules are tidied once (D149), then there's nothing to do.
+  if (c && !todo.length && tidyDue(c))
+    return text(tidyPrompt(c, REPLY_TOKENS * 3.5)) as { content: Content[] };
   if (!c || !todo.length) return text('No notes are waiting to be read.') as { content: Content[] };
   const left = unreadNotes(c).length;
   const byBatch = new Map<string, typeof todo>();
@@ -684,11 +689,23 @@ async function readingContent(
   const out = agentReadingOf(args, c, new Date().toISOString(), store.id());
   if ('error' in out) return text(out.error, true);
   await store.save(out.reading);
-  log?.add({ kind: 'reading', notes: out.reading.read.length });
-  const { read, reading } = out.reading;
+  const { read, reading, tidy } = out.reading;
+  if (tidy) {
+    const folded = tidy.fold.reduce((n, f) => n + f.rules.length, 0);
+    return text(
+      `Kept your tidy: ${folded} ${folded === 1 ? 'rule' : 'rules'} folded into others, ${tidy.drop.length} dropped. It joins the person’s rules when they next open Your rules. The reading is done.`,
+    );
+  }
+  log?.add({ kind: 'reading', notes: read.length });
   const left = c ? unreadNotes(c).length - read.length : 0;
+  const then =
+    left > 0
+      ? ` ${left} more ${left === 1 ? 'note waits' : 'notes wait'}: call get_notes_to_read again.`
+      : c && tidyDue(withReadings(c, [out.reading]))
+        ? ' Every note is read: call get_notes_to_read once more to tidy the rules.'
+        : '';
   return text(
-    `Kept: ${read.length} ${read.length === 1 ? 'note' : 'notes'} read, ${reading.propose.length} new ${reading.propose.length === 1 ? 'rule' : 'rules'}, ${reading.strengthen.length} strengthened. It joins the person’s rules when they next open Your rules.${left > 0 ? ` ${left} more ${left === 1 ? 'note waits' : 'notes wait'}: call get_notes_to_read again.` : ''}`,
+    `Kept: ${read.length} ${read.length === 1 ? 'note' : 'notes'} read, ${reading.propose.length} new ${reading.propose.length === 1 ? 'rule' : 'rules'}, ${reading.strengthen.length} strengthened. It joins the person’s rules when they next open Your rules.${then}`,
   );
 }
 

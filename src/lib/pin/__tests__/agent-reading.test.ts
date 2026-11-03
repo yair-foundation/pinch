@@ -19,10 +19,14 @@ import { MAX_LEARN_NOTES } from '../learn';
 import {
   type BatchNote,
   type Collection,
+  cleanTidy,
   knownNotes,
   newCollection,
   noteFingerprint,
   type Rule,
+  rulesOf,
+  rulesText,
+  tidyDue,
   unreadNotes,
 } from '../learnings';
 
@@ -107,8 +111,14 @@ describe('notes for the agent to read (D122)', () => {
       properties: Record<string, unknown>;
       required?: string[];
     };
-    assert.deepEqual(Object.keys(schema.properties), ['read', 'strengthen', 'propose', 'turned']);
-    assert.deepEqual(schema.required, ['read']);
+    assert.deepEqual(Object.keys(schema.properties), [
+      'read',
+      'strengthen',
+      'propose',
+      'turned',
+      'tidy',
+    ]);
+    assert.deepEqual(schema.required ?? [], []);
     assert.equal('$schema' in schema, false);
   });
 });
@@ -282,13 +292,17 @@ describe('reading on from the readings waiting (D146)', () => {
     });
     assert.match(words(second), /^Kept: 3 notes read, 0 new rules, 1 strengthened\./);
     assert.doesNotMatch(words(second), /more notes? waits?/);
+    // Every note read, the rules are tidied once (D149), and then there's nothing to do.
+    assert.match(words(second), /Every note is read: call get_notes_to_read once more to tidy/);
+    assert.match(words(await call('get_notes_to_read')), /^Every note is read\. Tidy the rules once/);
+    assert.match(words(await call('submit_reading', { tidy: {} })), /^Kept your tidy: 0 rules folded/);
     assert.equal(words(await call('get_notes_to_read')), 'No notes are waiting to be read.');
     assert.doesNotMatch(words(await call('list_rule_topics')), /wait to be read/);
 
     // The same notes again are refused, so no rule is read twice.
     const again = await call('submit_reading', { read: keys(1, 30) });
     assert.equal(again.result.isError, true);
-    assert.equal(saved.length, 2);
+    assert.equal(saved.length, 3);
 
     // The page applies both, in order, with ids of its own to hand: the rule is the same one.
     let n = 0;
@@ -377,5 +391,147 @@ describe('notes handed to the agent, as many as fit (D147)', () => {
     const next = await call({ method: false });
     assert.match(next.result.content[0].text ?? '', /^Read these notes by the method an earlier get_notes_to_read gave you/);
     assert.ok(next.result.content.filter((x) => x.type === 'image').length > first);
+  });
+});
+
+describe('what the close-ups show, and the rules tidied (D149)', () => {
+  /** A rule in Pinch's words, on these notes. */
+  const ai = (id: string, text: string, notes: string[], more: Partial<Rule> = {}) =>
+    rule(id, text, {
+      drafted: text,
+      evidence: notes.map((n) => ({ batchId: 'b1', note: n })),
+      ...more,
+    });
+  // Every note read: a rule from three notes, one from one note saying the same, one from one
+  // note going against it, one in the author's words, one pulling against the second, and one
+  // waiting on a question.
+  const read = (): Collection => {
+    const c = library();
+    const notes = ['01', '02', '03', '04', '05', '06'].map((n) => note(`${n}.1`, `Note ${n}.`));
+    return {
+      ...c,
+      batches: [{ ...c.batches[0], notes, images: 6 }],
+      read: notes.map((n) => `b1/${n.ref}`),
+      rules: [
+        ai('a', 'Make the key figure the largest thing on its card.', ['01.1', '02.1', '03.1'], {
+          shows: 'A light sans figure, three times its label.',
+        }),
+        ai('b', 'Set the big number thin.', ['04.1']),
+        ai('c', 'Set figures in a heavy slab serif.', ['05.1']),
+        rule('d', 'Keep labels small.', {
+          drafted: 'Keep labels tiny.',
+          evidence: [{ batchId: 'b1', note: '06.1' }],
+        }),
+        ai('e', 'Use hairline rules.', ['02.1'], {
+          conflict: { ruleId: 'b', why: 'Both about weight.' },
+        }),
+        ai('f', 'Keep it dense.', ['03.1'], { question: { ask: 'How dense?', options: [] } }),
+      ],
+    };
+  };
+  const tidy = {
+    fold: [
+      {
+        into: 'a',
+        rules: ['b'],
+        rule: 'Make the key figure the largest thing on its card, thin.',
+        shows: 'A thin sans figure.',
+      },
+    ],
+    drop: [{ rule: 'c', why: 'Goes against a.' }],
+  };
+
+  it('are kept with each rule and sent with the library, never to a builder', () => {
+    const r = reading({
+      read: ['b1/02.1'],
+      propose: [
+        {
+          rule: 'Keep borders light.',
+          notes: ['b1/02.1'],
+          topics: ['visual'],
+          shows: '  Grey   hairlines. ',
+        },
+      ],
+    });
+    assert.equal(r.reading.propose[0].shows, 'Grey hairlines.');
+    const c = applyAgentReading(library(), r, at, () => 'x');
+    const made = c.rules.find((x) => x.id === 'g1-0');
+    assert.equal(made?.shows, 'Grey hairlines.');
+    assert.equal(libraryOf(c).find((x) => x.id === 'g1-0')?.shows, 'Grey hairlines.');
+    assert.match(readingPrompt(c, notesToRead(c)), /Keep borders light\. \| shows: Grey hairlines\./);
+    // Builders never get it: they copy what the author didn't judge.
+    assert.doesNotMatch(rulesText(c, rulesOf(c)), /Grey hairlines/);
+  });
+
+  it('are tidied once every note is read, and only then', () => {
+    assert.equal(tidyDue(read()), true);
+    assert.equal(tidyDue(library()), false, 'notes still wait');
+    const early = agentReadingOf({ tidy }, library(), at, 't1');
+    assert.match('error' in early ? early.error : '', /Notes still wait to be read/);
+    const done = applyAgentReading(read(), reading({ tidy }, read()), at, () => 'x');
+    assert.equal(done.tidiedAt, at);
+    assert.equal(tidyDue(done), false);
+  });
+
+  it('folds and drops only what Pinch wrote, and a drop only from one note', () => {
+    const kept = cleanTidy(
+      {
+        fold: [
+          { into: 'a', rules: ['b', 'd', 'f', 'nope'], rule: 'Reworded.' },
+          { into: 'd', rules: ['c'], rule: 'Not the author’s.' },
+        ],
+        drop: ['a', 'd', 'c', 'e'].map((id) => ({ rule: id, why: 'x' })),
+      },
+      read(),
+    );
+    assert.deepEqual(kept.fold, [
+      { into: 'a', rules: ['b'], rule: 'Reworded.' },
+      { into: 'd', rules: ['c'] },
+    ]);
+    assert.deepEqual(kept.drop, [{ rule: 'e', why: 'x' }]);
+  });
+
+  it('joins the rules: the notes go with the fold, a conflict follows it, the dropped rule goes', () => {
+    const c = applyAgentReading(read(), reading({ tidy }, read()), at, () => 'x');
+    assert.deepEqual(
+      c.rules.map((r) => r.id),
+      ['a', 'd', 'e', 'f'],
+    );
+    const a = c.rules[0];
+    assert.equal(a.text, 'Make the key figure the largest thing on its card, thin.');
+    assert.equal(a.drafted, a.text, 'still in Pinch’s words');
+    assert.equal(a.shows, 'A thin sans figure.');
+    assert.deepEqual(
+      a.evidence.map((e) => e.note),
+      ['01.1', '02.1', '03.1', '04.1'],
+    );
+    assert.equal(c.rules[2].conflict?.ruleId, 'a');
+    assert.deepEqual(c.read, read().read, 'the dropped rule’s note stays read');
+  });
+
+  it('is asked of the agent over MCP, with every rule in force and its notes’ words', async () => {
+    const saved: AgentReading[] = [];
+    const call = (name: string, args: unknown = {}) =>
+      answer(
+        { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args } },
+        async () => read(),
+        undefined,
+        undefined,
+        { id: () => 't1', save: async (r) => void saved.push(r), waiting: async () => saved },
+      ) as Promise<{ result: { content: { text?: string }[] } }>;
+    const asked = (await call('get_notes_to_read')).result.content[0].text ?? '';
+    assert.match(
+      asked,
+      /^a \(3 notes\) \(visual\) Make the key figure.*\| shows: A light sans figure/m,
+    );
+    assert.match(asked, /^d \(1 note\) \[author's words\]/m);
+    assert.match(asked, /^ {3}- works: "Note 05\."$/m);
+    assert.doesNotMatch(asked, /^f /m, 'a rule waiting on its question isn’t tidied');
+    const kept = (await call('submit_reading', { tidy })).result.content[0].text ?? '';
+    assert.match(kept, /^Kept your tidy: 1 rule folded into others, 1 dropped\./);
+    assert.equal(
+      (await call('get_notes_to_read')).result.content[0].text,
+      'No notes are waiting to be read.',
+    );
   });
 });

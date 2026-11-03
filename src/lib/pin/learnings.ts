@@ -112,6 +112,13 @@ export type Rule = {
   title?: string;
   /** Where it holds, a few words ("in data tables"), or empty when it holds everywhere. */
   context: string;
+  /**
+   * What its notes' close-ups show of the thing it is about that their words leave out (D149):
+   * the kind of typeface, weight, colour, corner shape, as the reading saw them. Later readings
+   * and the tidy weigh rules by it; builders never get it, since they copy what the author
+   * didn't judge along with what they did.
+   */
+  shows?: string;
   topics: Topic[];
   /** The author's own tags: a project, a client, a kind of work. */
   tags: string[];
@@ -190,6 +197,8 @@ export type Collection = {
   freeProduct?: string;
   /** The rules as each recent export had them, to tell an agent what changed since its copy (D128). */
   exports?: ExportedVersion[];
+  /** When an agent last tidied the rules (D149); rules made since are tidied after the next reading. */
+  tidiedAt?: string;
 };
 
 /** The name of the one collection each person has (D86). */
@@ -583,6 +592,7 @@ export type Reading = {
     rule: string;
     title?: string;
     context: string;
+    shows?: string;
     topics: Topic[];
     notes: string[];
     conflictsWith?: string;
@@ -641,6 +651,7 @@ export function applyReading(
       text: p.locked ? '' : p.rule.trim(),
       ...(p.title?.trim() && !p.locked ? { title: p.title.trim() } : {}),
       context: p.locked ? '' : p.context.trim(),
+      ...(p.shows?.trim() && !p.locked ? { shows: p.shows.trim() } : {}),
       topics: sortTopics(p.topics),
       tags: [],
       evidence,
@@ -676,6 +687,107 @@ export function applyReading(
       }))
     : c.batches;
   return { ...c, updatedAt: now, rules, read: [...read], batches };
+}
+
+/**
+ * The rules tidied once every note is read (D149). Reading in rounds leaves rules that say the
+ * same thing, and a rule from one note can go against what more notes say about the same thing:
+ * in the capture test such a rule steered every build it touched. `fold` puts rules about the
+ * same thing into the one more notes share, with their notes, reworded to hold them all; `drop`
+ * takes away a rule from one note that goes against another, its note still kept and read.
+ */
+export type Tidy = {
+  fold: { into: string; rules: string[]; rule?: string; shows?: string }[];
+  drop: { rule: string; why: string }[];
+};
+
+/**
+ * A rule a tidy may fold away, reword or drop: one in force, in Pinch's words, with nothing
+ * waiting on the author. The author's own rules can take others' notes and keep their words.
+ */
+const tidyable = (r: Rule) =>
+  r.status === 'approved' &&
+  !r.locked &&
+  !waiting(r) &&
+  !r.taste &&
+  !r.agreed &&
+  r.text.trim() !== '' &&
+  originOf(r) === 'ai';
+
+/** Whether the rules want tidying (D149): every note read, and rules made since the last tidy. */
+export const tidyDue = (c: Collection) =>
+  !unreadNotes(c).length &&
+  c.rules.some((r) => r.status === 'approved' && !r.locked && r.createdAt > (c.tidiedAt ?? ''));
+
+/**
+ * A tidy kept to what it may do in this collection: each rule in one fold or drop at most, folds
+ * into a rule in force, only `tidyable` rules folded away or dropped, a new wording only for a
+ * rule in Pinch's words, and a drop only of a rule from one note.
+ */
+export function cleanTidy(t: Tidy, c: Collection): Tidy {
+  const byId = new Map(c.rules.map((r) => [r.id, r]));
+  const used = new Set<string>();
+  const free = (id: string) => {
+    const r = byId.get(id);
+    return r && !used.has(id) && tidyable(r) ? r : undefined;
+  };
+  const fold: Tidy['fold'] = [];
+  for (const f of t.fold) {
+    const into = byId.get(f.into);
+    if (into?.status !== 'approved' || into.locked || used.has(into.id)) continue;
+    const rules = [...new Set(f.rules)].filter((id) => id !== into.id && free(id));
+    if (!rules.length) continue;
+    for (const id of [into.id, ...rules]) used.add(id);
+    const rule = tidyable(into) ? oneLine(f.rule ?? '').slice(0, 300) : '';
+    const shows = oneLine(f.shows ?? '').slice(0, 300);
+    fold.push({ into: into.id, rules, ...(rule ? { rule } : {}), ...(shows ? { shows } : {}) });
+  }
+  const drop: Tidy['drop'] = [];
+  for (const d of t.drop) {
+    const r = free(d.rule);
+    if (!r || r.evidence.length > 1) continue;
+    used.add(r.id);
+    drop.push({ rule: r.id, why: oneLine(d.why).slice(0, 200) });
+  }
+  return { fold, drop };
+}
+
+/**
+ * A tidy applied (D149): each fold's rules gone into its rule, their notes with them, and its
+ * new wording; the dropped rules gone; a conflict with a folded rule now with the rule it went
+ * into, and with a dropped one, gone. The rules count as tidied, now.
+ */
+export function applyTidy(c: Collection, tidy: Tidy, now: string): Collection {
+  const t = cleanTidy(tidy, c);
+  const into = new Map(t.fold.flatMap((f) => f.rules.map((id) => [id, f.into] as const)));
+  const dropped = new Set(t.drop.map((d) => d.rule));
+  const byId = new Map(c.rules.map((r) => [r.id, r]));
+  const rules = c.rules.flatMap((r): Rule[] => {
+    if (into.has(r.id) || dropped.has(r.id)) return [];
+    let next = r;
+    const f = t.fold.find((x) => x.into === r.id);
+    if (f) {
+      const have = new Set(r.evidence.map(noteKey));
+      const add = f.rules
+        .flatMap((id) => byId.get(id)?.evidence ?? [])
+        .filter((e) => !have.has(noteKey(e)) && have.add(noteKey(e)));
+      next = {
+        ...r,
+        evidence: [...r.evidence, ...add],
+        ...(add.length ? { fresh: (r.fresh ?? 0) + add.length } : {}),
+        ...(f.rule ? { text: f.rule, drafted: f.rule } : {}),
+        ...(f.shows ? { shows: f.shows } : {}),
+      };
+    }
+    const against = next.conflict?.ruleId;
+    if (against && (into.has(against) || dropped.has(against))) {
+      const { conflict, ...rest } = next;
+      const to = into.get(against);
+      next = conflict && to && to !== next.id ? { ...rest, conflict: { ...conflict, ruleId: to } } : rest;
+    }
+    return [next];
+  });
+  return { ...c, updatedAt: now, rules, tidiedAt: now };
 }
 
 /** Titles named for rules that had none (D95); a rule given one meanwhile keeps its own. */

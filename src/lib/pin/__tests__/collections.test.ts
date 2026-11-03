@@ -642,7 +642,7 @@ describe('the taste library', () => {
     const [a, b] = read().rules;
     // The rule from one note comes first by topic.
     const c = withRule(
-      withRule(read(), a.id, { topics: ['layout'] }, 'x'),
+      withRule(read(), a.id, { topics: ['layout'], shows: 'Grey hairlines.' }, 'x'),
       b.id,
       { topics: ['visual'] },
       'x',
@@ -664,11 +664,14 @@ describe('the taste library', () => {
       new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
     const md = file('design-rules.md');
     assert.match(md, /## Layout\n\n\*\*R1\.\*\*/);
+    // What its close-ups show stays with the reading (D149).
+    assert.doesNotMatch(md, /Grey hairlines/);
     assert.match(md, /## Examples\n\nEach of these rests on one note[^\n]*\n\n\*\*R2\.\*\* Align related controls\.\n\nAbout: Visual\./);
     assert.deepEqual(
       JSON.parse(file('rules.json')).rules.map((r: { example?: boolean }) => r.example ?? false),
       [false, true],
     );
+    assert.equal(JSON.parse(file('rules.json')).rules[0].shows, undefined);
     assert.match(file('checks.md'), /^\| R2 \|.*\| review \(example\) \|/m);
 
     // In the author's words, or from their best example, it's a rule again, in its place.

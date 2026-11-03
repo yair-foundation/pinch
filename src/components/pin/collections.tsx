@@ -421,13 +421,26 @@ export function CollectionsView({
         const made = list.reduce((n, r) => n + r.reading.propose.length, 0);
         const strengthened = new Set(list.flatMap((r) => r.reading.strengthen.map((x) => x.rule)))
           .size;
+        // A tidy of the rules (D149) reads no notes.
+        const folded = list.reduce(
+          (n, r) => n + (r.tidy?.fold.reduce((m, f) => m + f.rules.length, 0) ?? 0),
+          0,
+        );
+        const dropped = list.reduce((n, r) => n + (r.tidy?.drop.length ?? 0), 0);
+        const tidied = [
+          folded ? `${count(folded, 'rule')} folded into others` : '',
+          dropped ? `${dropped} dropped` : '',
+        ].filter(Boolean);
         const said = [
           made ? count(made, 'new rule') : '',
           strengthened ? `${count(strengthened, 'rule')} strengthened` : '',
+          ...tidied,
         ].filter(Boolean);
         onStatus({
           tone: 'info',
-          text: `Your agent read ${count(notes, 'note')}${said.length ? `: ${said.join(', ')}` : ''}.`,
+          text: notes
+            ? `Your agent read ${count(notes, 'note')}${said.length ? `: ${said.join(', ')}` : ''}.`
+            : `Your agent tidied your rules${tidied.length ? `: ${tidied.join(', ')}` : ''}.`,
         });
       } catch {
         // It waits in the account and is taken next time.
@@ -724,6 +737,7 @@ export function CollectionsView({
               status: r.status,
               ...(r.basis === 'interpreted' ? { basis: r.basis } : {}),
               ...(r.question ? { question: r.question.ask } : {}),
+              ...(r.shows ? { shows: r.shows } : {}),
             })),
             update: { id: update, notes: total },
           }),
