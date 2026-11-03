@@ -12,12 +12,18 @@ import {
 } from './learn';
 import {
   applyReading,
+  applyTidy,
   type Batch,
   type BatchNote,
   type Collection,
+  cleanTidy,
   type NoteRef,
+  noteAt,
   noteKey,
+  originOf,
+  type Tidy,
   unreadNotes,
+  waiting,
 } from './learnings';
 
 /*
@@ -56,6 +62,7 @@ export function libraryOf(c: Collection): LibraryRule[] {
       status: r.status,
       ...(r.basis === 'interpreted' ? { basis: r.basis } : {}),
       ...(r.question ? { question: r.question.ask } : {}),
+      ...(r.shows ? { shows: r.shows } : {}),
     }));
 }
 
@@ -78,7 +85,57 @@ export const readingPrompt = (c: Collection, todo: NoteToRead[]) =>
 /** What the agent is told before the notes: Pinch's method, then how to answer. */
 export const READING_GUIDE = `${learnSystem}
 
-Read the notes below this way. Then call submit_reading once with every note id you read in read (those that taught nothing too), what they strengthen and the rules they propose, in the fields its schema describes. Pinch adds the reading to the person's rules when they next open Your rules, as it does its own. Call get_notes_to_read again, with method: false, for the next notes until none are left.`;
+Read the notes below this way. Then call submit_reading once with every note id you read in read (those that taught nothing too), what they strengthen and the rules they propose, in the fields its schema describes. Pinch adds the reading to the person's rules when they next open Your rules, as it does its own. Call get_notes_to_read again, with method: false, for the next notes until none are left. After the last notes it asks you once to tidy the rules: do that, and the reading is done.`;
+
+/**
+ * How the agent tidies the rules once every note is read (D149). The examples are on purpose
+ * none the capture test's designer gave.
+ */
+export const TIDY_GUIDE = `Every note is read. Tidy the rules once, before anyone builds with them. Reading in rounds leaves rules that say the same thing, and a rule drawn from one note can go against what several notes say about the same thing; a builder follows each rule it is given, so both cost the designer. Below is every rule in force: its id, how many notes it rests on, its topics, where it holds, the rule, what its close-ups show, and its notes' words.
+
+- Fold rules about the same thing, where one says what the other says or is a case of it, into the one more notes share ("Keep form labels above their fields" and "Never use placeholder text as a label" into the first). Give its wording again when it must change to hold all their notes, keeping every specific they give and adding none; and what their close-ups show together.
+- Drop a rule from one note when it goes against a rule from more notes about the same kind of element, in its words or in what its close-ups show. Compare the shows: the same kind of element shown done another way (another kind of typeface, weight, colour or shape) goes against it, even when the words don't clash and the screens differ (one note praises help in a hover bubble; three notes' close-ups show help as plain text under the field). Its note stays with the designer and in their package; it just isn't a rule, so no builder applies it everywhere.
+- Leave every other rule as it is. A rule from one note about something no other rule covers stays. Never fold rules that hold in different places, or that pull against each other, into one.
+- A rule marked [author's words] can take other rules' notes but keeps its words, and is never dropped or folded away.
+
+Then call submit_reading with tidy alone. If nothing needs tidying, send an empty tidy, so Pinch knows it's done.`;
+
+/**
+ * The tidy's request (D149): the guide, then every rule in force with its notes' words. Past
+ * \`room\` characters, the words of rules from several notes are left out first.
+ */
+export function tidyPrompt(c: Collection, room = Number.POSITIVE_INFINITY): string {
+  const live = c.rules.filter((r) => r.status === 'approved' && !r.locked && !waiting(r) && r.text.trim());
+  const one = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const head = (r: (typeof live)[number]) =>
+    [
+      r.id,
+      `(${r.evidence.length} ${r.evidence.length === 1 ? 'note' : 'notes'})`,
+      originOf(r) === 'ai' && !r.taste && !r.agreed ? '' : "[author's words]",
+      r.topics.length ? `(${r.topics.join(', ')})` : '',
+      r.context.trim() ? `where: ${one(r.context)};` : '',
+      one(r.text),
+      r.shows?.trim() ? `| shows: ${one(r.shows)}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  const words = (r: (typeof live)[number]) =>
+    r.evidence.flatMap((ref) => {
+      const n = noteAt(c, ref)?.note;
+      if (!n) return [];
+      const said = [
+        n.works.trim() ? `works: "${one(n.works)}"` : '',
+        n.doesNotWork.trim() ? `doesn't: "${one(n.doesNotWork)}"` : '',
+      ].filter(Boolean);
+      return said.length ? [`   - ${said.join('; ')}`] : [];
+    });
+  const write = (all: boolean) =>
+    `${TIDY_GUIDE}\n\n${live
+      .map((r) => [head(r), ...(all || r.evidence.length < 2 ? words(r) : [])].join('\n'))
+      .join('\n')}`;
+  const full = write(true);
+  return full.length <= room ? full : write(false);
+}
 
 const p = learnSchema.shape.propose.element.shape;
 
@@ -86,6 +143,7 @@ const p = learnSchema.shape.propose.element.shape;
 export const agentReadingSchema = z.object({
   read: z
     .array(z.string())
+    .default([])
     .describe('The ids of every note you read, including those that taught no rule.'),
   strengthen: learnSchema.shape.strengthen.default([]),
   propose: z
@@ -95,6 +153,7 @@ export const agentReadingSchema = z.object({
         notes: p.notes,
         title: p.title.default(''),
         context: p.context.default(''),
+        shows: p.shows.default(''),
         topics: p.topics.default([]),
         conflictsWith: p.conflictsWith.default(''),
         conflict: p.conflict.default(''),
@@ -108,6 +167,37 @@ export const agentReadingSchema = z.object({
     .default([])
     .describe(learnSchema.shape.propose.description ?? ''),
   turned: learnSchema.shape.turned.default([]),
+  tidy: z
+    .object({
+      fold: z
+        .array(
+          z.object({
+            into: z.string().describe('The id of the rule kept: the one more notes share.'),
+            rules: z.array(z.string()).describe('The ids of the rules folded into it.'),
+            rule: z
+              .string()
+              .default('')
+              .describe('Its wording again, one sentence, when it must change to hold all their notes. Else empty.'),
+            shows: z
+              .string()
+              .default('')
+              .describe('What their close-ups show together, from the rules\' shows. Else empty.'),
+          }),
+        )
+        .default([])
+        .describe('Rules about the same thing, folded into the one more notes share.'),
+      drop: z
+        .array(
+          z.object({
+            rule: z.string().describe('The id of a rule from one note.'),
+            why: z.string().describe('Which rule it goes against, and how, in one sentence.'),
+          }),
+        )
+        .default([])
+        .describe('Rules from one note that go against what a rule from more notes says or shows.'),
+    })
+    .optional()
+    .describe('Only when get_notes_to_read asks you to tidy the rules (D149), and then alone.'),
 });
 
 /** `submit_reading`'s input, as JSON Schema. */
@@ -119,8 +209,14 @@ export function readingInputSchema() {
   return schema;
 }
 
-/** A reading by the agent, waiting for the page to apply it. */
-export type AgentReading = { id: string; at: string; read: string[]; reading: CleanReading };
+/** A reading by the agent, waiting for the page to apply it; or its tidy of the rules (D149). */
+export type AgentReading = {
+  id: string;
+  at: string;
+  read: string[];
+  reading: CleanReading;
+  tidy?: Tidy;
+};
 
 export const MAX_AGENT_READINGS = 20;
 
@@ -149,6 +245,15 @@ export function agentReadingOf(
     ...parsed.data.strengthen.flatMap((s) => s.notes),
     ...parsed.data.propose.flatMap((x) => x.notes),
   ];
+  // A tidy comes alone, once every note is read (D149).
+  if (parsed.data.tidy && !named.length) {
+    if (unread.size)
+      return {
+        error: 'Notes still wait to be read: read them with get_notes_to_read first, and tidy after the last.',
+      };
+    const tidy = cleanTidy(parsed.data.tidy, c);
+    return { reading: { id, at: now, read: [], reading: { strengthen: [], propose: [] }, tidy } };
+  }
   const read = [...new Set(named.filter((k) => unread.has(k)))];
   if (!read.length)
     return {
@@ -195,6 +300,7 @@ export function applyAgentReading(
   now: string,
   newId: () => string,
 ): Collection {
+  if (r.tidy) return applyTidy(c, r.tidy, now);
   const unread = new Set(unreadNotes(c).map(({ batch, note }) => noteKey({ batchId: batch.id, note: note.ref })));
   const notes = new Map<string, NoteRef>();
   for (const key of r.read) {

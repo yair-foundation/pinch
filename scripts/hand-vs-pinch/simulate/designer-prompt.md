@@ -9,6 +9,7 @@ You are helping run a test, by playing a product designer. In ./screens are the 
    - Notes are reactions, not rules: never state a taste statement word for word.
    - Every taste statement must show in at least one note, and most in two or more, across different screenshots. Some taste statements should only show by contrast: a note against something on a screenshot that the taste avoids.
    - Mix praise and criticism.
+   - No note goes against the taste: it never praises what a taste statement rules out, faults what one asks for, or wishes for something against one.
 
 4. For each note, the box around the element it is about, as fractions of the image's width and height: x and y of the top-left corner, then w and h. Keep it tight around the element, and look carefully: it must sit on that element. Also write "what", a few words naming what is inside the box.
 

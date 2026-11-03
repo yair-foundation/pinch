@@ -78,6 +78,8 @@ export const learnRequestSchema = z.object({
         basis: z.enum(['stated', 'interpreted']).optional(),
         /** The question it waits on, when the designer hasn't answered yet. */
         question: z.string().max(200).optional(),
+        /** What its notes' close-ups show of the thing it is about (D149). */
+        shows: z.string().max(300).optional(),
       }),
     )
     .max(MAX_LEARN_RULES)
@@ -125,6 +127,11 @@ export const learnSchema = z.object({
         context: z
           .string()
           .describe('Where it holds, a few words ("in data tables"), or empty when everywhere.'),
+        shows: z
+          .string()
+          .describe(
+            "What its notes' close-ups show of the thing it is about that their words leave out, in a few plain words: typeface kind (serif, sans, monospace), weight, case, size against its label or neighbours, colour, corner shape, spacing. Only what its close-ups share. Empty when it isn't about how something looks, or there are no close-ups.",
+          ),
         topics: z.array(z.enum(TOPIC_KINDS)).describe('One to three topics it is about.'),
         notes: z.array(z.string()).describe('The ids of the new notes it draws on.'),
         conflictsWith: z
@@ -201,6 +208,7 @@ How to write a rule:
 - What works becomes what to do; what doesn't becomes what to avoid or how to fix it.
 - No verdict adjectives ("clean", "modern", "intuitive", "visually appealing"); say what to do.
 - A note on someone else's product (Competitor, Other product, Concept) gives a principle, never an instruction to copy that product. Don't name products or companies.
+- Shows is what the rule's close-ups show of the thing it is about that the notes' words leave out: what kind of typeface, what weight, case, size against its label, colour, corner shape. Later readings and the tidy weigh rules by it, so a rule from one note can be seen to go against what several notes' close-ups show. Write only what you see in every close-up of the rule, in plain words with no numbers you can't see; leave it empty for a rule about words or behaviour. It is separate from the rule: the rule says what the designer judged, shows says what that looked like.
 - Context is where the rule holds, in a few words, or empty when it holds everywhere. Set it only when the judgment depends on the place (density in tables and room in onboarding; playful words in empty states and plain ones in errors). A complaint about something that can turn up anywhere (tiny tap targets, heavy borders) holds everywhere, whichever screen it was written on. A quality of the whole look or voice (palette and accent, typeface, light or dark theme, gloss and shadow, corner shape, motion style, kind of imagery, tone of words) is the product's, not one screen's: the screen a note was written on is not its place, so set a context for it only when notes contrast places.
 - Topics: the one to three it is about, the main one first.
 
@@ -222,6 +230,7 @@ export function ruleLine(r: LibraryRule): string {
     r.topics.length ? `(${r.topics.join(', ')})` : '',
     r.context.trim() ? `where: ${oneLine(r.context)};` : '',
     oneLine(r.text),
+    r.shows?.trim() ? `| shows: ${oneLine(r.shows)}` : '',
     r.question?.trim() ? `| open question: ${oneLine(r.question)}` : '',
   ]
     .filter(Boolean)
@@ -230,7 +239,7 @@ export function ruleLine(r: LibraryRule): string {
 
 /** How a library line reads, said once before the library. */
 const LIBRARY_LAYOUT =
-  'The library, one rule a line: its id; [dismissed] when the designer dismissed it (its status is dismissed); [interpreted] when it is your earlier reading of vague words; the topics it is about, in parentheses; where it holds, after "where:"; the rule; and, after "open question:", a question still waiting for the designer.';
+  'The library, one rule a line: its id; [dismissed] when the designer dismissed it (its status is dismissed); [interpreted] when it is your earlier reading of vague words; the topics it is about, in parentheses; where it holds, after "where:"; the rule; after "shows:", what its close-ups show; and, after "open question:", a question still waiting for the designer.';
 
 /** The library and the new notes as the model reads them: data, only what was written. */
 export function learnPrompt(req: Pick<LearnRequest, 'notes' | 'rules'>): string {
@@ -252,7 +261,7 @@ export function learnPrompt(req: Pick<LearnRequest, 'notes' | 'rules'>): string 
 
 /** How the close-ups are to be read, said once after the notes (D98). */
 export const CLOSE_UPS =
-  "Each note's close-up follows, after its id: the part of the screen the note is about, with its spot marked as Pinch draws it (a ring for a point, a box for an area, an arrow from one place to another). Use it to see what the note's words point at. Take from it only what the note judges: never a size, colour or detail the note doesn't speak to, and when the close-up still leaves the meaning open, ask as you would without it.";
+  "Each note's close-up follows, after its id: the part of the screen the note is about, with its spot marked as Pinch draws it (a ring for a point, a box for an area, an arrow from one place to another). Use it to see what the note's words point at. In the rule, take from it only what the note judges: never a size, colour or detail the note doesn't speak to, and when the close-up still leaves the meaning open, ask as you would without it. What else it shows of that thing goes in shows.";
 
 export type LearnBlock =
   | { type: 'text'; text: string }
@@ -294,6 +303,8 @@ export type CleanReading = {
     /** A short name for it, two to five words (D95). */
     title?: string;
     context: string;
+    /** What its notes' close-ups show of the thing it is about (D149). */
+    shows?: string;
     topics: Topic[];
     notes: string[];
     conflictsWith?: string;
@@ -378,13 +389,17 @@ function questionOf(ask: string, options: LearnResult['propose'][number]['option
 
 /**
  * The model's answer kept to what it was given: only the notes and rules it was sent, each
- * note once per rule, rules of one line (300 characters at most), up to three topics, a
- * conflict only with a rule in the library, a reading only for an interpreted rule, a
+ * note once per rule, rules and what their close-ups show of one line (300 characters at most),
+ * up to three topics, a conflict only with a rule in the library, a reading only for an
+ * interpreted rule, a
  * question only with two to four answers (the rule then reads as its first answer), and up to
  * three of the foundation's principles, by their ids.
  */
 export function cleanReading(
-  r: Omit<LearnResult, 'turned'> & { turned?: string[] },
+  r: Omit<LearnResult, 'turned' | 'propose'> & {
+    propose: (Omit<LearnResult['propose'][number], 'shows'> & { shows?: string })[];
+    turned?: string[];
+  },
   noteIds: readonly string[],
   ruleIds: readonly string[],
 ): CleanReading {
@@ -410,10 +425,12 @@ export function cleanReading(
       .filter((id) => PRINCIPLES.some((x) => x.id === id))
       .slice(0, 3);
     const title = titleOf(p.title ?? '');
+    const shows = tidy(p.shows ?? '', 300);
     propose.push({
       rule,
       ...(title ? { title } : {}),
       context: tidy(p.context, 80),
+      ...(shows ? { shows } : {}),
       topics: sortTopics(p.topics).slice(0, 3),
       notes,
       ...(conflictsWith ? { conflictsWith, conflict: unnamed(tidy(p.conflict, 300)) } : {}),

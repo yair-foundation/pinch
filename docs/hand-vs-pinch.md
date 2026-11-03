@@ -77,6 +77,7 @@ The screenshots stay in the test folder on your machine. The builds send them to
 `scripts/hand-vs-pinch/simulate/` runs the test with a made-up designer in the author's place. It can't measure minutes or the author's own eye, only whether Pinch's package carries a known taste further than the same notes beside whole screenshots.
 
 1. A Claude Code session, holding only the screenshots, invents the designer, their hidden taste, their notes and the element each note is about (`simulate/designer-prompt.md`). Check the tasks it writes: they must say what each screen holds, not how it looks.
+   Then check its notes against its hidden taste: `simulate/check-notes.ts` has a fresh session find each note whose words go against a taste point and rewrite it without that part, so the judge never marks a build down for following the designer's own words.
 2. `simulate/take.ts` says the notes as a take, with the pointer circling each element, so Pinch's own code makes the notes and their marks. Load the session into a local Pinch, open Your rules, have an agent read the notes over the local MCP server, answer any question from the hidden taste, and Export.
 3. The hand input is the same notes, word for word, grouped by screenshot in `hand/notes.md`. Then `build` as usual.
 4. `simulate/judge.ts` renders each build and judges each pair twice, sides swapped, with a fresh session that holds only the hidden taste. Then `score`.
@@ -201,3 +202,60 @@ The same designer, the same 65 notes and marks, and the same hand builds: the si
 - Two changes at once, the examples and the close-ups, and this run can't tell their effects apart. Reading in smaller rounds also left more rules resting on one note: 21 of 40, against 14 of 32.
 - The judge varies. The hand pages were the same as in run 3, yet they needed 21 changes, against 19.5.
 - Six pairs and one made-up designer, as before.
+
+### Close-ups said in words, and a tidy, 2026-11-03
+
+The same designer, notes, marks and hand builds again. Two things changed on Pinch's side (D149). Each rule says what its close-ups show of the thing it is about. And once every note is read, the agent tidies the rules: it folds rules about the same thing into the one more notes share, and drops a rule from one note that goes against one from more notes.
+
+- The agent read the 65 notes in four rounds into 35 rules, 31 of them with what their close-ups show, and the key-figures rule from seven notes now says its close-ups show "large sans-serif in regular or thin weight".
+- Its first tidy folded the two empty-state rules into one and kept the mono rule, judging that it didn't go against the key-figures rule. The tidy's drop line was then sharpened to compare what the close-ups show, and a second tidy dropped it. That change was made after seeing this designer.
+- The package had 33 rules: 29 say what their close-ups show, and some are examples.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 42% | 58% |
+| Changes the designer would ask for | 18 | 16.5 |
+| Taste points broken (mean per judgment) | 2.8 | 2.5 |
+
+**Worse than the last run** (75% and 29% fewer changes). Pinch won both weekly-overview pairs, won and tied the session log, and lost both client rosters.
+
+| Taste point broken by Pinch's builds, of 12 judgments | Run 3 | Run 4 | This run |
+| --- | --- | --- | --- |
+| Key numbers in a light or regular sans | 8 | 5 | 1 |
+| Hairline rules between list and table rows | 0 | 1 | 7 |
+| An off-white page, content on white panels | 1 | 1 | 5 |
+
+- **The tidy did what it was for.** Mono key figures all but went.
+- **The close-up detail was followed literally.** The table rule said its close-up showed "rows with no borders or dividers", which the designer hadn't judged, and Pinch's rosters left out the row lines the designer wants. The off-white page had been a rule; this time it was only detail under another rule.
+- **Limits.** The same hand pages needed 18 changes this time, against 19.5 and 21 before, so at six pairs a run moves by a pair or more on noise alone. The tidy was tuned on this designer.
+
+### Twelve pairs, the notes checked, close-up detail kept from builders, 2026-11-03
+
+The same designer and screenshots, with three changes:
+
+- **The notes were checked against the hidden taste** (`simulate/check-notes.ts`). One note went against it, the praise of "the mono numerals" beside a complaint about colour, so it was cut to the complaint. Both inputs got the checked notes.
+- **Builders no longer get what the close-ups show** (D149). The reading and the tidy still use it.
+- **Twelve pairs:** each of the three tasks built four times from each input. All 24 pages were built fresh.
+
+The agent read the 65 notes in four rounds into 36 rules, and its tidy folded 3 into others, leaving 33. Nothing was dropped: with the note checked, no rule went against the rest.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 8% | 92% |
+| Changes the designer would ask for | 39 | 24.5 |
+| Taste points followed, of 15 (mean per judgment) | 11.8 | 12.8 |
+| Taste points broken (mean per judgment) | 2.8 | 1.7 |
+
+**Pinch won 10 pairs, tied 2 and lost none,** with 37% fewer changes. The judge picked the same page both ways round in 10 of the 12 pairs. By the verdict set in advance, that is better and close to dramatically better: the pairs are there (92%, against 75% needed), the changes just short (37%, against 40%). The minutes are still the author's to give.
+
+- **Where Pinch's builds did better:** the primary button (broken 2 times, against 8 by hand), one filled button a card (2, against 8), one accent colour (6, against 11), empty states (4, against 8) and small labels in mono or spaced caps (0, against 3).
+- **Where they did worse:** the off-white page with content on white panels, broken 10 times, against 7. The notes say it only by contrast, and the rules didn't carry it.
+- **What neither carried:** the column of about 1,100px with 48px between sections, broken 17 times by hand and 14 by Pinch.
+
+**Against the runs before.** A pair of hand pages needed about 3.25 changes in every run (3.25, 3.5, 3.0 and now 3.25), so the judge holds steady on them. A pair of Pinch's needed 2.75, 2.5 and 2.75, and now 2.0.
+
+**Limits.**
+
+- The check took out a note that had cost Pinch, not the hand builds, in every earlier run. That is the check doing its job, since the note went against the taste the judge holds, but it is most of why the mono figures are gone.
+- The tidy's line on dropping was sharpened after seeing this designer. In this run it dropped nothing.
+- One made-up designer, judged by the same model family that builds, and no minutes.
