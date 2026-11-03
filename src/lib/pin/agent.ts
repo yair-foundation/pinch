@@ -133,8 +133,18 @@ export const TOOLS = [
     name: 'get_notes_to_read',
     title: 'Get notes to read into rules',
     description:
-      'The person’s notes that haven’t been read into rules yet, up to 30 at a time, each with its close-up, the rules they have so far, and the method Pinch’s own reading follows, so you can read them into rules on your own allowance instead of Pinch’s credits. Read them as it says, then call submit_reading. Call it when the person asks you to read their notes, or list_rule_topics says notes are waiting.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      'The person’s notes that haven’t been read into rules yet, as many as fit in one answer with their close-ups, the rules they have so far, and the method Pinch’s own reading follows, so you can read them into rules on your own allowance instead of Pinch’s credits. Read them as it says, then call submit_reading. Call it when the person asks you to read their notes, or list_rule_topics says notes are waiting.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        method: {
+          type: 'boolean',
+          description:
+            'false once an earlier call in this conversation gave you the method: it is left out, so more notes and close-ups fit.',
+        },
+      },
+      additionalProperties: false,
+    },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   {
@@ -594,16 +604,11 @@ export type ReadingStore = {
 export async function notesContent(
   c: Collection | null,
   files?: BatchFiles,
+  method = true,
 ): Promise<{ content: Content[] }> {
   const todo = c ? notesToRead(c) : [];
   if (!c || !todo.length) return text('No notes are waiting to be read.') as { content: Content[] };
   const left = unreadNotes(c).length;
-  const content: Content[] = [
-    {
-      type: 'text',
-      text: `${READING_GUIDE}\n\n${todo.length} of ${left} ${left === 1 ? 'note' : 'notes'} waiting.\n\n${readingPrompt(c, todo)}\n\n${CLOSE_UPS}`,
-    },
-  ];
   const byBatch = new Map<string, typeof todo>();
   for (const x of todo) byBatch.set(x.batch.id, [...(byBatch.get(x.batch.id) ?? []), x]);
   const got = new Map<string, Map<string, Uint8Array>>();
@@ -619,22 +624,54 @@ export async function notesContent(
         ),
       ),
     );
-  let budget = MAX_EVIDENCE_BYTES;
+  // As many notes as fit in one answer with their close-ups (D147): an agent cuts an answer past
+  // its limit, close-ups and all, and the rest come in the next call (D146).
+  const cropOf = (x: (typeof todo)[number]) => got.get(x.batch.id)?.get(x.batch.root + x.note.crop);
+  const head = method ? READING_GUIDE : READ_ON;
+  let room = REPLY_TOKENS - tokensOf(`${head}\n\n${readingPrompt(c, todo)}\n\n${CLOSE_UPS}`);
+  let bytes = MAX_EVIDENCE_BYTES;
+  const sent: { x: (typeof todo)[number]; crop?: Uint8Array }[] = [];
   for (const x of todo) {
-    const crop = got.get(x.batch.id)?.get(x.batch.root + x.note.crop);
-    if (crop && crop.length <= budget) {
-      budget -= crop.length;
+    const crop = cropOf(x);
+    const cost = crop ? imageTokens(crop) : 0;
+    if (sent.length && (cost > room || (crop?.length ?? 0) > bytes)) break;
+    room -= cost;
+    bytes -= crop?.length ?? 0;
+    sent.push({ x, crop });
+  }
+  const content: Content[] = [
+    {
+      type: 'text',
+      text: `${head}\n\n${sent.length} of ${left} ${left === 1 ? 'note' : 'notes'} waiting.\n\n${readingPrompt(
+        c,
+        sent.map((s) => s.x),
+      )}\n\n${CLOSE_UPS}`,
+    },
+  ];
+  for (const { x, crop } of sent) {
+    if (crop)
       content.push(
         { type: 'text', text: `${x.key}:` },
         { type: 'image', data: Buffer.from(crop).toString('base64'), mimeType: 'image/jpeg' },
       );
-    } else
-      content.push({
-        type: 'text',
-        text: `${x.key}: ${crop ? 'close-up left out to keep this answer small' : 'no close-up'}; read it from its words.`,
-      });
+    else content.push({ type: 'text', text: `${x.key}: no close-up; read it from its words.` });
   }
   return { content };
+}
+
+/** Where an agent cuts a tool's answer, with room to spare (D147). */
+export const REPLY_TOKENS = 20_000;
+/** What the next notes are read by, once the method came with an earlier call (D147). */
+const READ_ON =
+  'Read these notes by the method an earlier get_notes_to_read gave you in this conversation, then call submit_reading. Call it without method: false if you no longer have the method.';
+/** About how many tokens text takes. */
+const tokensOf = (s: string) => Math.ceil(s.length / 3.5);
+/** About how many tokens a close-up takes, as a model scales it to 1568px at most. */
+function imageTokens(jpeg: Uint8Array): number {
+  const size = jpegSize(jpeg);
+  if (!size) return Math.ceil(jpeg.length / 50);
+  const scale = Math.min(1, 1568 / Math.max(size.width, size.height));
+  return Math.ceil((size.width * scale * (size.height * scale)) / 750);
 }
 
 /** The agent's reading, checked and kept to wait for the page (D122), and counted in its run. */
@@ -730,7 +767,14 @@ export async function answer(
         );
       }
       if (params.name === 'get_notes_to_read')
-        return reply(id, await notesContent(await ahead(), files));
+        return reply(
+          id,
+          await notesContent(
+            await ahead(),
+            files,
+            (params.arguments as { method?: unknown } | undefined)?.method !== false,
+          ),
+        );
       if (params.name === 'submit_reading') {
         if (!readings) return reply(id, text('Reading notes isn’t available here.', true));
         return reply(id, await readingContent(await ahead(), params.arguments, readings, log));

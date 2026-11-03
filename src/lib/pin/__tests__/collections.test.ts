@@ -27,6 +27,7 @@ import {
   cleanTag,
   confirmRule,
   imagesOf,
+  isExample,
   knownNotes,
   mergeCollection,
   type NoteRef,
@@ -630,10 +631,58 @@ describe('the taste library', () => {
       /^R1\. Lead with a short headline that states the price\. \(where: on pricing cards\)/m,
     );
     assert.match(text, /^ {3}- note 01\.1 on Pricing\.png \(Competitor\): works: "Short headline\."$/m);
-    // A rule from one note says so, and the rules most notes share lead (D147).
-    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\] \(from one note\)$/m);
+    // In the author's words, a rule from one note stays a rule (D148); the rules most notes share lead (D147).
+    assert.match(text, /^R2\. Align related controls on one edge\. \[.*Acme\]$/m);
+    assert.doesNotMatch(text, /^Examples\./m);
     assert.match(text, /^Core taste, the rules the most notes share: R1 \(2 notes\)\. Where rules pull apart, follow the one more notes share/m);
     assert.match(text, /Never show a screen you haven't rendered and checked/);
+  });
+
+  it('gives a rule from one note after the others, as an example (D148)', () => {
+    const [a, b] = read().rules;
+    // The rule from one note comes first by topic.
+    const c = withRule(
+      withRule(read(), a.id, { topics: ['layout'] }, 'x'),
+      b.id,
+      { topics: ['visual'] },
+      'x',
+    );
+    const rules = rulesOf(c);
+    assert.deepEqual(
+      rules.map((r) => [r.id, r.rule.id, isExample(r)]),
+      [
+        ['R1', a.id, false],
+        ['R2', b.id, true],
+      ],
+    );
+    const text = rulesText(c, rules);
+    assert.match(text, /\n\nExamples\. Each of these rests on one note[^\n]*\n\nR2\. Align related controls\. \[Visual\]$/m);
+    assert.ok(text.indexOf('\nR1.') < text.indexOf('\nExamples.'));
+
+    const made = rulesPackage(c, new Map([['b1', withCrops(exportFiles())]]), '2026-10-22T09:00:00Z');
+    const file = (name: string) =>
+      new TextDecoder().decode(made.files.find((f) => f.name.endsWith(`/${name}`))?.data);
+    const md = file('design-rules.md');
+    assert.match(md, /## Layout\n\n\*\*R1\.\*\*/);
+    assert.match(md, /## Examples\n\nEach of these rests on one note[^\n]*\n\n\*\*R2\.\*\* Align related controls\.\n\nAbout: Visual\./);
+    assert.deepEqual(
+      JSON.parse(file('rules.json')).rules.map((r: { example?: boolean }) => r.example ?? false),
+      [false, true],
+    );
+    assert.match(file('checks.md'), /^\| R2 \|.*\| review \(example\) \|/m);
+
+    // In the author's words, or from their best example, it's a rule again, in its place.
+    const own = withRule(c, b.id, { text: 'Align related controls on one edge.' }, 'x');
+    assert.equal(rulesOf(own)[0].rule.id, b.id);
+    assert.doesNotMatch(rulesText(own, rulesOf(own)), /^Examples\./m);
+    const best = {
+      ...c,
+      batches: c.batches.map((x) => ({
+        ...x,
+        notes: x.notes.map((n) => ({ ...n, best: true as const })),
+      })),
+    };
+    assert.equal(rulesOf(best).filter(isExample).length, 0);
   });
 
   it('picks the rules a task needs, and copies them as text', () => {
@@ -1087,6 +1136,9 @@ describe('the rules package (D104)', () => {
     const md = new TextDecoder().decode(back.get(`${root}design-rules.md`));
     assert.match(md, /\*\*R1\.\*\*/);
     assert.match(md, /batches\/01-pinch-2026-10-20\/crops\/01-pricing-note-1\.jpg/);
+    // The package leads with the core taste and asks for a checked render, as MCP does (D147).
+    assert.match(md, /^- Never show a screen you haven't rendered and checked/m);
+    if (md.includes('## Core taste')) assert.match(md, /^Core taste, the rules the most notes share: R\d/m);
     const rules = JSON.parse(new TextDecoder().decode(back.get(`${root}rules.json`)));
     for (const note of rules.rules.flatMap((r: { notes: { evidence: string }[] }) => r.notes))
       assert.ok(back.has(root + note.evidence), `${note.evidence} is in the zip`);

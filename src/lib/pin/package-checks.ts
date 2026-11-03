@@ -1,5 +1,5 @@
 import { CHECK_INFO, CHECK_SCRIPT_FILE, CHECKS_DATA_FILE, checksOf, valueText } from './checks';
-import { type Collection, type ExportedRule, hasBest } from './learnings';
+import { type Collection, type ExportedRule, hasBest, isExample } from './learnings';
 import { outsideTarget, REVIEW_LINE } from './screen-index';
 
 /**
@@ -57,7 +57,7 @@ export function checksGuide(c: Collection, rules: ExportedRule[], stamp: string)
     ...readyLines,
     '## How',
     '',
-    '1. **Sort every rule.** Mark it *check* if a render can decide it by measuring or reading the page: sizes, colours, contrast, spacing, counts, fonts, whether an element or its wrapper is there, the cursor’s shape, a colour or element the rule bans. Mark it *review* if it takes judgment: hierarchy, mood, what reads as clean. When unsure, mark it review.',
+    `1. **Sort every rule.** Mark it *check* if a render can decide it by measuring or reading the page: sizes, colours, contrast, spacing, counts, fonts, whether an element or its wrapper is there, the cursor’s shape, a colour or element the rule bans. Mark it *review* if it takes judgment: hierarchy, mood, what reads as clean. When unsure, mark it review.${rules.some(isExample) ? ' An example, a rule from one note (`example` in `rules.json`), is always review: it holds only where a screen has the same element in the same role as its note.' : ''}`,
     '2. **Write one check per *check* rule** that fails when a render breaks it. Name it by the rule’s `key` (from `rules.json`), which stays the same from one export to the next; the R-number doesn’t. Put the R-number in the failure message so the author can find the rule.',
     `3. **Take every number from the author.** Use the rule’s own words, or measure its close-ups and the notes’ screenshots, and write down where the number came from. Never make a check stricter than the notes support.${hasBest(c) ? ' Notes the author marked as their best examples are the strongest evidence.' : ''}`,
     // Someone else's product: a principle, unless the author made it the target style (D114).
@@ -75,7 +75,7 @@ export function checksGuide(c: Collection, rules: ExportedRule[], stamp: string)
     '| --- | --- | --- | --- | --- | --- |',
     ...rules.map(
       (r) =>
-        `| ${r.id} | \`${cell(r.rule.id)}\` | ${cell(r.rule.text)} | ${cell(r.rule.context)} | ${covered.has(r.rule.id) ? 'check' : ''} | ${covered.has(r.rule.id) ? `${CHECK_SCRIPT_FILE}: ${covered.get(r.rule.id)?.join(', ')}` : ''} |`,
+        `| ${r.id} | \`${cell(r.rule.id)}\` | ${cell(r.rule.text)} | ${cell(r.rule.context)} | ${covered.has(r.rule.id) ? 'check' : isExample(r) ? 'review (example)' : ''} | ${covered.has(r.rule.id) ? `${CHECK_SCRIPT_FILE}: ${covered.get(r.rule.id)?.join(', ')}` : ''} |`,
     ),
   ];
   return `${lines.join('\n')}\n`;

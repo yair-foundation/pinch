@@ -78,7 +78,7 @@ export const readingPrompt = (c: Collection, todo: NoteToRead[]) =>
 /** What the agent is told before the notes: Pinch's method, then how to answer. */
 export const READING_GUIDE = `${learnSystem}
 
-Read the notes below this way. Then call submit_reading once with every note id you read in read (those that taught nothing too), what they strengthen and the rules they propose, in the fields its schema describes. Pinch adds the reading to the person's rules when they next open Your rules, as it does its own. Call get_notes_to_read again for the next notes until none are left.`;
+Read the notes below this way. Then call submit_reading once with every note id you read in read (those that taught nothing too), what they strengthen and the rules they propose, in the fields its schema describes. Pinch adds the reading to the person's rules when they next open Your rules, as it does its own. Call get_notes_to_read again, with method: false, for the next notes until none are left.`;
 
 const p = learnSchema.shape.propose.element.shape;
 

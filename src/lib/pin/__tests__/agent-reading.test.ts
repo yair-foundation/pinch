@@ -345,3 +345,37 @@ describe('a note said aloud, turned by the reading (D147)', () => {
     );
   });
 });
+
+describe('notes handed to the agent, as many as fit (D147)', () => {
+  // A close-up's JPEG header, as big as the reading's close-ups get.
+  const jpeg = (w: number, h: number) =>
+    new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, h >> 8, h & 255, w >> 8, w & 255, 3, 0, 0, 0, 0]);
+  const many = (): Collection => {
+    const c = library();
+    const notes = Array.from({ length: 20 }, (_, i) =>
+      note(`${String(i + 1).padStart(2, '0')}.1`, `Note ${i + 1} works.`),
+    );
+    return { ...c, batches: [{ ...c.batches[0], notes }], read: [] };
+  };
+  const call = (args: unknown) =>
+    answer(
+      { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_notes_to_read', arguments: args } },
+      async () => many(),
+      async (_id, paths) => new Map(paths.map((p) => [p, jpeg(1200, 1200)])),
+    ) as Promise<{ result: { content: { type: string; text?: string }[] } }>;
+
+  it('sends only the notes whose close-ups fit, and says how many wait', async () => {
+    const r = await call({});
+    const images = r.result.content.filter((x) => x.type === 'image').length;
+    assert.ok(images >= 1 && images < 20, `${images} close-ups`);
+    assert.match(r.result.content[0].text ?? '', new RegExp(`^You keep a designer's taste library[\\s\\S]*${images} of 20 notes waiting\\.`));
+    assert.doesNotMatch(JSON.stringify(r.result.content), /left out to keep this answer small/);
+  });
+
+  it('leaves out the method when the agent has it, so more fit', async () => {
+    const first = (await call({})).result.content.filter((x) => x.type === 'image').length;
+    const next = await call({ method: false });
+    assert.match(next.result.content[0].text ?? '', /^Read these notes by the method an earlier get_notes_to_read gave you/);
+    assert.ok(next.result.content.filter((x) => x.type === 'image').length > first);
+  });
+});

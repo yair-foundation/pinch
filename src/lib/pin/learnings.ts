@@ -872,8 +872,17 @@ export type ExportedNote = { batch: Batch; note: BatchNote };
 export type ExportedRule = { id: string; rule: Rule; notes: ExportedNote[] };
 
 /**
+ * A rule that rests on one note, in Pinch's words, from a note the author didn't hold up as their
+ * best example (D148): one example of their taste, as narrow as that note, not yet a rule. Agents
+ * get it after the rules, and below them. A second note, or the author's own words, makes it one.
+ */
+export const isExample = (r: Pick<ExportedRule, 'rule' | 'notes'>): boolean =>
+  r.notes.length === 1 && !r.notes[0].note.best && originOf(r.rule) === 'ai';
+
+/**
  * The rules an agent gets: the ones the pick takes (never a dismissed or locked one, nor one
- * waiting for its author), by topic, then oldest first. Numbered R1, R2, … in that order.
+ * waiting for its author), by topic, then oldest first, with the examples after the rest (D148).
+ * Numbered R1, R2, … in that order.
  */
 export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
   const topicOrder = (r: Rule) => {
@@ -889,8 +898,12 @@ export function rulesOf(c: Collection, pick: RulePick = {}): ExportedRule[] {
         r.text.trim() &&
         picked(r, pick, c),
     )
-    .sort((a, b) => topicOrder(a) - topicOrder(b) || a.createdAt.localeCompare(b.createdAt));
-  return chosen.map((rule, i) => ({ id: `R${i + 1}`, rule, notes: evidenceOf(c, rule) }));
+    .sort((a, b) => topicOrder(a) - topicOrder(b) || a.createdAt.localeCompare(b.createdAt))
+    .map((rule) => ({ rule, notes: evidenceOf(c, rule) }));
+  return [...chosen.filter((r) => !isExample(r)), ...chosen.filter(isExample)].map((r, i) => ({
+    id: `R${i + 1}`,
+    ...r,
+  }));
 }
 
 /**
@@ -952,11 +965,13 @@ export function rulesText(
     ...more,
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
-  for (const r of rules) {
+  const examples = rules.findIndex(isExample);
+  for (const [i, r] of rules.entries()) {
+    if (i === examples) lines.push('', `Examples. ${EXAMPLES_LINE}`);
     const about = [...r.rule.topics.map(topicLabel), ...r.rule.tags].join(', ');
     lines.push(
       '',
-      `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}${r.notes.length === 1 ? ' (from one note)' : ''}`,
+      `${r.id}. ${oneLine(r.rule.text)}${r.rule.context.trim() ? ` (where: ${oneLine(r.rule.context)})` : ''}${about ? ` [${about}]` : ''}`,
     );
     const against = r.rule.conflict && numbers.get(r.rule.conflict.ruleId);
     if (r.rule.conflict && against) lines.push(`   ${pullLine(r.rule, against)}`);
@@ -972,7 +987,7 @@ export function rulesText(
 
 /**
  * The designer's core taste, for the agent to weigh rules by (D147): the rules the most notes
- * share, up to eight, and how to weigh them against a rule drawn from one note.
+ * share, up to eight, and to follow the one more notes share where rules pull apart.
  */
 function coreLine(rules: ExportedRule[]): string {
   const core = rules
@@ -980,8 +995,15 @@ function coreLine(rules: ExportedRule[]): string {
     .sort((a, b) => b.notes.length - a.notes.length)
     .slice(0, 8);
   if (!core.length) return '';
-  return `Core taste, the rules the most notes share: ${core.map((r) => `${r.id} (${r.notes.length} notes)`).join(', ')}. Where rules pull apart, follow the one more notes share; a rule from one note is one example of the taste, as narrow as that note.`;
+  return `Core taste, the rules the most notes share: ${core.map((r) => `${r.id} (${r.notes.length} notes)`).join(', ')}. Where rules pull apart, follow the one more notes share.`;
 }
+
+/**
+ * What the rules from one note are (D148). Widened into a rule for a whole screen, one remark
+ * steered every build in the capture test; beside its screenshot, as plain notes give it, it didn't.
+ */
+const EXAMPLES_LINE =
+  "Each of these rests on one note: what the author liked or disliked in one place, not yet a rule. Follow it only where a screen has the same element in the same role as its note's close-up; elsewhere, and wherever it pulls against a rule above, the rules above win.";
 
 /**
  * How a rule that pulls against another tells the agent which to follow (D102): where it holds,
@@ -1130,6 +1152,7 @@ const HOW_TO_USE = [
   'Each rule lists the notes it comes from and their close-ups. Open a close-up when you need to see what the rule means; the note says what the author saw there.',
   OUTSIDE_LINE,
   "When a rule conflicts with what the task asks for, the task wins: say which rule you set aside and why. Don't ask the author to restate a rule; read its notes and close-ups first.",
+  CHECK_FIRST,
   OPEN_CALLS,
   KEEP_IN_PINCH,
   LIVE_RULES_WIN,
@@ -1162,6 +1185,8 @@ export function rulesMarkdown(
         ];
       return [`- ${l}`];
     }),
+    // The rules the most notes share, to weigh the others by (D147).
+    ...(coreLine(rules) ? ['', '## Core taste', '', coreLine(rules)] : []),
     // What each product or feature is for, as the author wrote it (D121).
     ...(briefsOf(c).length
       ? [
@@ -1176,37 +1201,45 @@ export function rulesMarkdown(
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
   const names = screenNames(c);
-  for (const group of byTopic(rules.map((r) => r.rule))) {
+  // `about`: what the rule is about beyond its section's topic.
+  const block = (r: ExportedRule, about: string) => {
+    const rule = r.rule;
+    lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
+    if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
+    const against = rule.conflict && numbers.get(rule.conflict.ruleId);
+    if (rule.conflict && against) lines.push('', pullLine(rule, against));
+    if (principlesOf(rule).length) lines.push('', `Explained by: ${principlesOf(rule).join(', ')}.`);
+    if (about || rule.tags.length)
+      lines.push(
+        '',
+        [about, rule.tags.length ? `Tags: ${rule.tags.join(', ')}.` : ''].filter(Boolean).join(' '),
+      );
+    const seen = seenOnLine(seenOn(r.notes, names), c);
+    if (seen) lines.push('', `Seen on: ${seen}.`);
+    if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
+    if (rule.agreed)
+      lines.push('', `Agreed with the author in conversation: ${oneLine(rule.agreed.why)}`);
+    // A rule with no notes, such as a taste-check pick (D102) or one agreed (D116), has nothing to list.
+    if (r.notes.length)
+      lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
+    for (const n of r.notes) lines.push(`- \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
+  };
+  const standing = rules.filter((r) => !isExample(r));
+  for (const group of byTopic(standing.map((r) => r.rule))) {
     lines.push('', `## ${group.label}`);
     for (const rule of group.rules) {
-      const r = rules.find((x) => x.rule === rule) as ExportedRule;
       const others = rule.topics.slice(1).map(topicLabel);
-      lines.push('', `**${r.id}.** ${oneLine(rule.text)}`);
-      if (rule.context.trim()) lines.push('', `Where: ${oneLine(rule.context)}.`);
-      const against = rule.conflict && numbers.get(rule.conflict.ruleId);
-      if (rule.conflict && against) lines.push('', pullLine(rule, against));
-      if (principlesOf(rule).length) lines.push('', `Explained by: ${principlesOf(rule).join(', ')}.`);
-      if (others.length || rule.tags.length)
-        lines.push(
-          '',
-          [
-            others.length ? `Also about: ${others.join(', ')}.` : '',
-            rule.tags.length ? `Tags: ${rule.tags.join(', ')}.` : '',
-          ]
-            .filter(Boolean)
-            .join(' '),
-        );
-      const seen = seenOnLine(seenOn(r.notes, names), c);
-      if (seen) lines.push('', `Seen on: ${seen}.`);
-      if (rule.taste) lines.push('', "The designer's own pick in Pinch's taste check.");
-      if (rule.agreed)
-        lines.push('', `Agreed with the author in conversation: ${oneLine(rule.agreed.why)}`);
-      // A rule with no notes, such as a taste-check pick (D102) or one agreed (D116), has nothing to list.
-      if (r.notes.length)
-        lines.push('', `From ${r.notes.length} ${r.notes.length === 1 ? 'note' : 'notes'}:`);
-      for (const n of r.notes) lines.push(`- \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
+      block(
+        standing.find((x) => x.rule === rule) as ExportedRule,
+        others.length ? `Also about: ${others.join(', ')}.` : '',
+      );
     }
   }
+  // The rules from one note, after the rest and below them (D148).
+  const examples = rules.filter(isExample);
+  if (examples.length) lines.push('', '## Examples', '', EXAMPLES_LINE);
+  for (const r of examples)
+    block(r, r.rule.topics.length ? `About: ${r.rule.topics.map(topicLabel).join(', ')}.` : '');
   return `${lines.join('\n')}\n`;
 }
 
@@ -1255,6 +1288,8 @@ export function rulesManifest(
       tags: r.rule.tags,
       origin: originOf(r.rule),
       ...(r.rule.agreed ? { agreed: oneLine(r.rule.agreed.why) } : {}),
+      // From one note: an example of the taste, below the rules (D148).
+      ...(isExample(r) ? { example: true } : {}),
       seenOn: seenOn(r.notes, names),
       ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),
       notes: r.notes.map((n) => ({

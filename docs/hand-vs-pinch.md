@@ -144,6 +144,28 @@ Pinch won 5 pairs and tied 1, and its builds needed 60% fewer changes. On qualit
 - The words alone filed 15 notes the wrong way round; the old per-sentence reading got 40 of 76 sentences wrong.
 - An agent reading them as said aloud (D147) turned 14 of the 15, and turned 2 that were right, leaving 3 of 36 on the wrong side.
 
+### The author's screenshots, a new made-up designer, 2026-11-02
+
+The author gave 25 screenshots: 19 product screens (Asana, Braintrust, Cake Equity, Contra, Deel, Descript, ElevenLabs, Gumroad, Quicken, StackAI, Uxcel, Vimeo, Visitors, hilos) and 6 other references. A new session invented the designer: Noor, designing Setwise, a training log for strength athletes and their coaches, with 15 points of hidden taste and 63 notes. Nothing in Pinch was tuned on this designer. The microphone played no part: the notes went in with their sides as the designer meant them, as typing would give them.
+
+- Pinch's own code made 65 notes. Read from the words alone, it filed 30 of them on the wrong side; the notes were set right before reading.
+- An agent read them into 32 rules in one session. With these large screenshots, each answer of 30 close-ups ran past what Claude Code takes, so the agent read many notes from their words alone. That is fixed since (D147: as many as fit in one answer), but this run was read before the fix.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 42% | 58% |
+| Changes the designer would ask for | 19.5 | 16.5 |
+| Taste points followed, of 15 (mean per judgment) | 11.3 | 12.2 |
+| Taste points broken (mean per judgment) | 3.0 | 2.3 |
+
+**Better, not dramatically.** Pinch won 3 pairs, lost 2 and tied 1, with 15% fewer changes.
+
+- **Where it helped:** one accent colour, the primary button, one filled button a card, and empty states. Builds by hand broke those 19 times in all, Pinch's 7.
+- **Where it hurt:** "key numbers in a light or regular sans", broken 8 times by Pinch's builds and never by hand. One note, "I like the mono numerals in UNREAD / ON YOUR PLATE…", became rule R17, "Set stat figures in monospaced numerals". Listed like any other rule, it was applied to every key figure. The note itself goes against the designer's hidden taste, so part of this is the made-up designer's own inconsistency, but a rule from one note shouldn't steer a whole screen.
+- **What neither carried:** a column of about 1,100px with 48px between sections, broken 12 and 10 times. The notes hardly speak of it.
+
+**What it says.** Pinch's gain is largest where taste is hard to put into words: the first designer's glowing artwork panels and pinned columns. Where the notes already say it plainly ("one filled button", "no donuts", "hairline rules"), plain notes carry nearly as much, and a rule widened from one note can cost more than the close-ups give.
+
 **Limits.**
 
 - One made-up designer, whose notes name each element clearly. That is generous to the hand version.
@@ -152,3 +174,30 @@ Pinch won 5 pairs and tied 1, and its builds needed 60% fewer changes. On qualit
 - No minutes were measured.
 
 The test on the author's own screenshots, judged by eye, still decides.
+
+### The author's screenshots again, rules from one note as examples, 2026-11-03
+
+The same designer, the same 65 notes and marks, and the same hand builds: the six pages built by hand are run 3's, unchanged, so only Pinch's side was built again. Two things changed on Pinch's side. A rule from one note is now an example, given after the rules and below them (D148). And the close-ups now reach the agent: it got as many notes as fit in each answer (D147).
+
+- An agent read the 65 notes in four rounds (12, 20, 19 and 14 notes) into 40 rules, 21 of them from one note, so 19 rules and 21 examples. It turned the 2 notes said aloud that were filed the wrong way round, both rightly. Pinch asked no questions.
+- "Set stat figures in monospaced numerals" came out again from the same note, now as an example (R31).
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 25% | 75% |
+| Changes the designer would ask for | 21 | 15 |
+| Taste points followed, of 15 (mean per judgment) | 11.2 | 12.6 |
+| Taste points broken (mean per judgment) | 2.9 | 2.0 |
+
+**Better, closer to dramatically.** Pinch won 4 pairs, lost 1 and tied 1, against 3, 2 and 1 in run 3, and needed 29% fewer changes, against 15%. Dramatically better needs 40%.
+
+- **Mono numerals, down, not gone.** "Key numbers in a light or regular sans" was broken in 5 of 12 judgments by Pinch's builds, against 8, and in none by hand. All 5 came from the weekly overview and the session log. The example says to follow it only where a screen has the same element in the same role as its note, and a stat tile is that element.
+- **The accent colour** was broken 2 times by Pinch's builds, against 5.
+- **Empty states got worse:** broken 6 times by Pinch's builds, against 2, by a second action or a second sentence. One rule from four notes says to leave the space empty with one sentence; the example from one note says to offer one thing to click.
+- **The column** of about 1,100px was still broken by both, 10 times by hand and 8 by Pinch.
+
+**Limits.**
+
+- Two changes at once, the examples and the close-ups, and this run can't tell their effects apart. Reading in smaller rounds also left more rules resting on one note: 21 of 40, against 14 of 32.
+- The judge varies. The hand pages were the same as in run 3, yet they needed 21 changes, against 19.5.
+- Six pairs and one made-up designer, as before.
