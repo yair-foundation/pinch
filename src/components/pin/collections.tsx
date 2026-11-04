@@ -427,9 +427,13 @@ export function CollectionsView({
           0,
         );
         const dropped = list.reduce((n, r) => n + (r.tidy?.drop.length ?? 0), 0);
+        const reworded = list.reduce((n, r) => n + (r.tidy?.reword?.length ?? 0), 0);
+        const added = list.reduce((n, r) => n + (r.tidy?.add?.length ?? 0), 0);
         const tidied = [
           folded ? `${count(folded, 'rule')} folded into others` : '',
           dropped ? `${dropped} dropped` : '',
+          reworded ? `${reworded} reworded` : '',
+          added ? `${added} added` : '',
         ].filter(Boolean);
         const said = [
           made ? count(made, 'new rule') : '',

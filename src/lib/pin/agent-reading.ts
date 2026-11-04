@@ -20,6 +20,7 @@ import {
   type NoteRef,
   noteAt,
   noteKey,
+  onOwnWork,
   originOf,
   type Tidy,
   unreadNotes,
@@ -91,17 +92,20 @@ Read the notes below this way. Then call submit_reading once with every note id 
  * How the agent tidies the rules once every note is read (D149). The examples are on purpose
  * none the capture test's designer gave.
  */
-export const TIDY_GUIDE = `Every note is read. Tidy the rules once, before anyone builds with them. Reading in rounds leaves rules that say the same thing, and a rule drawn from one note can go against what several notes say about the same thing; a builder follows each rule it is given, so both cost the designer. Below is every rule in force: its id, how many notes it rests on, its topics, where it holds, the rule, what its close-ups show, and its notes' words.
+export const TIDY_GUIDE = `Every note is read. Tidy the rules once, before anyone builds with them. A builder follows each rule it is given and little else, so three things cost the designer: rules that say the same thing, a rule drawn from one note that goes against what several notes say about the same thing, and a detail a note gives that no rule carries. Below is every rule in force: its id, how many notes it rests on, its topics, where it holds, the rule, what its close-ups show, and each of its notes by id with its words. Then the notes no rule draws on.
 
 - Fold rules about the same thing, where one says what the other says or is a case of it, into the one more notes share ("Keep form labels above their fields" and "Never use placeholder text as a label" into the first). Give its wording again when it must change to hold all their notes, keeping every specific they give and adding none; and what their close-ups show together.
 - Drop a rule from one note when it goes against a rule from more notes about the same kind of element, in its words or in what its close-ups show. Compare the shows: the same kind of element shown done another way (another kind of typeface, weight, colour or shape) goes against it, even when the words don't clash and the screens differ (one note praises help in a hover bubble; three notes' close-ups show help as plain text under the field). Its note stays with the designer and in their package; it just isn't a rule, so no builder applies it everywhere.
+- Restore what a note says that no rule says. Go through every note's words: each concrete detail it praises or faults (a mark beside a word, a sign, a kind of typeface, a weight, a count, an order, where something sits) must be in a rule as the note gives it. Where one isn't, reword the rule its note went into to carry it, when that rule is in Pinch's words and the detail is about the same thing; otherwise add a rule for it, from that note (a note praising a count beside each tab name, in a rule only about the tab names' words, gets the count back). Keep every specific the notes give and add none; a rule holds as far as its notes reach.
 - Leave every other rule as it is. A rule from one note about something no other rule covers stays. Never fold rules that hold in different places, or that pull against each other, into one.
-- A rule marked [author's words] can take other rules' notes but keeps its words, and is never dropped or folded away.
+- A rule marked [author's words] can take other rules' notes but keeps its words, and is never reworded, dropped or folded away.
+- A rule marked [own work] is the designer correcting work done for them. It is never dropped, and where it goes against another rule, it stands.
 
 Then call submit_reading with tidy alone. If nothing needs tidying, send an empty tidy, so Pinch knows it's done.`;
 
 /**
- * The tidy's request (D149): the guide, then every rule in force with its notes' words. Past
+ * The tidy's request (D149): the guide, then every rule in force with each of its notes, by the
+ * key it is kept under, and its words; then the notes read that no rule draws on (D150). Past
  * \`room\` characters, the words of rules from several notes are left out first.
  */
 export function tidyPrompt(c: Collection, room = Number.POSITIVE_INFINITY): string {
@@ -112,6 +116,7 @@ export function tidyPrompt(c: Collection, room = Number.POSITIVE_INFINITY): stri
       r.id,
       `(${r.evidence.length} ${r.evidence.length === 1 ? 'note' : 'notes'})`,
       originOf(r) === 'ai' && !r.taste && !r.agreed ? '' : "[author's words]",
+      onOwnWork(c, r) ? '[own work]' : '',
       r.topics.length ? `(${r.topics.join(', ')})` : '',
       r.context.trim() ? `where: ${one(r.context)};` : '',
       one(r.text),
@@ -119,20 +124,29 @@ export function tidyPrompt(c: Collection, room = Number.POSITIVE_INFINITY): stri
     ]
       .filter(Boolean)
       .join(' ');
-  const words = (r: (typeof live)[number]) =>
-    r.evidence.flatMap((ref) => {
-      const n = noteAt(c, ref)?.note;
-      if (!n) return [];
-      const said = [
-        n.works.trim() ? `works: "${one(n.works)}"` : '',
-        n.doesNotWork.trim() ? `doesn't: "${one(n.doesNotWork)}"` : '',
-      ].filter(Boolean);
-      return said.length ? [`   - ${said.join('; ')}`] : [];
-    });
+  const noteLine = (ref: NoteRef, said: boolean) => {
+    const n = noteAt(c, ref)?.note;
+    if (!n) return [];
+    const words = [
+      n.works.trim() ? `works: "${one(n.works)}"` : '',
+      n.doesNotWork.trim() ? `doesn't: "${one(n.doesNotWork)}"` : '',
+    ].filter(Boolean);
+    return [`   - ${noteKey(ref)}${said && words.length ? `: ${words.join('; ')}` : ''}`];
+  };
+  const drawn = new Set(live.flatMap((r) => r.evidence.map(noteKey)));
+  const loose = c.read.filter((key) => !drawn.has(key)).flatMap((key) => {
+    const i = key.indexOf('/');
+    return noteLine({ batchId: key.slice(0, i), note: key.slice(i + 1) }, true);
+  });
   const write = (all: boolean) =>
     `${TIDY_GUIDE}\n\n${live
-      .map((r) => [head(r), ...(all || r.evidence.length < 2 ? words(r) : [])].join('\n'))
-      .join('\n')}`;
+      .map((r) =>
+        [
+          head(r),
+          ...r.evidence.flatMap((ref) => noteLine(ref, all || r.evidence.length < 2)),
+        ].join('\n'),
+      )
+      .join('\n')}${loose.length ? `\n\nNotes no rule draws on:\n${loose.join('\n')}` : ''}`;
   const full = write(true);
   return full.length <= room ? full : write(false);
 }
@@ -195,6 +209,30 @@ export const agentReadingSchema = z.object({
         )
         .default([])
         .describe('Rules from one note that go against what a rule from more notes says or shows.'),
+      reword: z
+        .array(
+          z.object({
+            rule: z.string().describe('The id of a rule in Pinch’s words.'),
+            text: z
+              .string()
+              .describe(
+                'Its wording again, one sentence, carrying the detail its notes give that it lost.',
+              ),
+          }),
+        )
+        .default([])
+        .describe('Rules reworded to carry a detail their notes give.'),
+      add: z
+        .array(
+          z.object({
+            rule: z.string().describe('The new rule, one sentence.'),
+            notes: z.array(z.string()).describe('The ids of the notes it comes from, as listed.'),
+            topics: p.topics.default([]),
+            context: p.context.default(''),
+          }),
+        )
+        .default([])
+        .describe('Rules for a detail a note gives that no rule carries.'),
     })
     .optional()
     .describe('Only when get_notes_to_read asks you to tidy the rules (D149), and then alone.'),
@@ -300,7 +338,7 @@ export function applyAgentReading(
   now: string,
   newId: () => string,
 ): Collection {
-  if (r.tidy) return applyTidy(c, r.tidy, now);
+  if (r.tidy) return applyTidy(c, r.tidy, now, r.id);
   const unread = new Set(unreadNotes(c).map(({ batch, note }) => noteKey({ batchId: batch.id, note: note.ref })));
   const notes = new Map<string, NoteRef>();
   for (const key of r.read) {

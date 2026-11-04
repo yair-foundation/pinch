@@ -12,6 +12,7 @@ import {
   notesToRead,
   readingInputSchema,
   readingPrompt,
+  tidyPrompt,
   withAgentReading,
   withReadings,
 } from '../agent-reading';
@@ -23,6 +24,7 @@ import {
   knownNotes,
   newCollection,
   noteFingerprint,
+  isExample,
   type Rule,
   rulesOf,
   rulesText,
@@ -407,7 +409,10 @@ describe('what the close-ups show, and the rules tidied (D149)', () => {
   // waiting on a question.
   const read = (): Collection => {
     const c = library();
-    const notes = ['01', '02', '03', '04', '05', '06'].map((n) => note(`${n}.1`, `Note ${n}.`));
+    const notes = ['01', '02', '03', '04', '05', '06'].map((n) => ({
+      ...note(`${n}.1`, `Note ${n}.`),
+      source: 'competitor' as const,
+    }));
     return {
       ...c,
       batches: [{ ...c.batches[0], notes, images: 6 }],
@@ -509,6 +514,71 @@ describe('what the close-ups show, and the rules tidied (D149)', () => {
     assert.deepEqual(c.read, read().read, 'the dropped rule’s note stays read');
   });
 
+  it('restores a detail no rule kept: a rule reworded, or one added from notes read (D150)', () => {
+    const kept = cleanTidy(
+      {
+        fold: [],
+        drop: [],
+        reword: [
+          { rule: 'b', text: 'Set the big number thin, with its sign.' },
+          { rule: 'd', text: 'Not the author’s words to change.' },
+        ],
+        add: [
+          {
+            rule: 'Put a dot before each status word.',
+            notes: ['b1/06.1', 'b1/99.9'],
+            topics: ['visual'],
+            context: '',
+          },
+          { rule: 'From nothing.', notes: ['b1/99.9'], topics: [], context: '' },
+        ],
+      },
+      read(),
+    );
+    assert.deepEqual(kept.reword, [{ rule: 'b', text: 'Set the big number thin, with its sign.' }]);
+    assert.deepEqual(kept.add, [
+      {
+        rule: 'Put a dot before each status word.',
+        notes: ['b1/06.1'],
+        topics: ['visual'],
+        context: '',
+      },
+    ]);
+    const c = applyAgentReading(read(), reading({ tidy: kept }, read()), at, () => 'x');
+    assert.equal(c.rules.find((r) => r.id === 'b')?.text, 'Set the big number thin, with its sign.');
+    const added = c.rules.find((r) => r.id === 'g1-0');
+    assert.equal(added?.text, 'Put a dot before each status word.');
+    assert.equal(added?.drafted, added?.text, 'in Pinch’s words');
+    assert.deepEqual(added?.evidence, [{ batchId: 'b1', note: '06.1' }]);
+    assert.equal(added?.createdAt, c.tidiedAt, 'made by the tidy, so not waiting for another');
+    assert.equal(tidyDue(c), false);
+  });
+
+  it('never drops a correction on the author’s own work, and marks it (D152)', () => {
+    const own = (c: Collection): Collection => ({
+      ...c,
+      batches: c.batches.map((b) => ({
+        ...b,
+        notes: b.notes.map((n) => (n.ref === '05.1' ? { ...n, source: 'ours' as const } : n)),
+      })),
+    });
+    const c = own(read());
+    assert.deepEqual(cleanTidy({ fold: [], drop: [{ rule: 'c', why: 'x' }] }, c).drop, []);
+    assert.match(tidyPrompt(c), /^c \(1 note\) \[own work\]/m);
+    const rules = rulesOf(c);
+    const mine = rules.find((r) => r.rule.id === 'c');
+    assert.ok(mine && !isExample(mine), 'a rule by itself, from one note');
+    assert.match(rulesText(c, rules), /A note on Ours is the author correcting work done for them/);
+    assert.doesNotMatch(rulesText(read(), rulesOf(read())), /A note on Ours/);
+  });
+
+  it('lists every note by its key, and the notes no rule draws on', () => {
+    const c = { ...read(), rules: read().rules.filter((r) => r.id !== 'c') };
+    const asked = tidyPrompt(c);
+    assert.match(asked, /^ {3}- b1\/04\.1: works: "Note 04\."$/m);
+    assert.match(asked, /\n\nNotes no rule draws on:\n {3}- b1\/05\.1: works: "Note 05\."$/);
+  });
+
   it('is asked of the agent over MCP, with every rule in force and its notes’ words', async () => {
     const saved: AgentReading[] = [];
     const call = (name: string, args: unknown = {}) =>
@@ -525,10 +595,13 @@ describe('what the close-ups show, and the rules tidied (D149)', () => {
       /^a \(3 notes\) \(visual\) Make the key figure.*\| shows: A light sans figure/m,
     );
     assert.match(asked, /^d \(1 note\) \[author's words\]/m);
-    assert.match(asked, /^ {3}- works: "Note 05\."$/m);
+    assert.match(asked, /^ {3}- b1\/05\.1: works: "Note 05\."$/m);
     assert.doesNotMatch(asked, /^f /m, 'a rule waiting on its question isn’t tidied');
     const kept = (await call('submit_reading', { tidy })).result.content[0].text ?? '';
-    assert.match(kept, /^Kept your tidy: 1 rule folded into others, 1 dropped\./);
+    assert.match(
+      kept,
+      /^Kept your tidy: 1 rule folded into others, 1 dropped, 0 reworded, 0 added\./,
+    );
     assert.equal(
       (await call('get_notes_to_read')).result.content[0].text,
       'No notes are waiting to be read.',
