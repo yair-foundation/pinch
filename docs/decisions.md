@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D152.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D153.
 
 ## Open (need the user)
 
@@ -12,6 +12,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-11-04 — D153 Notes on references stay: corrections add to them, and don't replace them (the user: "Test it", of teaching from corrections alone).** After D152, notes on references looked like the costly part: they take the most time, and most of what Pinch lost came from them. The test set before it ran ([hand-vs-pinch.md](hand-vs-pinch.md)) started three designers from an empty Pinch with two rounds of five corrections. Corrections alone won 33% of pairs with 24% more changes against reference notes without corrections, and 8% with 172% more against reference notes and corrections. Reference notes reach across the taste; corrections reach only what one build got wrong. After ten corrections, corrections alone had nearly caught reference notes without corrections (58% of 6 pairs, 13% fewer changes), which is worth looking at for a person with no references to hand. Nothing changes in Pinch.
 - **2026-11-04 — D152 A note on the author's own work is a rule by itself, and wins over rules drawn from other products (the user: "is there other ideas to teach models my taste?", then "Test it", of teaching from corrections on the agent's own work). Amends D148, D149 and D151.** Most of what Pinch lost came from carrying a remark about someone else's screen over to a new product. A correction on a render of the author's own product needs no carrying, and it teaches only where the model's default differs from their taste.
   - **In the reading:** a note marked Ours makes a rule by itself, as far as it reaches, and says so with `conflictsWith` where it goes against a library rule.
   - **In the tidy:** a rule drawing on one is marked [own work], is never dropped, and stands where it goes against another rule (`onOwnWork`).

@@ -407,3 +407,44 @@ Two rounds on each of the three designers: 29 corrections by hand and 27 with Pi
 - A made-up designer corrects from a perfect key to its own taste, so its corrections say exactly what the judge wants. A person's will be vaguer and sometimes wrong. This is the most corrections can carry.
 - By hand here keeps its corrections in `notes.md`, more than a chat does. A chat that loses them when it ends is nearer by hand without corrections, but that pairing wasn't judged.
 - Twelve pairs a comparison, one build corrected each round, the same model family judging, no minutes.
+
+### Corrections alone: the test, set before it runs, 2026-11-04
+
+If corrections carry that far, are notes on reference screenshots needed at all? They take the most time, and most of what Pinch lost came from them.
+
+**The rounds,** for each of the three designers, with no notes on references and an empty Pinch:
+
+1. The agent builds task 1 with no taste to go on. The designer corrects it, at most five notes (`simulate/correct.ts`), and they go into Pinch on the render, marked as Ours, are read and exported. Task 2 is built twice from that package.
+2. The designer corrects one of those builds, the same way. Task 3 is built twice from both rounds' corrections.
+
+**Compared,** blind, each pair twice, 12 pairs each, against builds already made for the last test:
+
+- **Pinch from reference notes,** without corrections: what Pinch asks of a person today before anything is built.
+- **Pinch from reference notes and corrections,** which had the same two rounds of corrections.
+
+**The verdict, set now:**
+
+- **Can corrections alone stand in for reference notes?** Against reference notes without corrections: they can if they win more than half the pairs and need no more changes.
+- **Do reference notes still earn their time once a person corrects?** Against notes and corrections: notes add little if corrections alone win at least 40% of pairs and need no more than 25% more changes. Otherwise they still earn their time.
+- **The time** is reported at the simulated take's pace, spoken minutes only.
+
+**Limits known now:** a made-up designer corrects from a perfect key, which flatters this test more than any other, since corrections are all it has. A person starting from nothing may not know yet what they want to say. Only Pinch's way is tested, not corrections alone in a notes file.
+
+### Corrections alone: the results, 2026-11-04
+
+An empty Pinch for each designer, two rounds of five corrections each, 10 to 14 rules at the end. The first build, with no taste to go on, took each designer's first five corrections.
+
+| Corrections alone against, 12 pairs each | Pairs won | Changes, alone and the other | Verdict set in advance |
+| --- | --- | --- | --- |
+| Reference notes, no corrections | 33% | 54.5 and 44 (24% more) | **They can't stand in** |
+| Reference notes and corrections | 8% | 62.5 and 23 (172% more) | **Reference notes still earn their time** |
+
+**Reference notes stay,** even in a test that flatters corrections. The two kinds of note do different work. Reference notes reach across the taste, and corrections reach only what the one build got wrong. Noor's and Ines's builds from corrections alone broke about five taste points a judgment, against about one for reference notes and corrections. Ten corrections leave much unsaid: Noor's never spoke of the page background and Ines's did only in passing, and it was broken in 5 and 8 of 8 judgments.
+
+**By designer,** against reference notes without corrections: Noor 0% of pairs, Ines 38%, Mara 62%, with fewer changes on Mara alone (10 and 16.5).
+
+**They catch up fast, as a signal on 6 pairs each.** After five corrections, corrections alone won 8% of pairs with 82% more changes than reference notes. After ten, they won 58% with 13% fewer. At the simulated take's pace that is about 2.5 minutes of talking, against 10 to 13 for the reference notes. The tasks differ between the rounds, and a third round wasn't run.
+
+**What it says.** Do both. Reference notes give the breadth, and corrections then give the largest gain. Against reference notes with corrections, nothing else tested comes close.
+
+**Limits.** Made-up designers correcting from a perfect key, 12 pairs a comparison, the same model family judging, and spoken minutes only, not a person's time.
