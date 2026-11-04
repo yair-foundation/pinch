@@ -259,3 +259,151 @@ The agent read the 65 notes in four rounds into 36 rules, and its tidy folded 3 
 - The check took out a note that had cost Pinch, not the hand builds, in every earlier run. That is the check doing its job, since the note went against the taste the judge holds, but it is most of why the mono figures are gone.
 - The tidy's line on dropping was sharpened after seeing this designer. In this run it dropped nothing.
 - One made-up designer, judged by the same model family that builds, and no minutes.
+
+### A fresh designer on new screenshots, 2026-11-03
+
+The check of whether the last run's gain is Pinch's or the tuning's. The author gave 30 new screenshots, full pages from Airbnb, Asana, Brilliant, Circle, Cloudflare, Contra, Duolingo, Etsy, Fey, GitBook, Headspace, Kajabi, Loom, Luma, Notion, OpenSea, Origin, PandaDoc, Patreon, Peerlist, Shopify, Substack, SuperHi, Tines, Uxcel and Wise. A new session invented the designer: Ines Varga, designing Tally, a money app for freelancers, with 15 points of hidden taste and 66 notes. Nothing in Pinch was tuned on them.
+
+- The check found no note against the hidden taste.
+- Pinch's own code made 67 notes; read from the words alone it filed 25 on the wrong side, and the designer set them right on the end card.
+- The agent read them in four rounds into 37 rules. Its tidy folded 2 into others and dropped 1, an eyebrow label in bold sans from one note, against three notes whose close-ups show such labels in mono. That left 34.
+- Twelve pairs, as in the last run: three tasks, each built four times from each input.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 42% | 58% |
+| Changes the designer would ask for | 23 | 19 |
+| Taste points followed, of 15 (mean per judgment) | 12.6 | 12.8 |
+| Taste points broken (mean per judgment) | 1.3 | 1.0 |
+
+**Better, not dramatically.** Pinch won 6 pairs, lost 4 and tied 2, with 17% fewer changes. The 92% of the last run didn't carry over.
+
+- **Both did well.** This designer's notes name its taste plainly ("the backdrop needs to be paper", "just a small grey dot and a word on each row, and the rows are only split by thin rules"), and builds from the notes alone broke little more than one taste point a judgment. The judge was choosing between two nearly right pages, on small things.
+- **Where Pinch's builds did better:** cards with a hairline border and no shadow (broken 2 times, against 8 by hand), rows inside one container (0, against 3), the one accent colour (1, against 3) and the off-white page (0, against 2).
+- **Where they did worse:** serif only for page titles (3, against 1), as a rule about serif headlines was carried to section headings; and small labels (5, against 2), set below 11px or out of mono. Both missed the status dot and the empty states 4 times each.
+
+**What the runs say together.** Pinch's gain is largest where taste is hard to put into words, as with the first designer's glowing panels and the second's mono figures. Where the notes already say it plainly, plain notes beside the screenshots carry nearly as much. A made-up designer writes plainer notes than a person talking over a screenshot, so the author's own test, timed and judged by eye, still decides.
+
+**Limits.**
+
+- One fresh designer, judged by the same model family that builds, and no minutes.
+- The builds by hand broke so little that a pair often turned on one detail, so the share of pairs moves a lot on little.
+
+### The fresh designer again, after D150, 2026-11-03
+
+The same notes and the same 12 builds by hand; only Pinch's side was read, tidied and built again. The tidy now restores details a note gives that no rule kept, rules from one note that came through it stand as rules, and the rules say a rule holds for what it names.
+
+- The agent read the 67 notes into 39 rules; the tidy folded 1, reworded 7 to carry details their notes gave, and added none, leaving 38. A rule for "a small grey dot and a word" came from the reading itself this time, and signed changes became a rule for every figure, not an example for tables.
+- No rule was left an example.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 46% | 54% |
+| Changes the designer would ask for | 23 | 13.5 |
+| Taste points broken (mean per judgment) | 1.4 | 0.8 |
+
+**Fewer changes, not more pairs.** Pinch's builds needed 41% fewer changes, against 17% before, and broke the status dot 0 times (4 before), the small labels 1 (5), money amounts 1 (3) and the card style 0 (2). But Pinch won 5 pairs, lost 4 and tied 3.
+
+- **What lost the pairs:** serif section headings (4 judgments, against 3 before; the new line on what a rule names didn't stop it), and the payments list set loose on the page rather than in one container with thin rules (3, against 0), since the reading made thin rules a rule for settings and tables and space a rule for lists.
+- **Near the ceiling, pairs turn on little.** In several pairs Pinch's build broke nothing, and the judge picked the other for initials in a circle or a timestamp. The changes count says more here than the pairs do.
+- **Limits.** The fixes came from this designer's losses. A third designer, on new screenshots, is the check.
+
+### A third designer on new screenshots, after D150, 2026-11-03
+
+The check of D150 on material it wasn't built from. The author gave 35 new full pages (Coinbase, Cosmos, Craft, Deel, DoorDash, Equals, FLORA, Gamma, Givingli, Hers, Klarna, Luma, Medium, Mixpanel, Netflix, Nike, Open, Pitch, Preply, Programa, Replit, Runway, Spotify, The New Yorker, Tines, Typeform, Uber Eats, Vimeo, Wise, komoot). One was a copy of another and was left out, leaving 34. A new session invented the designer: Mara Ellison, a former magazine and menu designer, designing Slow Hours, class booking for small yoga studios, with 15 points of hidden taste and 86 notes.
+
+- The check rewrote one note, which put a number's label above it where the taste puts it beside or under.
+- The screenshots came to 114 MB, past the 60 MB a local run takes in one batch (`MAX_MEMORY_BATCH_BYTES`; Pinch with a store uploads straight to it). So they went in as four takes, of 6, 6, 9 and 13 screenshots.
+- The agent read the 86 notes in six rounds into 53 rules; the tidy folded 6 and reworded 7, leaving 47, none an example.
+
+| | By hand | Pinch |
+| --- | --- | --- |
+| Pairs won (a tie counts half) | 75% | 25% |
+| Changes the designer would ask for | 28 | 40 |
+| Taste points broken (mean per judgment) | 1.8 | 3.0 |
+
+**Not better: worse.** Pinch won 1 pair, lost 7 and tied 4, and its builds needed 43% more changes.
+
+- **A rule from one note, made for the very task.** One note praised a booking grid; the reading made it R7, "Show time slots as thin-outlined boxes in day columns", where: "in booking and schedule grids". The first task was a weekly class schedule, so every Pinch build of it was a grid of boxed tiles, against the designer's hairline rows like a printed menu (broken 6 times, against 1 by hand). Pinch won none of those four pairs.
+- **Another, against a rule from four notes.** One note's plain list of actions with a chevron each became R33; the builds made the booking's secondary actions chevron rows, though R24, from four notes, says small actions are underlined text links. The tidy didn't see the two pull apart.
+- **A rule kept too narrow.** Serif for longer text became a rule "in long-form reading", and Pinch's builds set class descriptions in sans (12, against 7).
+- **What the notes beside the screenshots did instead.** Each of those notes was one of 86, on another product's screen. The builds by hand read them as that and built the schedule as the notes as a whole describe it.
+
+**What the runs on untuned designers say.** Pinch won 58% and 54% of pairs on the second designer and 25% on this one. Most of the ground Pinch's builds lost, in every run, came from one kind of fault: something drawn from one note or one close-up, widened to whole screens or matched to the task. That covers the first designer's colour blocks, the mono figures, the close-up detail of run 5 and this schedule grid. Where Pinch won, it won on what several notes share. Until a rule from one note stops steering builds, Pinch isn't reliably better than notes beside screenshots.
+
+### Single notes as notes, all three designers again, 2026-11-03
+
+D151: a rule from one note no longer reaches builders as a rule. They get its note, with its close-up and screenshot, after the rules, to read as a note beside a screenshot. Each designer's rules were exported again from the reading already made, and only Pinch's 12 builds were made again; the 12 by hand are the same as before.
+
+| Designer | Rules, single notes | Pairs won by Pinch, before, then now | Changes, hand and Pinch, before | Changes, hand and Pinch, now |
+| --- | --- | --- | --- | --- |
+| Noor (first, author's screenshots) | 17, 16 | 92%, then 71% | 39 and 24.5 | 36 and 21.5 |
+| Ines (second) | 18, 20 | 54%, then 50% | 23 and 13.5 | 18.5 and 17 |
+| Mara (third) | 24, 23 | 25%, then 92% | 28 and 40 | 31.5 and 15.5 |
+| All 36 pairs | | 57%, then 71% | 90 and 78 (13% fewer) | 86 and 54 (37% fewer) |
+
+**Better over all three, short of dramatically.** Pinch won 71% of the 36 pairs and needed 37% fewer changes.
+
+- **The third designer turned round.** Pinch's builds broke 1.0 taste points a judgment, against 3.0, and won all four weekly schedules: the booking-grid note was now a note about Preply's screen, not a rule for schedules. Secondary actions as text links were broken 2 times, against 8 by D150's builds and 11 by hand.
+- **The first held,** with fewer changes; more pairs were ties (5).
+- **The second slipped.** Its notes say its taste plainly, and some details lived only in single notes. As notes they lost force: small labels broken 7 times (1 before), list rows inside one container 8 (3 before).
+- **The judge varies.** The same builds by hand needed 39 then 36, 23 then 18.5, and 28 then 31.5 changes.
+
+**What it says.** Pinch helps where it gathers what several notes share and shows the author's close-ups; it hurts where it turns one note into a rule. Giving a single note as a note keeps the help and drops most of the hurt. The cost is a designer whose plain single notes were right: the open question is how to keep those details without widening them.
+
+### Teaching from corrections: the test, set before it runs, 2026-11-04
+
+Every note so far is on someone else's screen, and most of what Pinch lost came from carrying such a note over to a new product. A correction on the agent's own work needs no carrying. Does it reach a new task, and does Pinch carry it further than a notes file does?
+
+**The rounds,** for each of the three designers, whose three tasks stay in their order:
+
+1. A session holding the hidden taste corrects one build of task 1, as the designer would talking over the render: at most five notes, each on an element it can point at (`simulate/correct.ts`). Task 2 is then built twice with those corrections.
+2. The same, correcting one of those builds of task 2. Task 3 is built twice with both rounds' corrections.
+
+**Four ways,** so 12 builds to compare in each, 4 from each designer:
+
+| | Without corrections | With corrections |
+| --- | --- | --- |
+| Pinch | the D151 builds | Each way corrects its own work. The notes go in on the render, marked as Ours, are read and tidied, and the package is exported again. |
+| By hand | the same builds as before | Each way corrects its own work. The corrections are kept in `notes.md` and the renders beside it: more than a chat, which loses them when it ends. |
+
+**Judged as before:** blind, each pair twice, sides swapped, 12 pairs for each of three comparisons.
+
+**The verdict, set now:**
+
+- **Do corrections carry to a new task?** Pinch with them against Pinch without. They carry if Pinch with them wins more than 60% of pairs and needs at least 25% fewer changes.
+- **Does Pinch carry them further than a notes file?** Pinch with them against by hand with them, on the test's own scale. Dramatically better: at least 75% of pairs and 40% fewer changes. Better: more than half the pairs and no more changes. Anything else: not better.
+- **By hand with them against by hand without** shows whether the corrections help on their own, whoever keeps them.
+- **Over the rounds,** each round has only 6 pairs, so it is reported as a signal, with no verdict.
+
+**A limit known now:** a made-up designer corrects from a perfect key to its own taste, and a person won't. This shows the most that corrections can carry.
+
+### Teaching from corrections: the results, 2026-11-04
+
+Two rounds on each of the three designers: 29 corrections by hand and 27 with Pinch, 6 of each saying what to keep. At the simulated take's pace, each round is about a minute of talking.
+
+| Comparison, 12 pairs each | Pairs won by the first | Changes, first and second | Verdict set in advance |
+| --- | --- | --- | --- |
+| Pinch with corrections against Pinch without | 100% | 22 and 56.5 (61% fewer) | **They carry** (needed more than 60% of pairs and 25% fewer) |
+| By hand with corrections against by hand without | 100% | 27 and 60 (55% fewer) | They help whoever keeps them |
+| Pinch with corrections against by hand with them | 67% | 27.5 and 40 (31% fewer) | **Better, not dramatically** |
+
+**Corrections are the largest gain any test has found.** The first version with them won all 24 of its pairs against the same version without. Everything tried on the rules gave at most 37% fewer changes over all three designers (D151), and that was against plain notes rather than against itself.
+
+**By designer, Pinch against by hand, both with corrections:** Noor 88% of pairs (9 changes and 14.5), Ines 62% (9 and 12), Mara 50% (9.5 and 13.5). Pinch needed fewer changes on all three.
+
+**Over the rounds, a signal on 6 pairs each.** In the first round, Pinch with corrections won 42% of pairs with 6% fewer changes than by hand with them; in the second, 92% with 47% fewer. Pinch's builds needed about as many changes in both rounds (14.5 and 13), while the builds by hand needed more on the second round's task (15.5 and 24.5). The tasks differ, so this may be the task and not the rounds.
+
+**Where Pinch carried a correction further:** as a rule rather than a line in a file.
+
+- Noor's column of about 1,100px, which no version had carried in any earlier run: broken 0 times by Pinch's builds, against 7 by hand, though both had been told.
+- Ines's cards with a hairline border and no shadow: 0, against 6.
+- Mara's real photographs: 0, against 4.
+
+**Where it fell behind:** Noor's corner radius (4, against 0), and small labels on Ines and Mara (3 and 2, against 1 and 0). Empty states were missed about equally by both, since no correction spoke of them.
+
+**Limits.**
+
+- A made-up designer corrects from a perfect key to its own taste, so its corrections say exactly what the judge wants. A person's will be vaguer and sometimes wrong. This is the most corrections can carry.
+- By hand here keeps its corrections in `notes.md`, more than a chat does. A chat that loses them when it ends is nearer by hand without corrections, but that pairing wasn't judged.
+- Twelve pairs a comparison, one build corrected each round, the same model family judging, no minutes.

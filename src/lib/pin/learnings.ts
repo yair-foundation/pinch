@@ -152,6 +152,11 @@ export type Rule = {
   /** A question the rule waits on: until the author answers, no agent gets it (D90). */
   question?: RuleQuestion;
   /**
+   * The author confirmed Pinch's reading of it or picked it as an answer to its question: theirs,
+   * as their own words are, so a rule from one note stands (D151).
+   */
+  confirmed?: true;
+  /**
    * The ids of the foundation's principles that helped Pinch read it (D90): they explain the
    * rule; its notes are what make it the author's.
    */
@@ -695,10 +700,14 @@ export function applyReading(
  * in the capture test such a rule steered every build it touched. `fold` puts rules about the
  * same thing into the one more notes share, with their notes, reworded to hold them all; `drop`
  * takes away a rule from one note that goes against another, its note still kept and read.
+ * A detail a note gives that no rule kept is restored (D150): `reword` gives a rule in Pinch's
+ * words again to carry it, `add` makes a rule for it from notes already read.
  */
 export type Tidy = {
   fold: { into: string; rules: string[]; rule?: string; shows?: string }[];
   drop: { rule: string; why: string }[];
+  reword?: { rule: string; text: string }[];
+  add?: { rule: string; notes: string[]; topics: Topic[]; context: string }[];
 };
 
 /**
@@ -713,6 +722,10 @@ const tidyable = (r: Rule) =>
   !r.agreed &&
   r.text.trim() !== '' &&
   originOf(r) === 'ai';
+
+/** Whether a rule draws on a note about the author's own work (D152). */
+export const onOwnWork = (c: Collection, r: Pick<Rule, 'evidence'>) =>
+  r.evidence.some((ref) => noteAt(c, ref)?.note.source === 'ours');
 
 /** Whether the rules want tidying (D149): every note read, and rules made since the last tidy. */
 export const tidyDue = (c: Collection) =>
@@ -745,20 +758,47 @@ export function cleanTidy(t: Tidy, c: Collection): Tidy {
   const drop: Tidy['drop'] = [];
   for (const d of t.drop) {
     const r = free(d.rule);
-    if (!r || r.evidence.length > 1) continue;
+    if (!r || r.evidence.length > 1 || onOwnWork(c, r)) continue;
     used.add(r.id);
     drop.push({ rule: r.id, why: oneLine(d.why).slice(0, 200) });
   }
-  return { fold, drop };
+  const reword: NonNullable<Tidy['reword']> = [];
+  for (const w of t.reword ?? []) {
+    const r = free(w.rule);
+    const text = oneLine(w.text).slice(0, 300);
+    if (!r || !text) continue;
+    used.add(r.id);
+    reword.push({ rule: r.id, text });
+  }
+  // A rule added draws only on notes the collection holds and has read.
+  const read = new Set(c.read);
+  const add: NonNullable<Tidy['add']> = [];
+  for (const a of t.add ?? []) {
+    const notes = [...new Set(a.notes)].filter((key) => read.has(key) && noteAt(c, refOf(key)));
+    const rule = oneLine(a.rule).slice(0, 300);
+    if (!rule || !notes.length) continue;
+    const topics = sortTopics(a.topics).slice(0, 3);
+    add.push({ rule, notes, topics, context: oneLine(a.context).slice(0, 80) });
+  }
+  return { fold, drop, ...(reword.length ? { reword } : {}), ...(add.length ? { add } : {}) };
 }
+
+/** A note's reference from the key it is kept under ("batch/01.2"). */
+const refOf = (key: string): NoteRef => {
+  const i = key.indexOf('/');
+  return { batchId: key.slice(0, i), note: key.slice(i + 1) };
+};
 
 /**
  * A tidy applied (D149): each fold's rules gone into its rule, their notes with them, and its
  * new wording; the dropped rules gone; a conflict with a folded rule now with the rule it went
- * into, and with a dropped one, gone. The rules count as tidied, now.
+ * into, and with a dropped one, gone. The reworded rules in their new words, and the rules added
+ * after the rest, with ids from `id` (D150), so the server and the page give them the same. The
+ * rules count as tidied, now.
  */
-export function applyTidy(c: Collection, tidy: Tidy, now: string): Collection {
+export function applyTidy(c: Collection, tidy: Tidy, now: string, id = 'tidy'): Collection {
   const t = cleanTidy(tidy, c);
+  const words = new Map((t.reword ?? []).map((w) => [w.rule, w.text]));
   const into = new Map(t.fold.flatMap((f) => f.rules.map((id) => [id, f.into] as const)));
   const dropped = new Set(t.drop.map((d) => d.rule));
   const byId = new Map(c.rules.map((r) => [r.id, r]));
@@ -779,6 +819,8 @@ export function applyTidy(c: Collection, tidy: Tidy, now: string): Collection {
         ...(f.shows ? { shows: f.shows } : {}),
       };
     }
+    const text = words.get(r.id);
+    if (text) next = { ...next, text, drafted: text };
     const against = next.conflict?.ruleId;
     if (against && (into.has(against) || dropped.has(against))) {
       const { conflict, ...rest } = next;
@@ -787,7 +829,25 @@ export function applyTidy(c: Collection, tidy: Tidy, now: string): Collection {
     }
     return [next];
   });
-  return { ...c, updatedAt: now, rules, tidiedAt: now };
+  const taken = new Set(rules.map((r) => r.id));
+  const added = (t.add ?? []).flatMap((a, i): Rule[] =>
+    taken.has(`${id}-${i}`)
+      ? []
+      : [
+          {
+            id: `${id}-${i}`,
+            text: a.rule,
+            drafted: a.rule,
+            context: a.context,
+            topics: a.topics,
+            tags: [],
+            evidence: a.notes.map(refOf),
+            status: 'approved',
+            createdAt: now,
+          },
+        ],
+  );
+  return { ...c, updatedAt: now, rules: [...rules, ...added], tidiedAt: now };
 }
 
 /** Titles named for rules that had none (D95); a rule given one meanwhile keeps its own. */
@@ -816,7 +876,7 @@ export const waiting = (r: Pick<Rule, 'question' | 'basis'>) =>
 
 /** The author confirms Pinch's reading of a rule: it is theirs now, and their agent gets it. */
 export const confirmRule = (c: Collection, id: string, now: string): Collection =>
-  withRule(c, id, ownWords({}), now);
+  withRule(c, id, ownWords({ confirmed: true }), now);
 
 /**
  * The author settles a conflict in one step (D102): each rule in its place, or this one wins and
@@ -860,7 +920,7 @@ export function answerRule(
   const answered = withRule(
     c,
     id,
-    ownWords({ text: first.rule, drafted: first.rule, title: undefined }),
+    ownWords({ text: first.rule, drafted: first.rule, title: undefined, confirmed: true }),
     now,
   );
   const at = answered.rules.findIndex((r) => r.id === id);
@@ -985,11 +1045,18 @@ export type ExportedRule = { id: string; rule: Rule; notes: ExportedNote[] };
 
 /**
  * A rule that rests on one note, in Pinch's words, from a note the author didn't hold up as their
- * best example (D148): one example of their taste, as narrow as that note, not yet a rule. Agents
- * get it after the rules, and below them. A second note, or the author's own words, makes it one.
+ * best example (D148): not a rule for builders. Agents get its note instead, after the rules, as
+ * notes beside a screenshot give it (D151): widened into a sentence with a place, one note's rule
+ * steered whole tasks in every test it was in. A second note, the author's own words, or their
+ * confirming it or picking it as an answer makes it a rule; and so does a note on their own work
+ * (D152), which needs no carrying from someone else's screen.
  */
 export const isExample = (r: Pick<ExportedRule, 'rule' | 'notes'>): boolean =>
-  r.notes.length === 1 && !r.notes[0].note.best && originOf(r.rule) === 'ai';
+  r.notes.length === 1 &&
+  !r.notes[0].note.best &&
+  !r.rule.confirmed &&
+  r.notes[0].note.source !== 'ours' &&
+  originOf(r.rule) === 'ai';
 
 /**
  * The rules an agent gets: the ones the pick takes (never a dismissed or locked one, nor one
@@ -1070,16 +1137,21 @@ export function rulesText(
 ): string {
   // The designer's taste comes before any general design guidance the agent also has (D102).
   const lines = [
-    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${CHECK_FIRST} ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
+    `Design rules from ${oneLine(c.name)} (Pinch), ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}. Follow them in this task; a rule with "where" holds there only. ${NAMES_LINE}${rules.some((r) => onOwnWork(c, r.rule)) ? ` ${OWN_LINE}` : ''} They are this designer's taste: where general design guidance or a design skill you also follow says otherwise, these rules win. When one conflicts with the task, the task wins: say which rule you set aside.${hasBest(c) ? " A note marked the author's best example is one they hold up to follow: weigh it above the others." : ''} Refer to rules by number. ${CHECK_FIRST} ${OPEN_CALLS} ${KEEP_IN_PINCH} ${LIVE_RULES_WIN}`,
     ...(coreLine(rules) ? [coreLine(rules)] : []),
     ...(rolesLine(c) ? [rolesLine(c)] : []),
     ...briefsLines(c, screen),
     ...more,
   ];
   const numbers = new Map(rules.map((r) => [r.rule.id, r.id]));
-  const examples = rules.findIndex(isExample);
+  const single = rules.findIndex(isExample);
   for (const [i, r] of rules.entries()) {
-    if (i === examples) lines.push('', `Examples. ${EXAMPLES_LINE}`);
+    if (i === single) lines.push('', `Single notes. ${SINGLE_LINE}`);
+    // A single note is given as its note, never as a rule's words (D151).
+    if (i >= single && single >= 0) {
+      for (const n of r.notes) lines.push('', `${r.id}. ${capital(fromLine(n))}: ${said(n.note)}`);
+      continue;
+    }
     const about = [...r.rule.topics.map(topicLabel), ...r.rule.tags].join(', ');
     lines.push(
       '',
@@ -1111,11 +1183,14 @@ function coreLine(rules: ExportedRule[]): string {
 }
 
 /**
- * What the rules from one note are (D148). Widened into a rule for a whole screen, one remark
- * steered every build in the capture test; beside its screenshot, as plain notes give it, it didn't.
+ * What a single note is (D148, D151). Widened into a rule, one remark steered whole tasks in the
+ * capture tests; beside its screenshot, as plain notes give it, it didn't.
  */
-const EXAMPLES_LINE =
-  "Each of these rests on one note: what the author liked or disliked in one place, not yet a rule. Follow it only where a screen has the same element in the same role as its note's close-up; elsewhere, and wherever it pulls against a rule above, the rules above win.";
+const SINGLE_LINE =
+  "Each of these is one note on one screenshot, and no other note says the same, so it isn't a rule: read it as you would a note beside a screenshot, what the author liked or disliked in that one spot of someone's screen. Take its point where your screen has the same thing; never make it a pattern for your screen, and where the rules above say otherwise, they win.";
+
+/** Words with their first letter in capitals. */
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * How a rule that pulls against another tells the agent which to follow (D102): where it holds,
@@ -1247,6 +1322,19 @@ function packageReadme(c: Collection, rules: number, stamp: string): string {
   ].join('\n')}\n`;
 }
 
+/**
+ * A rule holds for the thing it names and no further (D150): in the second designer's test, a rule
+ * about page headlines was carried to every section heading.
+ */
+const NAMES_LINE =
+  'A rule holds for the thing it names and no further: one about table rows says nothing of cards, one about page titles nothing of other headings.';
+
+/**
+ * A correction on the author's own work outranks what was drawn from other products' screens (D152).
+ */
+const OWN_LINE =
+  "A note on Ours is the author correcting work done for them: a rule that draws on one says what they want in their own product, and where it differs from a rule drawn from other products, it wins.";
+
 const BEST_LINE =
   'A note marked "the author\'s best example" is one they hold up as the one to follow: weigh it above the others. `index.md` lists them all.';
 const OUTSIDE_LINE =
@@ -1256,6 +1344,8 @@ const HOW_TO_USE = [
   'These are design rules the author keeps, each drawn from notes they wrote on screenshots. Follow them in design and front-end work for this author.',
   'The author\'s own taste comes before any general design guidance or design skill you also follow: where they say otherwise, these rules win.',
   'A rule with "Where" holds there only; one without holds everywhere. Where two rules pull different ways, each holds in its own place.',
+  NAMES_LINE,
+  OWN_LINE,
   '"Seen on" says whose design the rule\'s notes are on (Ours, Competitor, Other product, Concept) and the screen tags of those screenshots. `index.md` sorts all the notes the same way, with a reading order.',
   BEST_LINE,
   'A screen tag in "Seen on" may carry the role the author gave its set: target style is the look to aim for; how it looks today shows the product as it is, so take what exists from it, not its look; principle only gives the idea, never the look.',
@@ -1291,6 +1381,7 @@ export function rulesMarkdown(
     // product the target style (D111), and then how far that goes (D114).
     ...HOW_TO_USE.flatMap((l) => {
       if (l === BEST_LINE) return hasBest(c) ? [`- ${l}`] : [];
+      if (l === OWN_LINE) return rules.some((r) => onOwnWork(c, r.rule)) ? [`- ${l}`] : [];
       if (l === OUTSIDE_LINE && outsideTarget(c))
         return [
           `- A rule drawn from someone else's product (Competitor, Other product, Concept) carries a principle, never a copy, unless the author made it the target style. ${OUTSIDE_TARGET}`,
@@ -1347,11 +1438,12 @@ export function rulesMarkdown(
       );
     }
   }
-  // The rules from one note, after the rest and below them (D148).
-  const examples = rules.filter(isExample);
-  if (examples.length) lines.push('', '## Examples', '', EXAMPLES_LINE);
-  for (const r of examples)
-    block(r, r.rule.topics.length ? `About: ${r.rule.topics.map(topicLabel).join(', ')}.` : '');
+  // A note no other note shares, after the rules, as its note (D148, D151).
+  const single = rules.filter(isExample);
+  if (single.length) lines.push('', '## Single notes', '', SINGLE_LINE, '');
+  for (const r of single)
+    for (const n of r.notes)
+      lines.push(`- **${r.id}.** \`${fileOf(n)}\`, ${fromLine(n)}: ${said(n.note)}`);
   return `${lines.join('\n')}\n`;
 }
 
@@ -1394,13 +1486,18 @@ export function rulesManifest(
       id: r.id,
       // The same from one export to the next, where the number isn't: for checks kept by rule (D108).
       key: r.rule.id,
-      text: oneLine(r.rule.text),
-      ...(r.rule.context.trim() ? { where: oneLine(r.rule.context) } : {}),
+      // A single note is its note, with no rule's words (D151).
+      ...(isExample(r)
+        ? {}
+        : {
+            text: oneLine(r.rule.text),
+            ...(r.rule.context.trim() ? { where: oneLine(r.rule.context) } : {}),
+          }),
       topics: r.rule.topics,
       tags: r.rule.tags,
       origin: originOf(r.rule),
       ...(r.rule.agreed ? { agreed: oneLine(r.rule.agreed.why) } : {}),
-      // From one note: an example of the taste, below the rules (D148).
+      // One note no other note shares: given as its note, after the rules (D148, D151).
       ...(isExample(r) ? { example: true } : {}),
       seenOn: seenOn(r.notes, names),
       ...(r.rule.principles?.length ? { principles: r.rule.principles } : {}),

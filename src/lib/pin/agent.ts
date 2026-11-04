@@ -693,7 +693,7 @@ async function readingContent(
   if (tidy) {
     const folded = tidy.fold.reduce((n, f) => n + f.rules.length, 0);
     return text(
-      `Kept your tidy: ${folded} ${folded === 1 ? 'rule' : 'rules'} folded into others, ${tidy.drop.length} dropped. It joins the person’s rules when they next open Your rules. The reading is done.`,
+      `Kept your tidy: ${folded} ${folded === 1 ? 'rule' : 'rules'} folded into others, ${tidy.drop.length} dropped, ${tidy.reword?.length ?? 0} reworded, ${tidy.add?.length ?? 0} added. It joins the person’s rules when they next open Your rules. The reading is done.`,
     );
   }
   log?.add({ kind: 'reading', notes: read.length });

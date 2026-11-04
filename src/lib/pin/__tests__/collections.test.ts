@@ -523,6 +523,7 @@ describe('the taste library', () => {
     assert.equal(waiting(yes), false);
     assert.equal(yes.text, 'Keep screens quiet: few elements competing for attention.');
     assert.equal(originOf(yes), 'ai', 'confirmed, not rewritten');
+    assert.equal(yes.confirmed, true, 'the author’s now, so it stands from one note (D151)');
     assert.deepEqual(
       rulesOf(confirmed).map((r) => r.rule.text),
       ['Keep screens quiet: few elements competing for attention.'],
@@ -638,15 +639,24 @@ describe('the taste library', () => {
     assert.match(text, /Never show a screen you haven't rendered and checked/);
   });
 
-  it('gives a rule from one note after the others, as an example (D148)', () => {
+  it('gives a rule from one note after the others, as its note and not a rule (D148, D151)', () => {
     const [a, b] = read().rules;
     // The rule from one note comes first by topic.
-    const c = withRule(
+    const onOurs = withRule(
       withRule(read(), a.id, { topics: ['layout'], shows: 'Grey hairlines.' }, 'x'),
       b.id,
       { topics: ['visual'] },
       'x',
     );
+    // A note on the author's own work is a rule by itself (D152); one on someone else's isn't.
+    assert.equal(rulesOf(onOurs).filter(isExample).length, 0);
+    const c = {
+      ...onOurs,
+      batches: onOurs.batches.map((x) => ({
+        ...x,
+        notes: x.notes.map((n) => ({ ...n, source: 'competitor' as const })),
+      })),
+    };
     const rules = rulesOf(c);
     assert.deepEqual(
       rules.map((r) => [r.id, r.rule.id, isExample(r)]),
@@ -656,8 +666,9 @@ describe('the taste library', () => {
       ],
     );
     const text = rulesText(c, rules);
-    assert.match(text, /\n\nExamples\. Each of these rests on one note[^\n]*\n\nR2\. Align related controls\. \[Visual\]$/m);
-    assert.ok(text.indexOf('\nR1.') < text.indexOf('\nExamples.'));
+    assert.match(text, /\n\nSingle notes\. Each of these is one note on one screenshot[^\n]*\n\nR2\. Note \d+\.\d+ on [^:]+: (works|doesn't): "/);
+    assert.ok(text.indexOf('\nR1.') < text.indexOf('\nSingle notes.'));
+    assert.doesNotMatch(text, /Align related controls/, 'never the rule’s words');
 
     const made = rulesPackage(c, new Map([['b1', withCrops(exportFiles())]]), '2026-10-22T09:00:00Z');
     const file = (name: string) =>
@@ -666,18 +677,22 @@ describe('the taste library', () => {
     assert.match(md, /## Layout\n\n\*\*R1\.\*\*/);
     // What its close-ups show stays with the reading (D149).
     assert.doesNotMatch(md, /Grey hairlines/);
-    assert.match(md, /## Examples\n\nEach of these rests on one note[^\n]*\n\n\*\*R2\.\*\* Align related controls\.\n\nAbout: Visual\./);
+    assert.match(md, /## Single notes\n\nEach of these is one note on one screenshot[^\n]*\n\n- \*\*R2\.\*\* `batches\/[^`]+`, note \d+\.\d+ on /);
+    assert.doesNotMatch(md, /Align related controls/);
+    const data = JSON.parse(file('rules.json')).rules;
     assert.deepEqual(
-      JSON.parse(file('rules.json')).rules.map((r: { example?: boolean }) => r.example ?? false),
+      data.map((r: { example?: boolean }) => r.example ?? false),
       [false, true],
     );
-    assert.equal(JSON.parse(file('rules.json')).rules[0].shows, undefined);
-    assert.match(file('checks.md'), /^\| R2 \|.*\| review \(example\) \|/m);
+    assert.equal(data[1].text, undefined, 'a single note has no rule’s words');
+    assert.equal(data[1].notes.length, 1);
+    assert.equal(data[0].shows, undefined);
+    assert.match(file('checks.md'), /^\| R2 \| `[^`]+` \| a single note: note [^|]+ \| {2}\| not a rule \|/m);
 
     // In the author's words, or from their best example, it's a rule again, in its place.
     const own = withRule(c, b.id, { text: 'Align related controls on one edge.' }, 'x');
     assert.equal(rulesOf(own)[0].rule.id, b.id);
-    assert.doesNotMatch(rulesText(own, rulesOf(own)), /^Examples\./m);
+    assert.doesNotMatch(rulesText(own, rulesOf(own)), /^Single notes\./m);
     const best = {
       ...c,
       batches: c.batches.map((x) => ({
@@ -686,6 +701,12 @@ describe('the taste library', () => {
       })),
     };
     assert.equal(rulesOf(best).filter(isExample).length, 0);
+    // A tidy doesn't make it a rule (D151): one note's rule steered whole tasks even after one.
+    const tidied = { ...c, tidiedAt: '2099-01-01T00:00:00Z' };
+    assert.equal(rulesOf(tidied).filter(isExample).length, 1);
+    // A rule holds for what it names (D150).
+    assert.match(text, /A rule holds for the thing it names and no further/);
+    assert.match(md, /^- A rule holds for the thing it names and no further/m);
   });
 
   it('picks the rules a task needs, and copies them as text', () => {
