@@ -485,3 +485,143 @@ Round 1 corrects task 1 and builds task 2. Round 2 corrects task 2 and builds ta
 - It doesn't test a new version having to beat the last one, which needs more rounds than this.
 - Where the words come out wrong, that counts against Pinch: a real user would hit the same thing.
 
+### The author's trial: as it ran
+
+**Pinch's side, 2026-11-05.** The author talked through the 10 references on the live site rather than a local Pinch, so the words were read in the browser by the smaller model (D140), and some came out wrong: "hello colored buttons with no feeling" on an outlined button. They stay as they came, as set in advance. 65 notes, read into rules, then tidied by the agent, with 3 rules reworded. The first reading wasn't the agent's: it stopped within a minute, and the notes kept being read. The package holds 23 rules and 18 single notes.
+
+**Minutes: about 17,** from the session's timestamps, not a timer: 14 from adding the images to Add to your rules, 3 answering Pinch's questions and exporting, with the wait for the reading left out.
+
+**The hand way, 2026-11-05.** The author asked Claude to do this part. Claude didn't write any notes: `hand/notes.md` is the words of the author's own take, copied word for word and grouped by screenshot, wrong words included, as the test runs with made-up designers do. So this compares what Pinch adds to the same words. It doesn't compare Pinch with what the author would have written by hand, which would likely be more considered and free of misheard words, and might come with crops. No minutes by hand were measured.
+
+**The builds, 2026-11-05.** The first 6 of the 12 to start all reached the 20-minute limit, 3 from each way, and their logs are empty, so the cause isn't known. One had already written a whole page. All 6 were built again with the limit unchanged, the written page set aside unseen, so that every build ended on its own. The 12 that count took about 6 to 11 minutes each.
+
+**References: Not better, 2026-11-05.** The author judged the 6 pairs blind. Pinch's package won 1 of them and its builds needed 18 changes against the plain file's 10, 80% more. Two builds from the plain file needed none. With under half the pairs, the rule gives Not better at any minutes, so the missing hand minutes don't matter; `score` still prints "Needs the minutes" because it looks at those first.
+
+| Task | Run | Closer | Changes by hand | Changes Pinch |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | By hand | 0 | 3 |
+| Pricing | 2 | Pinch | 6 | 3 |
+| Account | 1 | By hand | 0 | 4 |
+| Account | 2 | By hand | 2 | 3 |
+| Your rules | 1 | By hand | 1 | 3 |
+| Your rules | 2 | By hand | 1 | 2 |
+
+This reverses the last run with made-up designers, where Pinch won 71% of 36 pairs. Only the third of them had gone this far the other way, at 25%, before single notes became notes. A made-up designer's taste is a list of points, which is what rules are, and that may be part of why they scored higher.
+
+**What the builds and the package show,** read by Claude after the judging, and not tested:
+
+- **The package holds back what the author liked most.** Builds from the plain file carried "white on a color" across the whole page, with lilac behind white cards and very large titles. The package keeps its colour rules (R4, R10, R11) to marketing heroes and tells agents never to make a single note a pattern, which is where "white on a color" sits. One account page from it has a gradient strip on grey. The author on the page it lost to: "the background with the card is much more fresh".
+- **Rules outrank the author's words.** Two notes for dividers became R2, a core rule. Two against stayed single notes, and the package says rules win. One build says so: "R2 comes from two notes and R33 from one, so R2 wins". The author praised "the lack of dividers".
+- **Rules say more than the notes.** "I like the color." became three rules. "This alert banner is pretty straightforward, good execution." became two. They carry a description rather than the look: "a soft pastel background".
+- **Some labels are wrong.** At least 10 of the 53 notes labelled as working are doubts or complaints, such as "I'm not sure about it" and "The search looks very, very old with the sharp edges." `verdictOfClaim` counts a note with no clear lean as good. The plain file has no labels, so its builds read the words.
+- **Rules became content.** One account page draws "Too wide." and "R17" into its illustration.
+
+**Limits of this result:**
+
+- Six pairs and one person: 5 of 6 comes up by chance about 1 time in 9. Against that, the author wants Pinch to win and judged blind.
+- Both ways had the same words, so this says nothing about notes really written by hand, which would probably have done no worse.
+- Three of the six Pinch builds didn't run `check-render.js`, because the test only lets a build run `render.mjs`. In a real project they could. The checks measure text sizes and contrast, so it's unlikely to explain this.
+
+### Pointing without the rules: the test, set before it runs, 2026-11-05
+
+The package lost to the same words in a plain file, but it holds two things: where the author pointed, and the rules read from that. This takes the rules away, to see which one lost (D155).
+
+**The two ways.** By hand is as before: the 10 screenshots and `hand/notes.md`, the 65 notes word for word. The other way is the same screenshots and the same notes in the same order, plus each note's number and close-up, and the marked copies. So the only difference is the pointing. It has no rules, no checks, no labels, no review sheets and none of the package's instructions. The marks keep the colours Pinch gave them, which come from the labels, so its notes file says "A mark's colour means nothing."
+
+**The run.** Same tasks, 2 runs each, 12 new builds and 6 pairs, judged blind by the author, in `~/pinch-test-2`. The script is unchanged: the second way is a zip in `pinch/`, so its results say "Pinch".
+
+**The verdict, set now.** No hand minutes exist, so this reads the pairs and the changes, on the thresholds at the top of this page:
+
+- **Pointing carries it:** at least 75% of pairs and 40% fewer changes. The package should lead with the author's words and marks, and the rules step back.
+- **Pointing helps:** more than half the pairs and no more changes. The same direction, on weaker evidence.
+- **Pointing adds nothing:** anything else. Words and screenshots do as well, and Pinch would have to earn its place by being faster than writing, which then needs real hand minutes.
+
+**Limits known now:**
+
+- Six pairs and one person, as before.
+- It doesn't compare the rules with the pointing directly: each is measured against the plain file, on different builds.
+- The author has seen the first builds, knows the plain file won, and has read Claude's reasons, which may colour what they look for. The judging is still blind.
+- The notes are still the words as they came out, wrong words included, and neither way is writing really done by hand.
+
+### Pointing without the rules: the results, 2026-11-05
+
+**Pointing carries it.** Judged blind, the same words with marks and close-ups won all 6 pairs and needed 7 changes against the plain file's 24, 71% fewer. All 12 builds finished the first time. `score` says "Needs the minutes", and its "Pinch" column is the pointing, as set above.
+
+| Task | Run | Closer | Changes plain file | Changes pointing |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | Pointing | 4 | 1 |
+| Pricing | 2 | Pointing | 3 | 1 |
+| Account | 1 | Pointing | 3 | 1 |
+| Account | 2 | Pointing | 4 | 1 |
+| Your rules | 1 | Pointing | 6 | 2 |
+| Your rules | 2 | Pointing | 4 | 1 |
+
+It's the first time anything has reached these thresholds with a real person. So far, one person has ranked them: the same words with pointing, over the plain file, over the rules. That order joins two sittings and hasn't been tested head to head.
+
+**Why isn't known.** No build's report says it used the close-ups, though the reports don't list what a build opened, and the two ways look alike: lilac, white cards, ink hands. In the 3 pairs Claude opened, the pointing builds kept to one centred column or a narrow card where the plain file's split the page into two columns or a wide card. The author's one note in this sitting agrees: "side by side like the left one is not a good option". The rules' narrow column lost in the first sitting, though, so width alone doesn't explain it.
+
+**Limits of this result:**
+
+- **Change counts depend on what's beside them.** The same plain file needed 10 changes in the first sitting and 24 in this one. A pricing page from it got 0 there, and a near twin got 4 here. So read the pairs first, and don't compare counts across sittings: 7 here and 18 for the rules there say nothing about each other.
+- Six pairs from one person, one take, one set of references and the same three tasks. 6 of 6 comes up by chance about 1 time in 64.
+- The author had seen the first builds and Claude's reasons, though both ways here carry the things those reasons named.
+- This is pointing against the same spoken words without pointing. It says nothing yet about notes really written by hand, or about minutes.
+
+### Pointing against the rules: the test, set before it runs, 2026-11-05
+
+Two sittings put pointing above the plain file and the plain file above the rules, but nothing has put the two side by side, and change counts moved between sittings. Reading notes into rules is also the paid step (D98), so this decides what the package leads with (D156).
+
+**The two ways.** Both come from the author's same take, so the words, marks and close-ups are the same.
+
+- **Pointing** is the input from the last test: the screenshots, the notes with their numbers and close-ups, and the marked copies.
+- **Rules** is the whole export as it first ran: the rules, notes, labels, checks, close-ups, marked copies, review sheets and instructions.
+
+**The run.** Same tasks, 2 runs each, 12 new builds and 6 pairs, judged blind by the author, in `~/pinch-test-3`. The script is unchanged. Pointing sits in its hand slot and the rules in its Pinch slot, so in `results.md` "By hand" means pointing and "Pinch" means rules. The minutes come from the same take: 14 for pointing and 17 for rules, which leaves out the wait for the reading and its credits.
+
+**The verdict, set now,** from pointing's side:
+
+- **Pointing wins:** at least 75% of pairs and 40% fewer changes. The package leads with the author's words and marks, and the rules step back.
+- **Pointing holds:** at least half the pairs and no more changes. Rules cost minutes, a wait and credits and don't pay for them here, so they stop being the default.
+- **Rules ahead:** anything else. The sittings contradict each other, neither result stands, and the package stays as it is until a fresh take settles it.
+
+**Limits known now:**
+
+- Six pairs, one person, one take, and the author's third sitting on the same three tasks.
+- A rules build that draws a rule number into its page, as one did in the first sitting, gives itself away. Such builds stay in, and Claude counts them in the results without telling the author beforehand.
+- Neither way is notes really written by hand.
+
+### Pointing against the rules: the results, 2026-11-05
+
+**Pointing wins.** Judged blind, pointing won 5 of 6 pairs and needed 8 changes against the rules' 16, 50% fewer, in 14 minutes against 17 and the wait for a reading. `score` says "Not better" because its "Pinch" column is the rules here.
+
+| Task | Run | Closer | Changes pointing | Changes rules |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | Pointing | 1 | 4 |
+| Pricing | 2 | Pointing | 1 | 3 |
+| Account | 1 | Pointing | 1 | 4 |
+| Account | 2 | Rules | 3 | 1 |
+| Your rules | 1 | Pointing | 1 | 2 |
+| Your rules | 2 | Pointing | 1 | 2 |
+
+**The three sittings agree,** on one take:
+
+| Sitting | Closer | Pairs | Changes |
+| --- | --- | ---: | --- |
+| Rules against the plain file | Plain file | 5 of 6 | 10 and 18 |
+| Pointing against the plain file | Pointing | 6 of 6 | 7 and 24 |
+| Pointing against the rules | Pointing | 5 of 6 | 8 and 16 |
+
+**Rule numbers may have given builds away.** Three of the 6 rules builds show a rule number in their text, such as "R15", and all 3 lost. No pointing build shows one. Without those pairs, pointing won 2 of 3 and needed 5 changes against 8, 38% fewer: the same direction, just short of the 40% bar.
+
+**What the pages show,** from the 2 account pairs Claude opened, as the author left no notes this time, and not tested:
+
+- With one column each way, flat lilac behind white cards beat a gradient fading into grey, 1 change against 4. The first sitting's widest gap on this task was the same contrast, 0 against 4. The package keeps its colour rules to marketing heroes, which fits, but doesn't prove it.
+- The rules' one win beat a pointing build that set its cards side by side. Side by side also lost on lilac in the last sitting, where the author wrote "side by side like the left one is not a good option". So the layout may count for more than which way made the page.
+
+**Limits of this result:**
+
+- One person, one take of 65 notes, one set of references and the same three tasks, on the author's third sitting. 5 of 6 alone comes up by chance about 1 time in 9.
+- 65 notes are few enough for an agent to read whole. Rules may earn their place at hundreds of notes, or across months and projects, which this can't see.
+- Standalone pages, not work in a repository with a design system, where D154 says Pinch's people work.
+- Neither way is notes really written by hand, so "better than manual" is still untested, and so are hand minutes.
+
