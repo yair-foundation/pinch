@@ -455,7 +455,7 @@ Every result above comes from made-up designers correcting from a perfect key. T
 
 **The start** is the test at the top of this page, as written: 8–12 references for one product the author is designing, three tasks, Pinch first and by hand the next day, standalone pages. That's 12 builds and 6 pairs, judged blind by the author, in real minutes.
 
-**The product is Pinch,** where the author's taste is strongest, with 10 of the author's own screenshots as references. Each build still starts from an empty folder, so it sees only its input and the task, not Pinch's code. The tasks, written before either input:
+**The product is Pinch,** where the author's taste is strongest, with 10 references chosen by Claude from screenshots the author gathered, at the author's request, so the author may have less to say about some: Vimeo Web, Equals Web 0, Gumroad Web 9, GitBook Web 258, Luma Web 355, Headspace Web 114, Cloudflare Web 170, Tines Web 11, The New Yorker Web 15, Fey Web 123. Each build still starts from an empty folder, so it sees only its input and the task, not Pinch's code. The tasks, written before either input:
 
 1. The pricing page for Pinch, with one plan at $19 once.
 2. The account page for Pinch: email, purchase, credits, the agent connection and deleting the account.
