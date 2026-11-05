@@ -6,6 +6,10 @@
 //   node --import tsx scripts/hand-vs-pinch/run.ts build <dir>   every build, through Claude Code
 //   node --import tsx scripts/hand-vs-pinch/run.ts judge <dir>   the blind judging page
 //   node --import tsx scripts/hand-vs-pinch/run.ts score <dir>   the score, in results.md
+//   node --import tsx scripts/hand-vs-pinch/run.ts round <dir>   the next round of corrections (D154)
+//
+// A round is a test folder of its own, round-N inside <dir>: build, judge and score take it too.
+// Score on <dir> also scores the rounds together, in results-rounds.md.
 //
 // The builds run on the author's own Claude Code (`claude -p`), not the API: no key and no spend
 // beyond their plan. Each runs in a folder of its own outside <dir>, holding only its input, with
@@ -13,7 +17,7 @@
 // Grep, and `node render.mjs` to draw its page and look at it (D147), as an agent at work can.
 // The same prompt goes to both inputs (`buildPrompt`). Build again to redo any that failed.
 // CHROME names the browser that draws the pages, if it isn't Google Chrome on a Mac.
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import {
   cpSync,
   existsSync,
@@ -30,7 +34,9 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { unzip } from "../../src/lib/pin/unzip"
 import {
+  ARMS,
   type Answer,
+  type Arm,
   type Build,
   blind,
   buildPrompt,
@@ -51,16 +57,25 @@ const IMAGE = /\.(png|jpe?g|webp|gif)$/i
 const CHROME =
   process.env.CHROME ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-/** What a build runs to see its page: headless Chrome draws index.html into render.png. */
-const RENDER = `import { execFileSync } from "node:child_process"
+/**
+ * What a build runs to see its page: headless Chrome draws index.html into render.png. Whether the
+ * file came out says if it worked: Chrome can exit with an error after writing it, on shutting down.
+ */
+const RENDER = `import { spawnSync } from "node:child_process"
+import { existsSync, rmSync } from "node:fs"
 import { resolve } from "node:path"
-execFileSync(${JSON.stringify(CHROME)}, ["--headless=new", "--hide-scrollbars", "--window-size=1440,2400", "--virtual-time-budget=8000", "--screenshot=" + resolve("render.png"), "file://" + resolve("index.html")], { stdio: "ignore" })
+rmSync("render.png", { force: true })
+spawnSync(${JSON.stringify(CHROME)}, ["--headless=new", "--hide-scrollbars", "--window-size=1440,2400", "--virtual-time-budget=8000", "--screenshot=" + resolve("render.png"), "file://" + resolve("index.html")], { stdio: "ignore" })
+if (!existsSync("render.png")) {
+  console.error("Couldn't draw render.png.")
+  process.exit(1)
+}
 console.log("Drew render.png, 1440 by 2400.")
 `
 
-if (!dirArg || !["init", "build", "judge", "score"].includes(command)) {
+if (!dirArg || !["init", "build", "judge", "score", "round"].includes(command)) {
   console.error(
-    "Usage: node --import tsx scripts/hand-vs-pinch/run.ts init|build|judge|score <dir>",
+    "Usage: node --import tsx scripts/hand-vs-pinch/run.ts init|build|judge|score|round <dir>",
   )
   process.exit(1)
 }
@@ -82,6 +97,9 @@ Pinch didn't exist: what works, what doesn't and why. Crop or mark images too if
 you would do; put them in this folder. Time yourself, from the first screenshot to the last.
 
 `
+/** Stands in a round's notes until the author's corrections replace it. */
+const CORRECT_HERE =
+  "Write here what you would tell Claude about this page it built, at most five notes, in place of this line. Time yourself."
 
 function init() {
   if (dir.startsWith(path.resolve(".") + path.sep))
@@ -111,6 +129,8 @@ function inputProblems(settings: Settings): string[] {
     : ""
   if (notes.trim() === NOTES.trim() || !notes.trim())
     out.push("Write your notes in hand/notes.md.")
+  if (notes.includes(CORRECT_HERE))
+    out.push("Write your corrections in hand/notes.md.")
   if (!files("pinch").some((f) => f.endsWith(".zip")))
     out.push("Put Pinch's export zip in pinch/.")
   return out
@@ -324,12 +344,127 @@ function scoreAll() {
   const text = scoreText(s, settings)
   writeFileSync(at("results.md"), text)
   console.log(text)
+  if (rounds().length) scoreRounds(settings)
+}
+
+/** The rounds started so far, oldest first. */
+const rounds = () =>
+  files(".")
+    .filter((f) => /^round-\d+$/.test(f))
+    .sort((a, b) => Number(a.slice(6)) - Number(b.slice(6)))
+
+/**
+ * The next round of corrections (D154), once every pair so far is judged, since it says which way
+ * made the builds it draws: each way's first build of the task, to correct, and the next task to
+ * build from the corrections.
+ */
+function round() {
+  const settings = readJson<Settings>("test.json")
+  const tasks = settings.tasks.filter((t) => t.trim())
+  const n = rounds().length + 1
+  if (n >= tasks.length)
+    throw new Error("Every task has had its round. Next: score.")
+  const from = n === 1 ? "." : `round-${n - 1}`
+  if (!existsSync(at(from, "key.json")))
+    throw new Error(`Build and judge ${from === "." ? "the test" : from} first.`)
+  const { builds } = readJson<{ builds: Build[] }>(path.join(from, "key.json"))
+  const { pairs } = readJson<{ pairs: Pair[] }>(path.join(from, "blind.json"))
+  const answers: Record<string, Answer> = existsSync(at(from, "results.json"))
+    ? readJson(path.join(from, "results.json"))
+    : {}
+  if (pairs.some((p) => !answers[p.id]))
+    throw new Error(
+      `Judge every pair in ${from === "." ? "the test" : from} first: a round says which way made which build.`,
+    )
+  const to = `round-${n}`
+  mkdirSync(at(to, "pinch"), { recursive: true })
+  cpSync(at("screens"), at(to, "screens"), { recursive: true })
+  cpSync(at(from, "hand"), at(to, "hand"), { recursive: true })
+  for (const arm of ARMS) {
+    const b = builds.find(
+      (x) => x.arm === arm && x.task === 0 && x.run === 0,
+    ) as Build
+    const png =
+      arm === "hand"
+        ? at(to, "hand", `render-${n}.png`)
+        : at(to, `for-pinch-${n}.png`)
+    spawnSync(
+      CHROME,
+      [
+        "--headless=new",
+        "--hide-scrollbars",
+        "--window-size=1440,2400",
+        "--virtual-time-budget=8000",
+        `--screenshot=${png}`,
+        `file://${at(from, "builds", `${b.id}.html`)}`,
+      ],
+      { stdio: "ignore" },
+    )
+    if (!existsSync(png)) throw new Error(`Couldn't draw ${png}.`)
+  }
+  const notes = readFileSync(at(to, "hand", "notes.md"), "utf8").trimEnd()
+  writeFileSync(
+    at(to, "hand", "notes.md"),
+    `${notes}\n\n## Corrections on render-${n}.png\n\n${CORRECT_HERE}\n`,
+  )
+  writeJson(path.join(to, "test.json"), {
+    ...SETTINGS,
+    tasks: [tasks[n]],
+    runs: settings.runs,
+    model: settings.model,
+    round: n,
+  } satisfies Settings)
+  console.log(`Round ${n} is ready in ${at(to)}. Each way corrects its own build, at most five notes, timed:
+  1. Pinch: add for-pinch-${n}.png, say "This is ours", talk it through, Add to your rules, read them, Export. The zip goes in ${to}/pinch/.
+  2. By hand: look at ${to}/hand/render-${n}.png and write your corrections in ${to}/hand/notes.md.
+  3. Your minutes for each in ${to}/test.json, then build, judge and score ${to}.`)
+}
+
+/** Every round's pairs together, on the minutes of all their corrections: the loop's verdict (D154). */
+function scoreRounds(settings: Settings) {
+  const each = rounds()
+    .filter((r) => existsSync(at(r, "key.json")))
+    .map((r, task) => ({
+      settings: readJson<Settings>(path.join(r, "test.json")),
+      builds: readJson<{ builds: Build[] }>(
+        path.join(r, "key.json"),
+      ).builds.map((b) => ({ ...b, task })),
+      pairs: readJson<{ pairs: Pair[] }>(path.join(r, "blind.json")).pairs.map(
+        (p) => ({ ...p, task }),
+      ),
+      answers: existsSync(at(r, "results.json"))
+        ? readJson<Record<string, Answer>>(path.join(r, "results.json"))
+        : {},
+    }))
+  const spent = (arm: Arm) =>
+    each.every((e) => e.settings.minutes[arm] !== null)
+      ? each.reduce((all, e) => all + (e.settings.minutes[arm] ?? 0), 0)
+      : null
+  const minutes = { pinch: spent("pinch"), hand: spent("hand") }
+  const s = score(
+    each.flatMap((e) => e.builds),
+    each.flatMap((e) => e.pairs),
+    Object.assign({}, ...each.map((e) => e.answers)),
+    minutes,
+  )
+  const text = `${scoreText(
+    s,
+    {
+      ...settings,
+      tasks: each.flatMap((e) => e.settings.tasks),
+      minutes,
+    },
+    "The rounds of corrections",
+  )}\nBuild the loop only if this is Dramatically better and you'd do another round unprompted (D154).\n`
+  writeFileSync(at("results-rounds.md"), text)
+  console.log(text)
 }
 
 async function main() {
   if (command === "init") init()
   else if (command === "build") await build()
   else if (command === "judge") judge()
+  else if (command === "round") round()
   else scoreAll()
 }
 

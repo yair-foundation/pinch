@@ -448,3 +448,40 @@ An empty Pinch for each designer, two rounds of five corrections each, 10 to 14 
 **What it says.** Do both. Reference notes give the breadth, and corrections then give the largest gain. Against reference notes with corrections, nothing else tested comes close.
 
 **Limits.** Made-up designers correcting from a perfect key, 12 pairs a comparison, the same model family judging, and spoken minutes only, not a person's time.
+
+### The author's trial: set before it runs, 2026-11-05
+
+Every result above comes from made-up designers correcting from a perfect key. This is the first run with a person. It also decides whether to build a loop, where Pinch carries on past Export: a person corrects what their agent made, and each version has to beat a plain notes file. None of that loop is built until this passes (D154).
+
+**The start** is the test at the top of this page, as written: 8–12 references for one product the author is designing, three tasks, Pinch first and by hand the next day, standalone pages. That's 12 builds and 6 pairs, judged blind by the author, in real minutes.
+
+**The product is Pinch,** where the author's taste is strongest, with 10 of the author's own screenshots as references. Each build still starts from an empty folder, so it sees only its input and the task, not Pinch's code. The tasks, written before either input:
+
+1. The pricing page for Pinch, with one plan at $19 once.
+2. The account page for Pinch: email, purchase, credits, the agent connection and deleting the account.
+3. Your rules in Pinch, with 30 rules grouped by topic and one question waiting.
+
+**Then two rounds of corrections,** each started with `run.ts round <dir>`, which refuses until every pair so far is judged:
+
+1. The script draws the first build of the task from each way, in `round-N/`. This says which way made it, so it comes only after those verdicts are saved.
+2. **Pinch:** add `for-pinch-N.png` to Pinch, say "This is ours", talk over it, Add to your rules, read them, Export. The zip goes in `round-N/pinch/`.
+3. **By hand:** write the corrections in `round-N/hand/notes.md`, in place of the line asking for them.
+4. Each way corrects its own build, at most five notes, and both are timed. The minutes go in `round-N/test.json`.
+5. `build`, `judge` and `score` on `round-N`: the next task, built twice each way, for 4 builds and 2 pairs.
+
+Round 1 corrects task 1 and builds task 2. Round 2 corrects task 2 and builds task 3, from both rounds' corrections. `score` on the test folder then gives both verdicts.
+
+**The verdict, set now.** The rule at the top of this page, twice:
+
+- **References:** on the first 6 pairs, does Pinch's package beat notes by hand?
+- **The loop:** on the last 4 pairs, with the minutes of both rounds. Build it only if these reach **Dramatically better** and the author answers yes to "would you do another round unprompted?". Anything less and it isn't built.
+
+**Limits known now:**
+
+- Standalone pages, with no design system. A design system trial follows only if this passes.
+- Ten pairs and one person. Earlier runs moved by a pair or more on noise alone, so this decides what to build next, and it isn't a claim about Pinch.
+- The author made Pinch and wants it to win. Only the judging is blind: correcting says which way made the build being corrected.
+- Pinch goes first each time, which gives the hand way a head start in thinking it through.
+- It doesn't test a new version having to beat the last one, which needs more rounds than this.
+- Where the words come out wrong, that counts against Pinch: a real user would hit the same thing.
+

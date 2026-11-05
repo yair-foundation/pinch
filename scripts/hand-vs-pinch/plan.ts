@@ -14,6 +14,8 @@ export type Settings = {
   minutes: { pinch: number | null; hand: number | null }
   /** The model the builds run on, as `claude --model` takes it; null for the author's default. */
   model: string | null
+  /** A round of corrections (D154), which builds one task. */
+  round?: number
 }
 
 export const SETTINGS: Settings = {
@@ -27,7 +29,9 @@ export const SETTINGS: Settings = {
 export function settingsProblems(s: Settings): string[] {
   const out: string[] = []
   const tasks = (s.tasks ?? []).filter((t) => t.trim())
-  if (tasks.length < 2 || tasks.length > 4)
+  if (s.round) {
+    if (tasks.length !== 1) out.push("A round builds one task.")
+  } else if (tasks.length < 2 || tasks.length > 4)
     out.push("Write two to four tasks in test.json.")
   if (!Number.isInteger(s.runs) || s.runs < 1 || s.runs > 4)
     out.push("Set runs to 1–4.")
@@ -195,11 +199,15 @@ export function score(
 }
 
 /** The score as `results.md`. */
-export function scoreText(s: Score, settings: Settings): string {
+export function scoreText(
+  s: Score,
+  settings: Settings,
+  title = "Hand vs Pinch: results",
+): string {
   const pct = (x: number) => `${Math.round(x * 100)}%`
   const tasks = settings.tasks.filter((t) => t.trim())
   return [
-    "# Hand vs Pinch: results",
+    `# ${title}`,
     "",
     `**${s.verdict}.**${s.judged < s.pairs ? ` ${s.judged} of ${s.pairs} pairs judged so far.` : ""}`,
     "",

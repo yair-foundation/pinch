@@ -59,6 +59,18 @@ describe("the hand-vs-Pinch test", () => {
     )
   })
 
+  it("wants one task in a round of corrections", () => {
+    assert.deepEqual(
+      settingsProblems({ ...SETTINGS, tasks: ["a"], round: 1 }),
+      [],
+    )
+    assert.equal(settingsProblems({ ...SETTINGS, tasks: ["a"] }).length, 1)
+    assert.equal(
+      settingsProblems({ ...SETTINGS, tasks: ["a", "b"], round: 1 }).length,
+      1,
+    )
+  })
+
   it("gives the verdict set before the test", () => {
     const v = (
       a: Record<string, Answer>,
