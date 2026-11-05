@@ -44,7 +44,25 @@ export function wordsFromChunks(chunks: readonly BrowserChunk[] | undefined): Ti
     const end = typeof to === 'number' ? Math.max(start, Math.round(to * 1000)) : start + 300;
     words.push({ text, start, end });
   }
-  return words;
+  return withoutRepeats(words);
+}
+
+/** A word to compare: "Good," and "good" are one word. */
+const bareWord = (text: string) => text.toLowerCase().replace(/[^a-z0-9']/g, '');
+
+/**
+ * Whisper reads long audio in overlapping chunks, and where two chunks read the overlap differently
+ * both can come back (D157): in time order, "Lots Lots of of space space". A word said over the
+ * same moment as the word before it is that word again. One said after it, "very, very", was said.
+ */
+function withoutRepeats(words: TimedWord[]): TimedWord[] {
+  const out: TimedWord[] = [];
+  for (const word of [...words].sort((a, b) => a.start - b.start)) {
+    const last = out.at(-1);
+    if (last && word.start < last.end && bareWord(word.text) === bareWord(last.text)) continue;
+    out.push(word);
+  }
+  return out;
 }
 
 /**

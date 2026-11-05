@@ -1229,7 +1229,7 @@ export const batchLabel = (i: number, b: Batch) =>
   `${String(i + 1).padStart(2, '0')}-${collectionSlug(b.name)}`;
 
 /** A batch's folder inside the package: "batches/02-pinch-2026-10-20/". */
-const batchFolder = (i: number, b: Batch) => `batches/${batchLabel(i, b)}/`;
+export const batchFolder = (i: number, b: Batch) => `batches/${batchLabel(i, b)}/`;
 
 /**
  * The whole collection as a package to keep (D104): `design-rules.md` and `rules.json` to read,

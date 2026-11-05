@@ -67,6 +67,27 @@ describe('transcript: the browser', () => {
     );
     assert.deepEqual(wordsFromChunks(undefined), []);
   });
+  it('drops the words of a chunk that repeat the overlap with the chunk before it', () => {
+    const words = wordsFromChunks([
+      { text: ' Lots', timestamp: [25, 25.3] },
+      { text: ' of', timestamp: [25.3, 25.5] },
+      { text: ' space,', timestamp: [25.5, 26] },
+      { text: ' Lots', timestamp: [25.02, 25.28] },
+      { text: ' of', timestamp: [25.32, 25.48] },
+      { text: ' space', timestamp: [25.52, 25.9] },
+      { text: ' between', timestamp: [26, 26.4] },
+    ]);
+    assert.equal(spoken(words), 'Lots of space, between');
+  });
+  it('keeps a word said twice, and two different words said over one moment', () => {
+    const said = [
+      { text: ' very,', timestamp: [1, 1.3] },
+      { text: ' very', timestamp: [1.3, 1.6] },
+      { text: ' nice', timestamp: [1.6, 2] },
+      { text: ' mice', timestamp: [1.7, 2] },
+    ] as { text: string; timestamp: [number, number] }[];
+    assert.equal(spoken(wordsFromChunks(said)), 'very, very nice mice');
+  });
 });
 
 describe('transcript: by screen', () => {

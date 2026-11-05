@@ -625,3 +625,6 @@ Two sittings put pointing above the plain file and the plain file above the rule
 - Standalone pages, not work in a repository with a design system, where D154 says Pinch's people work.
 - Neither way is notes really written by hand, so "better than manual" is still untested, and so are hand minutes.
 
+### The package changed, 2026-11-05
+
+Since D157, Pinch's Export gives the words and the pointing with no rules, so "Pinch's package" above means the older export, which is now Back up. For a new test or a round, the Pinch side is: add the screenshots, talk them through, Export, and put the zip in `pinch/`, with no reading and no questions. The two rounds set above haven't run. They still decide whether to build a loop, on this package, and their written corrections would be the first notes really written by hand.

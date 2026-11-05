@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, CircleHelp, Library, Star, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, Download, Star, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { type Asset, type Mark, verdictOf } from '@/lib/pin/model';
 import {
@@ -15,13 +15,14 @@ import {
   type Wheel,
   wheelTurn,
 } from '@/lib/pin/narration';
+import { READING_SHOWN } from '@/lib/pin/notes-package';
 import { opLabel, wordsByScreen } from '@/lib/pin/transcript';
 import { isWhole, voiceNotes, voicePrefix } from '@/lib/pin/voice-notes';
 import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
 import { browserVoiceOn, MODEL_MB, transcribeInBrowser } from './browser-voice';
-import { VERDICT_COLOR } from './render';
+import { MARK_COLOR } from './render';
 
 /*
  * The walkthrough (D131): the batch on a reel, after a View-Master. The screenshot being narrated
@@ -33,7 +34,7 @@ import { VERDICT_COLOR } from './render';
  * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
  * Finish and made into notes where the pointer was, with the voice tags heard applied (D137);
  * the end card lists them by screen, and the middle screenshot shows its notes, numbered. From
- * the end card the notes go to Your rules, where the package is exported (D144).
+ * the end card Export takes the notes to Your notes and gives the package (D144, D157).
  */
 
 /** What was said over one screen: its voice tags, and the notes the take made, numbered. */
@@ -70,7 +71,7 @@ function VoiceMarks({ marks }: { marks: Mark[] }) {
     <span aria-hidden className="pointer-events-none absolute inset-0">
       {marks.map((m, i) => {
         if (isWhole(m.shape)) return null;
-        const color = VERDICT_COLOR[verdictOf(m)];
+        const color = MARK_COLOR;
         const s = m.shape;
         const badge = (
           <span
@@ -220,7 +221,7 @@ export function Reel({
   onSave,
   onTake,
   onFlip,
-  onRules,
+  onExport,
 }: {
   assets: Asset[];
   urls: Record<string, string>;
@@ -234,8 +235,8 @@ export function Reel({
   onTake: (take: Take) => void;
   /** Turn a note's verdict round: what works, or what doesn't. */
   onFlip: (assetId: string, markId: string) => void;
-  /** Open Your rules, which keeps the batch's new notes (D87, D144). */
-  onRules: () => void;
+  /** Open Your notes, which keeps the batch's new notes, and give the package (D87, D157). */
+  onExport: () => void;
 }) {
   const [atEnd, setAtEnd] = useState(false);
   const at = atEnd ? assets.length : Math.min(index, assets.length - 1);
@@ -751,18 +752,20 @@ export function Reel({
                                   <span className="w-4 shrink-0 text-right font-mono text-[12px] text-muted-foreground tabular-nums">
                                     {n}
                                   </span>
-                                  <button
-                                    type="button"
-                                    aria-label={`Note ${n}: ${word}. Switch`}
-                                    onPointerDown={(e) => e.preventDefault()}
-                                    onClick={() => onFlip(s.id, mark.id)}
-                                    className={cn(
-                                      'shrink-0 rounded-full border border-border px-2 py-0.5 text-[12px] font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
-                                      VERDICT_TEXT[v],
-                                    )}
-                                  >
-                                    {word}
-                                  </button>
+                                  {READING_SHOWN && (
+                                    <button
+                                      type="button"
+                                      aria-label={`Note ${n}: ${word}. Switch`}
+                                      onPointerDown={(e) => e.preventDefault()}
+                                      onClick={() => onFlip(s.id, mark.id)}
+                                      className={cn(
+                                        'shrink-0 rounded-full border border-border px-2 py-0.5 text-[12px] font-medium transition-colors duration-150 motion-reduce:transition-none hover:bg-muted',
+                                        VERDICT_TEXT[v],
+                                      )}
+                                    >
+                                      {word}
+                                    </button>
+                                  )}
                                   <span className="text-foreground">
                                     {[mark.good, mark.bad].filter((x) => x.trim()).join(' ')}
                                     {mark.best && mark.good && (
@@ -791,9 +794,9 @@ export function Reel({
                   Back to the first
                 </button>
                 {made > 0 && (
-                  <button type="button" onClick={onRules} className={PRIMARY}>
-                    <Library className="size-4" aria-hidden />
-                    Add to your rules
+                  <button type="button" onClick={onExport} className={PRIMARY}>
+                    <Download className="size-4" aria-hidden />
+                    Export
                   </button>
                 )}
               </div>

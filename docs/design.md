@@ -16,7 +16,7 @@ Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`),
 | Role | Current value | Where |
 | --- | --- | --- |
 | Landing headline | ABC Favorit Light, 1.75–2.75rem (3.4vw), 1.04 leading, -0.035em tracking | landing, top left (D133, D134) |
-| Page title | 24px medium, tight tracking | Your rules |
+| Page title | 24px medium, tight tracking | Your notes |
 | Card title | 15px medium | a rule's title |
 | Group label | 13px medium muted, with its count | a topic's rules on Your rules |
 | Section heading (panel titles) | 14px medium | notes panel |
