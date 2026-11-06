@@ -2,6 +2,7 @@
 
 import { type RefObject, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { CURSOR_PATH } from './landing-art';
 
 /*
  * A take acted out on the landing (D169): a cursor marks one spot after another while a sound wave
@@ -79,7 +80,9 @@ export function Wave({ on, className }: { on: boolean; className?: string }) {
   );
 }
 
-/** The pointer, placed in its parent by its tip. */
+const CURSOR_WIDTH = 30;
+
+/** The author's cursor, placed in its parent by its tip. */
 export function DemoCursor({
   left,
   top,
@@ -94,16 +97,16 @@ export function DemoCursor({
       aria-hidden
       className={cn('demo-cursor', className)}
       style={{ left, top }}
-      width="30"
-      height="34"
-      viewBox="0 0 30 34"
+      width={CURSOR_WIDTH}
+      viewBox="8.2 10.6 82 85"
     >
       <path
-        d="M3 3V27L9.500 21.500L13.500 31L18.500 29L14.500 19.500H23Z"
+        d={CURSOR_PATH}
         fill="#17131f"
         stroke="#fff"
-        strokeWidth="2.500"
+        strokeWidth={16}
         strokeLinejoin="round"
+        paintOrder="stroke"
       />
     </svg>
   );

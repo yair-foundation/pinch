@@ -5,6 +5,10 @@
 
 type ArtProps = { className?: string };
 
+/** The author's cursor (D135): an arrow with no leg, in a drawing 82 by 85, its tip at 8.2, 10.6. */
+export const CURSOR_PATH =
+  'M32.6389 74.8863L8.18983 10.5709C7.61473 9.05806 9.00696 7.59711 10.4499 8.19924L71.7928 33.7977C73.1748 34.3746 73.3641 36.3478 72.1123 37.1274L49.7021 51.0827C49.4565 51.2356 49.252 51.4502 49.1065 51.7079L35.814 75.2193C35.0715 76.5328 33.1897 76.3353 32.6389 74.8863Z';
+
 /** The marks on the mock page, in its 320 by 300 drawing. */
 export const MOCK_SPOTS = [
   { n: 1, x: 14, y: 50, w: 146, h: 74 },
@@ -309,7 +313,13 @@ export function StepPoint({ className }: ArtProps) {
       <text x="26" y="61" fontSize="13" textAnchor="middle" style={{ letterSpacing: 0 }}>
         1
       </text>
-      <path className="o" fill="#fff" d="M50 42L92 62L72 68L84 92L72 98L60 74L46 88Z" />
+      <path
+        className="o"
+        fill="#fff"
+        transform="translate(44 38) scale(.75)"
+        style={{ strokeWidth: 5.3 }}
+        d={CURSOR_PATH}
+      />
       <path className="t" d="M96 40l8-8M100 54h9" />
     </svg>
   );

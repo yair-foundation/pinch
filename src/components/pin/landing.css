@@ -159,6 +159,8 @@
   position: absolute;
   z-index: 30;
   pointer-events: none;
+  overflow: visible;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.25));
   transition:
     left 0.75s cubic-bezier(0.45, 0, 0.2, 1),
     top 0.75s cubic-bezier(0.45, 0, 0.2, 1);
