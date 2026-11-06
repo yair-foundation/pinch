@@ -8,7 +8,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 | # | Question | Until decided |
 | --- | --- | --- |
-| – | None open. | |
+| D174 | What makes Pinch a must-have: the taste harness, capture, memory and a check against the person's own takes? See [taste-harness.md](taste-harness.md). | Nothing changes in the product. First, `predict.ts` on the author's 28 blind picks, which needs no new judging. |
 
 ## Settled
 
