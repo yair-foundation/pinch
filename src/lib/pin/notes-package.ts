@@ -56,11 +56,12 @@ const MARKS_DRAWN =
 const MARKS_IN_WORDS =
   "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours. A mark's colour means nothing.";
 
-/** A note's words, as they were said. */
+/** A note's words, as they were said (D168). Notes kept before that are only known sorted. */
 const wordsOf = (n: BatchNote) =>
-  [n.works, n.doesNotWork]
-    .filter((x) => x.trim())
-    .join(' ')
+  (n.spoken?.trim() ||
+    [n.works, n.doesNotWork]
+      .filter((x) => x.trim())
+      .join(' '))
     .replace(/\s*\n\s*/g, ' ');
 
 function manifestOf(found: ReadonlyMap<string, Uint8Array> | null | undefined, b: Batch): unknown {

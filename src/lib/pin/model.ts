@@ -688,7 +688,7 @@ export function manifest(
             ...(m.origin === 'ai'
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : m.origin === 'voice'
-                ? { origin: 'voice' }
+                ? { origin: 'voice', ...(m.quote ? { spoken: m.quote } : {}) }
                 : {}),
             ...suggestedData(m),
           })),

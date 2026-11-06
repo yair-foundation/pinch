@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D166.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D168.
 
 ## Open (need the user)
 
@@ -12,6 +12,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-11-06 — D168 A note in the package keeps the order it was said in (the author's first real review). Amends D157.** Sentences get sorted into what works and what doesn't, and D157 dropped those labels but still joined the two, with what works first. So a note holding both came out with its sentences swapped: "So the comparison is not relevant. I think that comparison to typing is not the right comparison". The words said were already kept with each note, so the export now carries them as `spoken`, and `notes.md` uses them. It touched few notes, 1 of 65 in the first take and 0 of 12 in round 2's, but one that it touched lost its meaning. Notes kept before this can't be put back in order, and the earlier tests ran with it.
 - **2026-11-06 — D166 Export says each mark in words and dims its close-up, reading the text in the browser (the user: "Build it"). Amends D157.** Words with dimmed close-ups won 5 of 6 blind pairs against the mark drawn on the close-up, 13 changes against 20, and the test's rule built them if they're cheap in a browser (hand-vs-pinch.md). A browser read 97% of the words Apple's Vision did.
   - **What the package gains.** Under each note, a line such as `Where: top left, on "Choose a plan". Colours: #ffffff, #020202.`, and close-ups with the spot bright, the rest dimmed and nothing drawn on them. The marked copies stay. It's the two together because only the two together were tested. Notes kept before this keep their old close-ups and opening line.
   - **The reader** is ppu-paddle-ocr, pinned to one version as it's a small project, in a worker of its own (`screen-text.worker.ts`), on the processor, which was as quick as the graphics card. It reads whole screens, because reading only the spots cuts text in half. The first time it fetches about 11 MB: 6 MB of models from Hugging Face, kept in the browser's cache because the browser wouldn't keep them itself, and a 4.6 MB runtime file from jsDelivr. That's a different file from the voice model's, which uses the same version of the runtime but another build of it.
