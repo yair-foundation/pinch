@@ -1,0 +1,120 @@
+/*
+ * The landing (D169) keeps its own colours and type in both themes: flat lilac, bright accents and a
+ * big grotesque, for the one page that has to be remembered. The tool stays neutral, because a
+ * surface around a screenshot being judged has to stay out of the way.
+ */
+.pinch-landing {
+  --ink: #17131f;
+  --soft: #544e60;
+  --lilac: #d8c3f6;
+  --mist: #f6f1fd;
+  --violet: #5a32d1;
+  --butter: #ffc93c;
+  --line: #e6e1ee;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-landing-body), system-ui, sans-serif;
+}
+
+.pinch-landing .title {
+  font-family: var(--font-landing-display), sans-serif;
+  font-variation-settings:
+    'opsz' 96,
+    'wdth' 96;
+  font-weight: 750;
+  letter-spacing: -0.028em;
+  word-spacing: 0.04em;
+  line-height: 1;
+}
+.pinch-landing .subtitle {
+  font-family: var(--font-landing-display), sans-serif;
+  font-variation-settings:
+    'opsz' 32,
+    'wdth' 98;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.pinch-landing .figure {
+  font-family: var(--font-landing-display), sans-serif;
+  font-variation-settings:
+    'opsz' 96,
+    'wdth' 92;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  word-spacing: 0.02em;
+  line-height: 0.95;
+}
+
+.pinch-landing svg .o {
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pinch-landing svg .t {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  fill: none;
+}
+.pinch-landing svg text {
+  font-family: var(--font-landing-body), sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  fill: var(--ink);
+}
+
+.pinch-landing .press {
+  transition: transform 0.12s ease;
+}
+.pinch-landing .press:hover {
+  transform: translateY(-2px);
+}
+.pinch-landing .press:active {
+  transform: translateY(3px);
+}
+.pinch-landing a:focus-visible,
+.pinch-landing button:focus-visible {
+  outline: 3px solid var(--violet);
+  outline-offset: 3px;
+}
+
+.pinch-landing .tag::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--butter);
+  border-left: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  transform: rotate(45deg);
+}
+
+.pinch-landing .bit {
+  animation: landing-bob 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.pinch-landing .bit:nth-child(2n) {
+  animation-delay: -1.1s;
+}
+.pinch-landing .bit:nth-child(3n) {
+  animation-delay: -1.9s;
+}
+@keyframes landing-bob {
+  50% {
+    transform: translateY(6px) rotate(12deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pinch-landing .bit {
+    animation: none;
+  }
+  .pinch-landing .press {
+    transition: none;
+  }
+}

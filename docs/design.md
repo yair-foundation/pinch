@@ -11,11 +11,10 @@ The visual rules Pinch follows, condensed from the design foundations of the sys
 
 ## Typography
 
-Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`), and ABC Favorit Light for the landing's title only (`font-display`, D134). Text takes a role, never a one-off size:
+Geist for all text in the tool (`--font-sans`) and Geist Mono for keyboard hints (`font-mono`). The landing has its own type, below. Text takes a role, never a one-off size:
 
 | Role | Current value | Where |
 | --- | --- | --- |
-| Landing headline | ABC Favorit Light, 1.75–2.75rem (3.4vw), 1.04 leading, -0.035em tracking | landing, top left (D133, D134) |
 | Page title | 24px medium, tight tracking | none on the page since D164 |
 | Card title | 15px medium | a rule's title |
 | Group label | 13px medium muted, with its count | a topic's rules on Your rules |
@@ -27,9 +26,13 @@ Geist for all text (`--font-sans`), Geist Mono for keyboard hints (`font-mono`),
 - **13px is the floor.** Smaller only for secondary information the user can do without (a footnote); never a label, value, action or warning. The desktop-only message is 13px.
 - Placeholders (a grey suggestion, an example) render muted and regular weight.
 
+## The landing
+
+The landing keeps its own look in both themes (D169), in `landing.tsx`, `landing-art.tsx` and `landing.css`: flat lilac with butter yellow and violet, thick-outlined drawings with some humour, Bricolage Grotesque for titles and big numbers, and Figtree for text. The rules on this page about neutral surfaces, Geist and the type roles are for the tool, where a surface around a screenshot has to stay out of the way. Contrast, keyboard use, hit areas, reduced motion and the copy rules hold here too.
+
 ## Colour
 
-Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-muted`, `border-border`, …); no hard-coded greys apart from the landing's main button (neutral-900, white in dark mode).
+Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-muted`, `border-border`, …); no hard-coded greys.
 
 | | Light | Dark |
 | --- | --- | --- |
@@ -45,8 +48,8 @@ Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-mu
 
 ## Motion
 
-- Short and purposeful: the landing's ring spinning in, settling and drifting, with its title typing in as it starts, and the cursor and waveform over it showing someone talking through the pictures (D133, D135, the one decorative scene, and the first thing anyone sees), the shimmer while rules load, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). No other decorative motion.
-- **Reduced motion is honoured.** The theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the ring stands settled, the landing's title is there at once, the cursor's demo doesn't run and the waveform stands still; the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
+- Short and purposeful: the small pieces falling from the landing's pinch (D169, the one decorative motion), the shimmer while rules load, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). No other decorative motion.
+- **Reduced motion is honoured.** The theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the landing's pieces stay still and its buttons don't move when pressed; the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
 
 ## Icons
 
