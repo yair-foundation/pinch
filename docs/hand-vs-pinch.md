@@ -628,3 +628,59 @@ Two sittings put pointing above the plain file and the plain file above the rule
 ### The package changed, 2026-11-05
 
 Since D157, Pinch's Export gives the words and the pointing with no rules, so "Pinch's package" above means the older export, which is now Back up. For a new test or a round, the Pinch side is: add the screenshots, talk them through, Export, and put the zip in `pinch/`, with no reading and no questions. The two rounds set above haven't run. They still decide whether to build a loop, on this package, and their written corrections would be the first notes really written by hand.
+
+### The rounds on the new package: set before they run, 2026-11-05
+
+What changes from the rounds set in D154 (D158):
+
+- **The folder is `~/pinch-test-2`,** whose two ways are the plain file and pointing. Each way corrects its own first build of the pricing page, then the account page.
+- **Pinch's way:** the new build on the author's machine in Chrome, since it isn't deployed and the app's own browser blocks the microphone: a production build with the browser's voice model, as the live site has. The author's 65 notes are loaded into it first through Pinch's own import, which redraws their marks in one colour; the words came back identical to the plain file. The author talks over the build, says "This is ours", and presses Export. The zip holds the 65 notes and the corrections so far.
+- **By hand:** Claude shows the build, and the author types at most five corrections as a message in the chat, which is how someone corrects Claude by hand. Claude copies them word for word into `hand/notes.md`.
+- **Minutes** come from the session's timestamps: for Pinch from the author's "start" to their "exported", leaving out the wait for the words to be read as the author estimates it, and by hand from Claude showing the build to the author's message.
+
+**The verdict doesn't change.** On the last 4 pairs, the rule at the top of this page, with these minutes: build a loop only at **Dramatically better**, and only if the author answers yes to "would you do another round unprompted?".
+
+**Limits known now:**
+
+- Four pairs and one person. The first real microphone on this package is also its first correction.
+- Only the judging is blind: correcting says which way made the build being corrected.
+- Pinch goes first each time, though each way corrects a different build.
+- The hand way's earlier notes are the author's spoken words, as before. Only its corrections are really written by hand.
+
+**Round 1, first try, 2026-11-05: thrown out.** The take's words came back as 21 notes of looping nonsense, so nothing was built from it and its minutes don't count. The recording itself was sound: 94 seconds from the built-in microphone at a normal level, with long pauses between a few short sentences. On the same audio, the larger model on this machine (whisper.cpp, large-v3-turbo) heard "I'm missing the secondary button." and "I have nothing bad to say at this time.", and invented a little in the pauses. The browser's model (whisper-base.en) heard "I'm using the a continued button." and "I have nothing but to see it this time.", and filled the pauses with loops. 205 of its 264 words had no length, against none of 297 on a synthetic take with no pauses, but dropping those still leaves loops. So the small model needs talk without long pauses, as in the author's first take, and Pinch gave no warning before exporting the result.
+
+**The rounds use the larger model (D159).** At the author's choice, round 1 and round 2 read the words with whisper.cpp's large-v3-turbo on this Mac, not the browser's model. This replaces "wrong words count against Pinch" and "with the browser's voice model" above. So the result says whether talking and pointing beats typing, and not whether the live site's words are good enough, which this first try says they aren't for talk with long pauses.
+
+**Round 1, as it ran.** The second try read well, and "This is ours" was heard. The author said more than five things, so the limit of five notes was lifted for the typing too: each way says as much as it would. One thought often split across several notes at the author's pauses, 19 in all, kept as they came. Chrome had lost the local sign-in, so its export held only this take, and Claude added the 65 notes to the zip as a signed-in export would have them, with the words untouched. Minutes are in `round-1/test.json`, from the session's timestamps, with about 12 seconds' wait for the words taken off Pinch's and the clock restarted when the author asked what to type.
+
+**Round 1's result.** The account page, judged blind: pointing won both pairs and needed 5 changes against typing's 7, 29% fewer, in 3 minutes against 3.7. The author's notes on the pairs: pointing's illustrations and icons were better, and typing's font and two cards side by side were better, both things the author's typed corrections had named.
+
+**Round 2, as it ran.** The author signed in again in Chrome. Its export brought back the 21 notes of the thrown-out try in place of the 19 real ones, probably because Claude deleted them on the server while the tab was open and the tab saved them back. Claude built the round's zip from round 1's real zip and this take's 12 notes, words untouched, so it holds 65, 19 and 12. Minutes are in `round-2/test.json`.
+
+**Round 2's minutes by hand, set before its pairs are judged.** The timestamps give 10.2 minutes, against 3.7 in round 1. The author first wasn't sure, then confirmed they didn't step away, so `round-2/test.json` holds 10.2, which includes any time spent looking and thinking. Whether the message was typed or dictated isn't known. At round 1's pace of 31.6 words a minute, its 177 words would take 5.6 minutes, so the result also says what the verdict would be at that figure.
+
+### The rounds: the results, 2026-11-06
+
+**Dramatically better, on the minutes.** Judged blind, pointing won 3 of the 4 pairs and needed 9 changes against writing's 12, 25% fewer, in 4.9 minutes against 13.9, 0.35 times. That passes the rule's second way, at least half the pairs in half the minutes or less. It doesn't pass the first, which needs 40% fewer changes.
+
+| Round | Task | Run | Closer | Changes writing | Changes pointing |
+| --- | --- | --- | --- | ---: | ---: |
+| 1 | Account | 1 | Pointing | 4 | 2 |
+| 1 | Account | 2 | Pointing | 3 | 3 |
+| 2 | Your rules | 1 | Writing | 1 | 3 |
+| 2 | Your rules | 2 | Pointing | 4 | 1 |
+
+**It hangs on one number.** Round 2's writing took 10.2 minutes against round 1's 3.7. The author didn't step away, but isn't sure what else was in it. At round 1's pace of writing, 5.6 minutes, the total is 9.3 and the ratio 0.53, which is **Better, not dramatically**: the rule's half is just missed.
+
+**What the author wrote on the pairs:** each way taught different things. Pointing's illustrations and icons were preferred, and writing's font and two cards side by side, which their written corrections had named. Their own best page would take from both.
+
+**Limits of this result:**
+
+- Four pairs and one person, who knew which way made each build they corrected.
+- Pointing ran on the larger voice model on this Mac (D159), with speech detection. On the live site's small model the same talk came out as nonsense, so this is not yet what people get.
+- Only the corrections were really written by hand. Both ways' first 65 notes were the author's spoken words, so a whole first take by hand is still untested, and may be typed or dictated in round 2's case: that isn't known.
+- A talked correction splits one thought across several notes at the pauses, 31 notes in all, against two written messages. Agents followed them in order, but nobody has asked whether they'd do better whole.
+- Both rounds' zips were put together by Claude from Pinch's exports, because of a lost sign-in and notes restored by an open tab, words untouched. Those two faults are in how the test ran, and the sign-in's cause isn't known.
+
+**The other half of D154's condition:** asked whether they would do another round unprompted, the author answered "Yes, I would". So the condition is met, on the minutes as timed (D160).
+

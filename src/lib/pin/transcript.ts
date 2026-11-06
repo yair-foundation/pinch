@@ -13,6 +13,29 @@ type WhisperSegment = { offsets?: { from?: number; to?: number }; text?: string 
 /** Sounds whisper writes in brackets instead of words: "[BLANK_AUDIO]", "(music)". */
 const NOT_SPEECH = /^[[(*].*[\])*]$/;
 
+/** Longer than anyone says a word: the rest of it is a pause. */
+const LONGEST_WORD = 1500;
+const USUAL_WORD = 400;
+
+/**
+ * Whisper stretches the words either side of a pause across it (D159): "button" ends as the next
+ * sentence starts, and that sentence's first word starts as "button" ends. Pulled back, a note's
+ * words are when they were said, so the pause shows and the pointer is read at the right moment.
+ * A long word that comes first, or after a long word or a full stop, opens a sentence, so its end
+ * is right; any other closes one, so its start is right.
+ */
+function withoutStretch(words: readonly TimedWord[]): TimedWord[] {
+  const long = (w: TimedWord) => w.end - w.start > LONGEST_WORD;
+  return words.map((word, i) => {
+    if (!long(word)) return word;
+    const before = words[i - 1];
+    const opens = !before || long(before) || /[.?!]$/.test(before.text);
+    return opens
+      ? { ...word, start: word.end - USUAL_WORD }
+      : { ...word, end: word.start + USUAL_WORD };
+  });
+}
+
 /** whisper.cpp's JSON, word per segment, as timed words in milliseconds. */
 export function wordsFromWhisper(json: unknown): TimedWord[] {
   const segments = (json as { transcription?: WhisperSegment[] } | null)?.transcription;
@@ -26,7 +49,7 @@ export function wordsFromWhisper(json: unknown): TimedWord[] {
       continue;
     words.push({ text, start, end: Math.max(start, end) });
   }
-  return words;
+  return withoutStretch(words);
 }
 
 /** A word as transformers.js gives it in the browser (D140): its text and its times in seconds. */
@@ -44,7 +67,7 @@ export function wordsFromChunks(chunks: readonly BrowserChunk[] | undefined): Ti
     const end = typeof to === 'number' ? Math.max(start, Math.round(to * 1000)) : start + 300;
     words.push({ text, start, end });
   }
-  return withoutRepeats(words);
+  return withoutRepeats(withoutStretch(words));
 }
 
 /** A word to compare: "Good," and "good" are one word. */
@@ -63,6 +86,24 @@ function withoutRepeats(words: TimedWord[]): TimedWord[] {
     out.push(word);
   }
   return out;
+}
+
+/**
+ * Whether a take's words look invented (D159): over a long silence Whisper can repeat a phrase on a
+ * loop, "I'm not going to get it" thirteen times over. A phrase of up to eight words said three times
+ * running, or a shorter one more, is that; a person says "very, very" or "no, no, no".
+ */
+export function wordsLookWrong(words: readonly TimedWord[]): boolean {
+  const bare = words.map((w) => bareWord(w.text)).filter(Boolean);
+  for (let phrase = 1; phrase <= 8; phrase++) {
+    const times = phrase === 1 ? 5 : phrase === 2 ? 4 : 3;
+    let same = 0;
+    for (let i = phrase; i < bare.length; i++) {
+      same = bare[i] === bare[i - phrase] ? same + 1 : 0;
+      if (same >= phrase * (times - 1)) return true;
+    }
+  }
+  return false;
 }
 
 /**

@@ -114,7 +114,7 @@ function init() {
   console.log(`Ready in ${dir}. Next, as docs/hand-vs-pinch.md says:
   1. Put 8–12 screenshots in screens/.
   2. Write the tasks in test.json.
-  3. Pinch first: talk them through, Add to your rules, read them, Export. The zip goes in pinch/.
+  3. Pinch first: talk them through, Export. The zip goes in pinch/.
   4. A day later, by hand: hand/notes.md.
   5. Your minutes for each in test.json, then build.`)
 }
@@ -415,7 +415,7 @@ function round() {
     round: n,
   } satisfies Settings)
   console.log(`Round ${n} is ready in ${at(to)}. Each way corrects its own build, at most five notes, timed:
-  1. Pinch: add for-pinch-${n}.png, say "This is ours", talk it through, Add to your rules, read them, Export. The zip goes in ${to}/pinch/.
+  1. Pinch: add for-pinch-${n}.png, say "This is ours", talk it through, Export. The zip, with the earlier notes in it, goes in ${to}/pinch/.
   2. By hand: look at ${to}/hand/render-${n}.png and write your corrections in ${to}/hand/notes.md.
   3. Your minutes for each in ${to}/test.json, then build, judge and score ${to}.`)
 }
@@ -438,7 +438,9 @@ function scoreRounds(settings: Settings) {
     }))
   const spent = (arm: Arm) =>
     each.every((e) => e.settings.minutes[arm] !== null)
-      ? each.reduce((all, e) => all + (e.settings.minutes[arm] ?? 0), 0)
+      ? Math.round(
+          each.reduce((all, e) => all + (e.settings.minutes[arm] ?? 0), 0) * 10,
+        ) / 10
       : null
   const minutes = { pinch: spent("pinch"), hand: spent("hand") }
   const s = score(

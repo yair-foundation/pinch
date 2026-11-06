@@ -11,7 +11,10 @@ import type { TimedWord } from './pin/voice-tags';
  * Today the only engine is whisper.cpp on the machine running `next dev`: free, and the audio never
  * leaves it. It is on with PINCH_WHISPER_MODEL (the path of a ggml model, from
  * `pnpm whisper-model`) and never on Vercel. The audio is written to a temporary folder for the
- * two programs and deleted as soon as they finish.
+ * two programs and deleted as soon as they finish. With PINCH_WHISPER_VAD (the path of a Silero
+ * model, also from `pnpm whisper-model`), whisper reads only the stretches of speech (D159): over a
+ * long pause it otherwise times words up to 14 seconds off, which puts notes where the pointer was
+ * by then, and repeats its last sentence.
  */
 
 const run = promisify(execFile);
@@ -28,6 +31,7 @@ export const transcriber = (): 'whisper' | null =>
 export async function transcribe(audio: Uint8Array): Promise<TimedWord[]> {
   const model = process.env.PINCH_WHISPER_MODEL;
   if (!model || transcriber() !== 'whisper') throw new Error('Speech-to-text is off.');
+  const vad = process.env.PINCH_WHISPER_VAD;
   const dir = await mkdtemp(join(tmpdir(), 'pinch-voice-'));
   try {
     const input = join(dir, 'take');
@@ -65,6 +69,7 @@ export async function transcribe(audio: Uint8Array): Promise<TimedWord[]> {
         '-np',
         '--prompt',
         PROMPT,
+        ...(vad ? ['--vad', '--vad-model', vad] : []),
       ],
       { maxBuffer: 16 * 1024 * 1024 },
     );

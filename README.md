@@ -34,10 +34,10 @@ Talk through screenshots, and have your own agent read the notes into rules, wit
 
 ```bash
 brew install whisper-cpp ffmpeg
-pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… for .env.local
+pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… and PINCH_WHISPER_VAD=… for .env.local
 ```
 
-Then in `.env.local`: that `PINCH_WHISPER_MODEL`, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
+Then in `.env.local`: those two, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
 
 1. Add screenshots, press R and talk while you point; F, then Enter. The notes show on each screen.
 2. Your rules, Connect agent, Sign in (a local account, no Google), Connect: run the command it shows. It adds the server as `pinch-local`, beside the live `pinch`.

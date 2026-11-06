@@ -16,7 +16,7 @@ import {
   wheelTurn,
 } from '@/lib/pin/narration';
 import { READING_SHOWN } from '@/lib/pin/notes-package';
-import { opLabel, wordsByScreen } from '@/lib/pin/transcript';
+import { opLabel, wordsByScreen, wordsLookWrong } from '@/lib/pin/transcript';
 import { isWhole, voiceNotes, voicePrefix } from '@/lib/pin/voice-notes';
 import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
@@ -460,6 +460,12 @@ export function Reel({
     }
   };
 
+  /** The kept take's notes taken out, and a new recording in its place (D159). */
+  const talkAgain = () => {
+    if (saved) onTake({ ...saved.take, words: [] });
+    void record();
+  };
+
   const finish = async () => {
     if (!recorded()) return;
     setSaveError(false);
@@ -789,6 +795,18 @@ export function Reel({
                 ) : (
                   <p className="m-0 text-sm text-muted-foreground">No words heard.</p>
                 ))}
+              {saved.take.words && wordsLookWrong(saved.take.words) && (
+                <p role="alert" className="m-0 text-sm text-destructive">
+                  These words look wrong.{' '}
+                  <button
+                    type="button"
+                    onClick={talkAgain}
+                    className="underline underline-offset-2"
+                  >
+                    Talk again
+                  </button>
+                </p>
+              )}
               <div className="mt-1 flex gap-2">
                 <button type="button" onClick={() => turn(0)} className={BUTTON}>
                   Back to the first
