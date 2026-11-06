@@ -32,6 +32,7 @@ import { unzip } from '@/lib/pin/unzip';
 import { applyTake, flipVerdict, removedScreens } from '@/lib/pin/voice-notes';
 import { isPdf } from '@/lib/pin/pdf-pages';
 import { updatePrice } from '@/lib/pin/credits';
+import { READING_SHOWN } from '@/lib/pin/notes-package';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
 import { RingDemo, Waveform } from './ring-demo';
@@ -59,7 +60,7 @@ import * as store from './store';
 
 /*
  * Pinch: add a batch of screenshots and talk through them on the reel (D131, `reel.tsx`), the
- * microphone and the pointer kept as a take; Your rules reads notes into rules. Images stay in
+ * microphone and the pointer kept as a take; Export gives the package (D157). Images stay in
  * this browser; the text of written notes is saved anonymously (`notes-log.ts`).
  */
 
@@ -300,6 +301,8 @@ function Workspace() {
   const stale = useRef(false);
   // The batch, or the collections in its place (D79). Per visit.
   const [view, setView] = useState<'batch' | 'collections'>('batch');
+  // The end card's Export (D157): the notes page opens and the package goes.
+  const [exportNext, setExportNext] = useState(false);
   const viewRef = useRef(view);
   viewRef.current = view;
   // Who is looking, and their credits (D81, D98). Anyone marks images and reads notes into
@@ -498,8 +501,8 @@ function Workspace() {
           text: store.isQuotaError(e)
             ? 'Browser storage is full. Remove some images, then continue.'
             : store.inMemory()
-              ? 'This browser blocks storage, so your session lasts until you close the tab. Open Your rules before you leave.'
-              : "Couldn't save in this browser. Open Your rules to keep what your notes teach.",
+              ? 'This browser blocks storage, so your session lasts until you close the tab. Export before you leave.'
+              : "Couldn't save in this browser. Export to keep your notes.",
         }),
       )
       .finally(() => {
@@ -999,7 +1002,7 @@ function Workspace() {
               ) : (
                 <ArrowLeft className="size-4" aria-hidden />
               )}
-              {view === 'batch' ? 'Your rules' : 'Back'}
+              {view === 'batch' ? 'Your notes' : 'Back'}
             </button>
           )}
           {me?.paywall && me.signIn && !me.user && (
@@ -1053,8 +1056,8 @@ function Workspace() {
           inert={dialog !== null}
           className="m-0 shrink-0 border-b border-border bg-muted/60 px-4 py-2 text-center text-[13px] text-foreground"
         >
-          This browser blocks storage, so your session lasts until you close the tab. Open Your
-          rules before you leave.
+          This browser blocks storage, so your session lasts until you close the tab. Export
+          before you leave.
         </p>
       )}
 
@@ -1111,6 +1114,8 @@ function Workspace() {
           plan={me?.plan ?? null}
           onPay={openPay}
           onCredits={refreshMe}
+          exportOnArrive={exportNext}
+          onExported={() => setExportNext(false)}
           onBack={() => setView('batch')}
           onReset={() => {
             commit([]);
@@ -1122,7 +1127,7 @@ function Workspace() {
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
-          offer={me?.paywall ? { ...OFFER, price: me.price } : undefined}
+          offer={READING_SHOWN && me?.paywall ? { ...OFFER, price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
         />
       ) : (
@@ -1159,7 +1164,10 @@ function Workspace() {
               marks: a.marks.map((m) => (m.id === markId ? flipVerdict(m) : m)),
             }))
           }
-          onRules={() => setView('collections')}
+          onExport={() => {
+            setExportNext(true);
+            setView('collections');
+          }}
         />
       )}
       {dialog === 'shortcuts' && (
@@ -1173,7 +1181,7 @@ function Workspace() {
           opener={opener.current}
           onClose={closeDialog}
           onDeleted={() =>
-            leaveAccount('Your account and its rules were deleted. Your credits are kept.')
+            leaveAccount('Your account and its notes were deleted.')
           }
         />
       )}
@@ -1213,7 +1221,7 @@ function Workspace() {
         >
           <p className="m-0 text-muted-foreground">
             Your {count(assets.length, 'image')} and {count(allMarks.length, 'note')} are kept in
-            this browser until you start over. Open Your rules first to keep what your notes teach.
+            this browser until you start over. Open Your notes first to keep them.
           </p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
@@ -1251,7 +1259,7 @@ function Workspace() {
                 'flex min-h-9 items-center rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
               )}
             >
-              Open your rules
+              Open your notes
             </button>
           </div>
         </Dialog>
@@ -1281,19 +1289,19 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <ul className="m-0 list-none space-y-2.5 p-0 text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Images',
-          'stay in this browser. The close-up of each mark goes to Anthropic with a suggestion, and with its note when you update your rules, never stored on the way; once you sign in, your rules keep theirs in your account.',
+          'stay in this browser; once you sign in, your notes keep theirs in your account.',
         )}
         {item(
           'Your voice',
-          'stays in this browser: a voice model from Hugging Face, downloaded once, turns it into words here, and the recording is kept only in this browser.',
+          'stays in this browser: a voice model from Hugging Face, up to 570 MB and downloaded once, turns it into words here, and the recording is kept only in this browser.',
         )}
         {item(
           'Notes',
-          'go to Anthropic to find your rules, and their words are kept anonymously for 90 days, topic-tagged by TypeSafe’s Jev.',
+          'have their words kept anonymously for 90 days, topic-tagged by TypeSafe’s Jev.',
         )}
         {item(
           'Account',
-          'holds your Google email, name and picture; Lemon Squeezy takes the payment. Until you sign in, your credits are counted under a random id kept in this browser. Your agent’s key is kept only as a hash; with it your agent gets your rules, their close-ups and, when it asks, the screenshots they come from. Deleting your account deletes your rules; your credits are kept.',
+          'holds your Google email, name and picture; Lemon Squeezy took any payment. An agent’s key is kept only as a hash. Deleting your account deletes your notes and rules; any credits you hold are kept.',
         )}
         {item(
           'No ads, no analytics.',
@@ -1496,8 +1504,8 @@ function EmptyState({
               </span>
             </h1>
             <p className="mt-4 mb-0 max-w-md text-[13px] leading-relaxed text-balance text-muted-foreground">
-              Walk through your screenshots out loud. Pinch turns what you say into rules for your
-              agent.
+              Walk through your screenshots out loud. Pinch turns what you say into a package for
+              your agent.
             </p>
             {/* The waveform sits in this row, centred on the page and on the button (D135). */}
             <div className="relative mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">

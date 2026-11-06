@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Archive,
   Check,
   ChevronDown,
   Cloud,
@@ -24,6 +25,7 @@ import {
   withReferenceTag,
   zipWithout,
 } from '@/lib/pin/library';
+import { NOTES_FILE, notesPackage, notesPackageRoot, READING_SHOWN } from '@/lib/pin/notes-package';
 import { beyondFree, freeProductOf, withFreeProduct } from '@/lib/pin/plan';
 import { PRINCIPLES } from '@/lib/pin/foundation';
 import { batchNotes, readExport } from '@/lib/pin/import';
@@ -106,6 +108,10 @@ import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
 /*
+ * Your notes (D157): the screenshots the person has talked through, and Export, the package their
+ * agent reads. Reading notes into rules is hidden with READING_SHOWN; rules already kept show on a
+ * tab of their own. What follows is how that part works.
+ *
  * Your rules (D79, D86, D87, D88): the person's one taste library, shown in
  * place of the images from the header. Coming here adds the open images' new
  * notes; Update rules has the AI read every note it hasn't read against the
@@ -289,6 +295,8 @@ export function CollectionsView({
   account,
   credits,
   plan,
+  exportOnArrive,
+  onExported,
   onPay,
   onCredits,
   onBack,
@@ -316,6 +324,9 @@ export function CollectionsView({
   credits: { balance: number; closed: boolean } | null;
   /** The account's plan (D123): Pro, or free with Pro's price and checkout; null until plans are on. */
   plan: { pro: boolean; price: string; url?: string } | null;
+  /** Came here by the end card's Export (D157): the package goes once the take's notes are in. */
+  exportOnArrive: boolean;
+  onExported: () => void;
   /** Ask for credits: this update needs more, or they are in the account. */
   onPay: () => void;
   /** An update took credits: read them again. */
@@ -336,8 +347,8 @@ export function CollectionsView({
   const [removing, setRemoving] = useState<string | null>(null);
   // Every rule reset (D141), waiting on "are you sure".
   const [resetting, setResetting] = useState(false);
-  // The rules, or the library of references they come from (D124).
-  const [tab, setTab] = useState<'rules' | 'references'>('rules');
+  // The library of references, or the rules drawn from them when there are any (D124, D157).
+  const [tab, setTab] = useState<'rules' | 'references'>('references');
   // Before the first update in this browser, what goes to the AI is said (D98).
   const [asking, setAsking] = useState(false);
   const [movable, setMovable] = useState<Collection[]>([]);
@@ -355,8 +366,8 @@ export function CollectionsView({
         tone: 'error',
         text:
           backend.kind === 'account'
-            ? 'Your rules didn’t save to your account. Check the connection; your change is kept here until it does.'
-            : 'This browser didn’t save your rules. Export the ones you want to keep.',
+            ? 'Your notes didn’t save to your account. Check the connection; your change is kept here until it does.'
+            : 'This browser didn’t save your notes. Export to keep them.',
       }),
     );
   }, [backend, onStatus]);
@@ -491,7 +502,7 @@ export function CollectionsView({
       } catch {
         ref.current = newCollection(RULES_NAME, newId(), nowIso());
         setC(ref.current);
-        onStatus({ tone: 'error', text: 'Your rules didn’t load. Reload to try again.' });
+        onStatus({ tone: 'error', text: 'Your notes didn’t load. Reload to try again.' });
         return;
       }
       // One collection each (D86): several made before are merged into the oldest, and one is
@@ -512,7 +523,7 @@ export function CollectionsView({
             .filter((x) => x.batches.length || x.rules.length)
         : [];
       if (moveFrom && waiting.length) {
-        onStatus({ tone: 'info', text: 'Moving your rules into your account…', sticky: true });
+        onStatus({ tone: 'info', text: 'Moving your notes into your account…', sticky: true });
         let moved = 0;
         try {
           for (const x of waiting) {
@@ -522,13 +533,13 @@ export function CollectionsView({
           dirty = false;
           onStatus({
             tone: 'info',
-            text: 'Your rules are in your account now, on every device you sign in on.',
+            text: 'Your notes are in your account now, on every device you sign in on.',
           });
         } catch (e) {
           setMovable(waiting.slice(moved));
           onStatus({
             tone: 'error',
-            text: `Your rules didn’t all move to your account. ${(e as Error).message}`,
+            text: `Your notes didn’t all move to your account. ${(e as Error).message}`,
           });
         }
       }
@@ -605,17 +616,17 @@ export function CollectionsView({
     };
   }, [batchIds, filesOf]);
 
-  /** The open images' notes that are new here, kept as an export; read by the AI next. */
+  /** The open images' notes that are new here, kept as an export; false if they couldn't be. */
   const addOpen = useCallback(async () => {
-    if (!ref.current) return;
+    if (!ref.current) return false;
     setBusy('add');
     try {
       const made = await batchZip();
-      if (!made) return;
+      if (!made) return true;
       const found = await unzip(await made.blob.arrayBuffer());
       const exp = readExport(found);
       const fresh = newNotes(ref.current, batchNotes(exp));
-      if (!fresh.length) return;
+      if (!fresh.length) return true;
       const id = newId();
       try {
         await backend.putBatch(id, made.blob);
@@ -627,7 +638,7 @@ export function CollectionsView({
               ? `Your notes didn’t upload. ${(e as Error).message}`
               : 'Browser storage is full, so your new notes weren’t kept.',
         });
-        return;
+        return false;
       }
       filesRef.current.set(id, Promise.resolve(found));
       const batch: Batch = {
@@ -640,8 +651,10 @@ export function CollectionsView({
         notes: fresh,
       };
       change((x) => withBatch(x, batch, nowIso()), true);
+      return true;
     } catch (e) {
       onStatus({ tone: 'error', text: `Your new notes weren’t added. ${(e as Error).message}` });
+      return false;
     } finally {
       setBusy(null);
     }
@@ -649,11 +662,12 @@ export function CollectionsView({
 
   // Coming here brings the open images' new notes along, once.
   const added = useRef(false);
+  const arrived = useRef<Promise<boolean> | null>(null);
   useEffect(() => {
     if (!c || added.current) return;
     added.current = true;
     const known = knownNotes(c);
-    if (openPrints.some((p) => !known.has(p))) addOpen();
+    arrived.current = openPrints.some((p) => !known.has(p)) ? addOpen() : Promise.resolve(true);
   }, [c, openPrints, addOpen]);
 
   // Screen tags typed on the open images reach the notes already kept from them (D100).
@@ -845,14 +859,57 @@ export function CollectionsView({
     setAsking(true);
   };
 
-  /**
-   * Everything, as a zip to keep (D104): the rules to read, the collection as it is kept, and
-   * each batch's screenshots, marked copies and close-ups.
-   */
+  /** The package the person's agent reads (D157): the main step here. */
   const exportAll = async () => {
     const now = ref.current;
     if (!now || busy) return;
     setBusy('export');
+    try {
+      const found = new Map<string, Map<string, Uint8Array> | null>();
+      for (const [i, b] of now.batches.entries()) {
+        onStatus({
+          tone: 'info',
+          text: `Preparing ${i + 1} of ${now.batches.length}…`,
+          sticky: true,
+        });
+        found.set(b.id, await filesOf(b.id));
+      }
+      const stamp = nowIso();
+      const made = notesPackage(ref.current ?? now, found, stamp);
+      download(
+        new Blob(zip(made.files) as BlobPart[], { type: 'application/zip' }),
+        `${notesPackageRoot(stamp).slice(0, -1)}.zip`,
+      );
+      onStatus({
+        tone: made.missing ? 'error' : 'info',
+        text: made.missing
+          ? `Exported ${count(made.notes, 'note')}, but ${count(made.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
+          : `Exported ${count(made.notes, 'note')}. Point your agent at ${NOTES_FILE}.`,
+      });
+    } catch {
+      onStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // From the end card's Export (D157): once the take's notes are in, the package goes.
+  const exportedOnArrival = useRef(false);
+  useEffect(() => {
+    if (!exportOnArrive || exportedOnArrival.current || !arrived.current) return;
+    exportedOnArrival.current = true;
+    onExported();
+    void arrived.current.then((ok) => (ok ? exportAll() : undefined));
+  });
+
+  /**
+   * Everything, as a zip to keep (D104): the rules, the collection as it is kept, and each batch's
+   * screenshots, marked copies and close-ups. Not for an agent: it reads all of it (D157).
+   */
+  const backUp = async () => {
+    const now = ref.current;
+    if (!now || busy) return;
+    setBusy('backup');
     try {
       const found = new Map<string, Map<string, Uint8Array> | null>();
       const sheets = new Map<string, Uint8Array[]>();
@@ -880,7 +937,7 @@ export function CollectionsView({
       }
       // Checks worked out from older rules are brought up to date first (D109); without them the
       // package still goes.
-      if (learnAvailable) {
+      if (READING_SHOWN && learnAvailable) {
         onStatus({ tone: 'info', text: 'Preparing…', sticky: true });
         await refreshChecks().catch(() => undefined);
       }
@@ -895,13 +952,13 @@ export function CollectionsView({
       onStatus({
         tone: made.missing ? 'error' : 'info',
         text: made.missing
-          ? `Exported ${count(made.rules, 'rule')}, but ${count(made.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
+          ? `Backed up, but ${count(made.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
           : unsheeted
-            ? `Exported ${count(made.rules, 'rule')} with their screenshots and close-ups, but ${count(unsheeted, 'batch', 'batches')} couldn’t get review sheets.`
-            : `Exported ${count(made.rules, 'rule')} with their screenshots, close-ups and review sheets.`,
+            ? `Backed up, but ${count(unsheeted, 'batch', 'batches')} couldn’t get review sheets.`
+            : 'Backed up.',
       });
     } catch {
-      onStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });
+      onStatus({ tone: 'error', text: 'The backup didn’t finish. Try again.' });
     } finally {
       setBusy(null);
     }
@@ -930,7 +987,7 @@ export function CollectionsView({
   }, [change]);
   // A while after the rules settle, and not while Pinch is reading or busy.
   const checksKey =
-    c && learnAvailable && !reading && busy === null ? checksBasis(checksRequest(rulesOf(c))) : '';
+    c && READING_SHOWN && learnAvailable && !reading && busy === null ? checksBasis(checksRequest(rulesOf(c))) : '';
   const checksAsked = useRef('');
   useEffect(() => {
     if (!checksKey || !ref.current || !checksStale(ref.current, checksKey)) return;
@@ -973,7 +1030,7 @@ export function CollectionsView({
   const moveHere = async () => {
     if (!moveFrom || !movable.length || !ref.current) return;
     setBusy('move');
-    onStatus({ tone: 'info', text: 'Moving your rules…', sticky: true });
+    onStatus({ tone: 'info', text: 'Moving your notes…', sticky: true });
     let moved = 0;
     try {
       for (const x of movable) {
@@ -982,10 +1039,10 @@ export function CollectionsView({
         moved++;
       }
       setMovable([]);
-      onStatus({ tone: 'info', text: 'Moved your rules to your account.' });
+      onStatus({ tone: 'info', text: 'Moved your notes to your account.' });
     } catch (e) {
       setMovable(movable.slice(moved));
-      onStatus({ tone: 'error', text: `Your rules didn’t all move. ${(e as Error).message}` });
+      onStatus({ tone: 'error', text: `Your notes didn’t all move. ${(e as Error).message}` });
     } finally {
       setBusy(null);
     }
@@ -998,7 +1055,7 @@ export function CollectionsView({
           <div className="space-y-2">
             <h2 className="text-2xl leading-tight font-medium tracking-tight">Your rules</h2>
             <p className="text-[13px]">
-              <ShimmerText>Loading your rules…</ShimmerText>
+              <ShimmerText>Loading your notes…</ShimmerText>
             </p>
           </div>
           <div className="space-y-3">
@@ -1058,11 +1115,11 @@ export function CollectionsView({
       // A copy still in this browser would move back in at the next sign-in.
       if (moveFrom) await Promise.all((await moveFrom.list()).map((x) => moveFrom.remove(x)));
       setMovable([]);
-      onStatus({ tone: 'info', text: 'Your rules were reset.' });
+      onStatus({ tone: 'info', text: 'Everything was reset.' });
     } catch {
       onStatus({
         tone: 'error',
-        text: 'Your rules were reset here, but not everything was deleted. Reset again to finish.',
+        text: 'Reset here, but not everything was deleted. Reset again to finish.',
       });
     } finally {
       taking.current = false;
@@ -1158,27 +1215,29 @@ export function CollectionsView({
           <header className="space-y-3">
             <div className="flex flex-wrap items-start gap-3">
               <div className="min-w-0 flex-1 space-y-1">
-                <h2 className="text-2xl leading-tight font-medium tracking-tight">Your rules</h2>
-                {waits > 0 && (
+                <h2 className="text-2xl leading-tight font-medium tracking-tight">Your notes</h2>
+                {READING_SHOWN && waits > 0 && (
                   <p className="text-sm text-muted-foreground">{waits} waiting for you.</p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  opener.current = document.activeElement as HTMLElement | null;
-                  setConnecting(true);
-                }}
-                className={button}
-              >
-                <PlugZap className="size-4" aria-hidden />
-                Connect agent
-              </button>
-              {/* The package is what a walkthrough ends in (D144): the main step here. */}
+              {live.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    opener.current = document.activeElement as HTMLElement | null;
+                    setConnecting(true);
+                  }}
+                  className={button}
+                >
+                  <PlugZap className="size-4" aria-hidden />
+                  Connect agent
+                </button>
+              )}
+              {/* The package is what a walkthrough ends in (D144, D157): the main step here. */}
               <button
                 type="button"
                 onClick={exportAll}
-                disabled={busy !== null || (!c.rules.length && !c.batches.length)}
+                disabled={busy !== null || !c.batches.length}
                 className={primary}
               >
                 <Download className="size-4" aria-hidden />
@@ -1197,7 +1256,7 @@ export function CollectionsView({
                 </p>
               )}
             </div>
-            {unread > 0 && learnAvailable !== false && !reading && busy !== 'add' && (
+            {READING_SHOWN && unread > 0 && learnAvailable !== false && !reading && busy !== 'add' && (
               <div
                 role={readError ? 'alert' : undefined}
                 className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px]"
@@ -1227,7 +1286,7 @@ export function CollectionsView({
                 </button>
               </div>
             )}
-            {learnAvailable === false && unread > 0 && (
+            {READING_SHOWN && learnAvailable === false && unread > 0 && (
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px] text-muted-foreground">
                 <p className="m-0 flex-1">
                   {backend.readings
@@ -1242,7 +1301,7 @@ export function CollectionsView({
                 )}
               </div>
             )}
-            {plan && !plan.pro && screenSets(c).length > 1 && (
+            {READING_SHOWN && plan && !plan.pro && screenSets(c).length > 1 && (
               <FreePlan
                 products={screenSets(c).map((s) => s.name)}
                 free={freeProductOf(c) ?? ''}
@@ -1254,7 +1313,7 @@ export function CollectionsView({
             )}
             {movable.length > 0 && (
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3 text-[13px] text-muted-foreground">
-                <p className="flex-1">Some of your rules are only in this browser.</p>
+                <p className="flex-1">Some of your notes are only in this browser.</p>
                 <button
                   type="button"
                   onClick={moveHere}
@@ -1268,13 +1327,13 @@ export function CollectionsView({
             )}
           </header>
 
-          {c.batches.length > 0 && (
+          {c.batches.length > 0 && live.length > 0 && (
             <fieldset className="m-0 flex min-w-0 gap-1 rounded-lg border-0 bg-muted p-1">
               <legend className="sr-only">Show</legend>
               {(
                 [
+                  ['references', 'Screens', referencesOf(c).length],
                   ['rules', 'Rules', rulesOf(c).length],
-                  ['references', 'References', referencesOf(c).length],
                 ] as const
               ).map(([key, label, n]) => (
                 <button
@@ -1297,7 +1356,7 @@ export function CollectionsView({
             </fieldset>
           )}
 
-          {tab === 'references' && c.batches.length > 0 ? (
+          {(tab === 'references' || !live.length) && c.batches.length > 0 ? (
             <Library
               collection={c}
               filesOf={filesOf}
@@ -1323,7 +1382,7 @@ export function CollectionsView({
 
           {!c.batches.length && !c.rules.length && busy !== 'add' ? (
             <div className="space-y-3 rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">
-              <p>Talk through your screenshots. What you say becomes your rules here.</p>
+              <p>Talk through your screenshots. What you say becomes your notes here.</p>
               <div className="flex flex-wrap justify-center gap-2">
                 <button type="button" onClick={onBack} className={button}>
                   Back to your images
@@ -1351,9 +1410,20 @@ export function CollectionsView({
           {slice && !shown.length && (
             <p className="text-center text-sm text-muted-foreground">No rules here yet.</p>
           )}
+            </>
+          )}
 
-          {!slice && (c.rules.length > 0 || c.batches.length > 0) && (
-            <div className="flex justify-end">
+          {(c.rules.length > 0 || c.batches.length > 0) && (
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={backUp}
+                disabled={busy !== null}
+                className={cn(button, 'border-transparent')}
+              >
+                <Archive className="size-4" aria-hidden />
+                {busy === 'backup' ? 'Backing up…' : 'Back up'}
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -1366,11 +1436,9 @@ export function CollectionsView({
                 )}
               >
                 <RotateCcw className="size-4" aria-hidden />
-                Reset rules
+                Reset
               </button>
             </div>
-          )}
-            </>
           )}
         </div>
       </main>
@@ -1421,22 +1489,19 @@ export function CollectionsView({
       {resetting && (
         <Dialog
           id="reset-title"
-          title="Reset your rules?"
+          title="Reset everything?"
           opener={opener.current}
           onClose={() => setResetting(false)}
         >
           <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
-            {count(c.rules.length, 'rule')},{' '}
+            {c.rules.length > 0 && `${count(c.rules.length, 'rule')}, `}
             {count(
               c.batches.reduce((n, b) => n + b.notes.length, 0),
               'note',
             )}{' '}
             and {count(c.batches.length, 'batch', 'batches')} go for good, with their screenshots, from{' '}
             {backend.kind === 'account' ? 'your account' : 'this browser'}, and so do the images
-            open now.{' '}
-            {backend.kind === 'account'
-              ? 'Your account, your agent’s key and your credits stay.'
-              : 'Your credits stay.'}
+            open now. {backend.kind === 'account' && 'Your account stays.'}
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <button

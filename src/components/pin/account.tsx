@@ -12,6 +12,7 @@ import {
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FREE_CREDITS, NOTE_CREDITS, PACK_CREDITS, UPDATE_CREDITS } from '@/lib/pin/credits';
+import { READING_SHOWN } from '@/lib/pin/notes-package';
 import { cn } from '@/lib/utils';
 import { Dialog, hit } from './dialog';
 
@@ -417,7 +418,7 @@ export function AccountMenu({
               )}
             </div>
           </div>
-          {user && me?.plan && (
+          {READING_SHOWN && user && me?.plan && (
             <div className="flex items-center gap-2 px-3.5 pt-2.5 text-[13px]">
               <span className="flex-1 text-muted-foreground">
                 {me.plan.pro ? 'Pro' : 'Free plan'}
@@ -432,7 +433,7 @@ export function AccountMenu({
               )}
             </div>
           )}
-          {me?.paywall && me.credits && !me.credits.original && (
+          {READING_SHOWN && me?.paywall && me.credits && !me.credits.original && (
             <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5 text-[13px]">
               <span className="flex-1 text-muted-foreground">
                 {me.credits.closed
@@ -489,7 +490,7 @@ export function DeleteAccountDialog({
       fallback="[data-account-trigger]"
     >
       <p className="m-0 text-[13px] leading-relaxed text-muted-foreground">
-        Your account, your rules and their screenshots go for good. Your credits are kept, so
+        Your account, your notes and their screenshots go for good. Any credits you hold are kept, so
         signing in again still finds them.
       </p>
       {error && (

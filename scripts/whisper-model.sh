@@ -18,7 +18,17 @@ if [ ! -s "$file" ]; then
   mv "$file.part" "$file"
 fi
 
+# Finds the stretches of speech, so that long pauses don't throw off the words' times (D159).
+vad="$dir/ggml-silero-v5.1.2.bin"
+if [ ! -s "$vad" ]; then
+  echo "Downloading ggml-silero-v5.1.2.bin from huggingface.co/ggml-org/whisper-vad"
+  curl -fL --retry 3 -C - -o "$vad.part" \
+    "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
+  mv "$vad.part" "$vad"
+fi
+
 command -v whisper-cli >/dev/null || echo "whisper-cli is missing: brew install whisper-cpp"
 command -v ffmpeg >/dev/null || echo "ffmpeg is missing: brew install ffmpeg"
 echo "Add to .env.local, then restart pnpm dev:"
 echo "PINCH_WHISPER_MODEL=$file"
+echo "PINCH_WHISPER_VAD=$vad"

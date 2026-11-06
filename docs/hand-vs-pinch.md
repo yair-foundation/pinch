@@ -407,3 +407,297 @@ Two rounds on each of the three designers: 29 corrections by hand and 27 with Pi
 - A made-up designer corrects from a perfect key to its own taste, so its corrections say exactly what the judge wants. A person's will be vaguer and sometimes wrong. This is the most corrections can carry.
 - By hand here keeps its corrections in `notes.md`, more than a chat does. A chat that loses them when it ends is nearer by hand without corrections, but that pairing wasn't judged.
 - Twelve pairs a comparison, one build corrected each round, the same model family judging, no minutes.
+
+### Corrections alone: the test, set before it runs, 2026-11-04
+
+If corrections carry that far, are notes on reference screenshots needed at all? They take the most time, and most of what Pinch lost came from them.
+
+**The rounds,** for each of the three designers, with no notes on references and an empty Pinch:
+
+1. The agent builds task 1 with no taste to go on. The designer corrects it, at most five notes (`simulate/correct.ts`), and they go into Pinch on the render, marked as Ours, are read and exported. Task 2 is built twice from that package.
+2. The designer corrects one of those builds, the same way. Task 3 is built twice from both rounds' corrections.
+
+**Compared,** blind, each pair twice, 12 pairs each, against builds already made for the last test:
+
+- **Pinch from reference notes,** without corrections: what Pinch asks of a person today before anything is built.
+- **Pinch from reference notes and corrections,** which had the same two rounds of corrections.
+
+**The verdict, set now:**
+
+- **Can corrections alone stand in for reference notes?** Against reference notes without corrections: they can if they win more than half the pairs and need no more changes.
+- **Do reference notes still earn their time once a person corrects?** Against notes and corrections: notes add little if corrections alone win at least 40% of pairs and need no more than 25% more changes. Otherwise they still earn their time.
+- **The time** is reported at the simulated take's pace, spoken minutes only.
+
+**Limits known now:** a made-up designer corrects from a perfect key, which flatters this test more than any other, since corrections are all it has. A person starting from nothing may not know yet what they want to say. Only Pinch's way is tested, not corrections alone in a notes file.
+
+### Corrections alone: the results, 2026-11-04
+
+An empty Pinch for each designer, two rounds of five corrections each, 10 to 14 rules at the end. The first build, with no taste to go on, took each designer's first five corrections.
+
+| Corrections alone against, 12 pairs each | Pairs won | Changes, alone and the other | Verdict set in advance |
+| --- | --- | --- | --- |
+| Reference notes, no corrections | 33% | 54.5 and 44 (24% more) | **They can't stand in** |
+| Reference notes and corrections | 8% | 62.5 and 23 (172% more) | **Reference notes still earn their time** |
+
+**Reference notes stay,** even in a test that flatters corrections. The two kinds of note do different work. Reference notes reach across the taste, and corrections reach only what the one build got wrong. Noor's and Ines's builds from corrections alone broke about five taste points a judgment, against about one for reference notes and corrections. Ten corrections leave much unsaid: Noor's never spoke of the page background and Ines's did only in passing, and it was broken in 5 and 8 of 8 judgments.
+
+**By designer,** against reference notes without corrections: Noor 0% of pairs, Ines 38%, Mara 62%, with fewer changes on Mara alone (10 and 16.5).
+
+**They catch up fast, as a signal on 6 pairs each.** After five corrections, corrections alone won 8% of pairs with 82% more changes than reference notes. After ten, they won 58% with 13% fewer. At the simulated take's pace that is about 2.5 minutes of talking, against 10 to 13 for the reference notes. The tasks differ between the rounds, and a third round wasn't run.
+
+**What it says.** Do both. Reference notes give the breadth, and corrections then give the largest gain. Against reference notes with corrections, nothing else tested comes close.
+
+**Limits.** Made-up designers correcting from a perfect key, 12 pairs a comparison, the same model family judging, and spoken minutes only, not a person's time.
+
+### The author's trial: set before it runs, 2026-11-05
+
+Every result above comes from made-up designers correcting from a perfect key. This is the first run with a person. It also decides whether to build a loop, where Pinch carries on past Export: a person corrects what their agent made, and each version has to beat a plain notes file. None of that loop is built until this passes (D154).
+
+**The start** is the test at the top of this page, as written: 8–12 references for one product the author is designing, three tasks, Pinch first and by hand the next day, standalone pages. That's 12 builds and 6 pairs, judged blind by the author, in real minutes.
+
+**The product is Pinch,** where the author's taste is strongest, with 10 references chosen by Claude from screenshots the author gathered, at the author's request, so the author may have less to say about some: Vimeo Web, Equals Web 0, Gumroad Web 9, GitBook Web 258, Luma Web 355, Headspace Web 114, Cloudflare Web 170, Tines Web 11, The New Yorker Web 15, Fey Web 123. Each build still starts from an empty folder, so it sees only its input and the task, not Pinch's code. The tasks, written before either input:
+
+1. The pricing page for Pinch, with one plan at $19 once.
+2. The account page for Pinch: email, purchase, credits, the agent connection and deleting the account.
+3. Your rules in Pinch, with 30 rules grouped by topic and one question waiting.
+
+**Then two rounds of corrections,** each started with `run.ts round <dir>`, which refuses until every pair so far is judged:
+
+1. The script draws the first build of the task from each way, in `round-N/`. This says which way made it, so it comes only after those verdicts are saved.
+2. **Pinch:** add `for-pinch-N.png` to Pinch, say "This is ours", talk over it, Add to your rules, read them, Export. The zip goes in `round-N/pinch/`.
+3. **By hand:** write the corrections in `round-N/hand/notes.md`, in place of the line asking for them.
+4. Each way corrects its own build, at most five notes, and both are timed. The minutes go in `round-N/test.json`.
+5. `build`, `judge` and `score` on `round-N`: the next task, built twice each way, for 4 builds and 2 pairs.
+
+Round 1 corrects task 1 and builds task 2. Round 2 corrects task 2 and builds task 3, from both rounds' corrections. `score` on the test folder then gives both verdicts.
+
+**The verdict, set now.** The rule at the top of this page, twice:
+
+- **References:** on the first 6 pairs, does Pinch's package beat notes by hand?
+- **The loop:** on the last 4 pairs, with the minutes of both rounds. Build it only if these reach **Dramatically better** and the author answers yes to "would you do another round unprompted?". Anything less and it isn't built.
+
+**Limits known now:**
+
+- Standalone pages, with no design system. A design system trial follows only if this passes.
+- Ten pairs and one person. Earlier runs moved by a pair or more on noise alone, so this decides what to build next, and it isn't a claim about Pinch.
+- The author made Pinch and wants it to win. Only the judging is blind: correcting says which way made the build being corrected.
+- Pinch goes first each time, which gives the hand way a head start in thinking it through.
+- It doesn't test a new version having to beat the last one, which needs more rounds than this.
+- Where the words come out wrong, that counts against Pinch: a real user would hit the same thing.
+
+### The author's trial: as it ran
+
+**Pinch's side, 2026-11-05.** The author talked through the 10 references on the live site rather than a local Pinch, so the words were read in the browser by the smaller model (D140), and some came out wrong: "hello colored buttons with no feeling" on an outlined button. They stay as they came, as set in advance. 65 notes, read into rules, then tidied by the agent, with 3 rules reworded. The first reading wasn't the agent's: it stopped within a minute, and the notes kept being read. The package holds 23 rules and 18 single notes.
+
+**Minutes: about 17,** from the session's timestamps, not a timer: 14 from adding the images to Add to your rules, 3 answering Pinch's questions and exporting, with the wait for the reading left out.
+
+**The hand way, 2026-11-05.** The author asked Claude to do this part. Claude didn't write any notes: `hand/notes.md` is the words of the author's own take, copied word for word and grouped by screenshot, wrong words included, as the test runs with made-up designers do. So this compares what Pinch adds to the same words. It doesn't compare Pinch with what the author would have written by hand, which would likely be more considered and free of misheard words, and might come with crops. No minutes by hand were measured.
+
+**The builds, 2026-11-05.** The first 6 of the 12 to start all reached the 20-minute limit, 3 from each way, and their logs are empty, so the cause isn't known. One had already written a whole page. All 6 were built again with the limit unchanged, the written page set aside unseen, so that every build ended on its own. The 12 that count took about 6 to 11 minutes each.
+
+**References: Not better, 2026-11-05.** The author judged the 6 pairs blind. Pinch's package won 1 of them and its builds needed 18 changes against the plain file's 10, 80% more. Two builds from the plain file needed none. With under half the pairs, the rule gives Not better at any minutes, so the missing hand minutes don't matter; `score` still prints "Needs the minutes" because it looks at those first.
+
+| Task | Run | Closer | Changes by hand | Changes Pinch |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | By hand | 0 | 3 |
+| Pricing | 2 | Pinch | 6 | 3 |
+| Account | 1 | By hand | 0 | 4 |
+| Account | 2 | By hand | 2 | 3 |
+| Your rules | 1 | By hand | 1 | 3 |
+| Your rules | 2 | By hand | 1 | 2 |
+
+This reverses the last run with made-up designers, where Pinch won 71% of 36 pairs. Only the third of them had gone this far the other way, at 25%, before single notes became notes. A made-up designer's taste is a list of points, which is what rules are, and that may be part of why they scored higher.
+
+**What the builds and the package show,** read by Claude after the judging, and not tested:
+
+- **The package holds back what the author liked most.** Builds from the plain file carried "white on a color" across the whole page, with lilac behind white cards and very large titles. The package keeps its colour rules (R4, R10, R11) to marketing heroes and tells agents never to make a single note a pattern, which is where "white on a color" sits. One account page from it has a gradient strip on grey. The author on the page it lost to: "the background with the card is much more fresh".
+- **Rules outrank the author's words.** Two notes for dividers became R2, a core rule. Two against stayed single notes, and the package says rules win. One build says so: "R2 comes from two notes and R33 from one, so R2 wins". The author praised "the lack of dividers".
+- **Rules say more than the notes.** "I like the color." became three rules. "This alert banner is pretty straightforward, good execution." became two. They carry a description rather than the look: "a soft pastel background".
+- **Some labels are wrong.** At least 10 of the 53 notes labelled as working are doubts or complaints, such as "I'm not sure about it" and "The search looks very, very old with the sharp edges." `verdictOfClaim` counts a note with no clear lean as good. The plain file has no labels, so its builds read the words.
+- **Rules became content.** One account page draws "Too wide." and "R17" into its illustration.
+
+**Limits of this result:**
+
+- Six pairs and one person: 5 of 6 comes up by chance about 1 time in 9. Against that, the author wants Pinch to win and judged blind.
+- Both ways had the same words, so this says nothing about notes really written by hand, which would probably have done no worse.
+- Three of the six Pinch builds didn't run `check-render.js`, because the test only lets a build run `render.mjs`. In a real project they could. The checks measure text sizes and contrast, so it's unlikely to explain this.
+
+### Pointing without the rules: the test, set before it runs, 2026-11-05
+
+The package lost to the same words in a plain file, but it holds two things: where the author pointed, and the rules read from that. This takes the rules away, to see which one lost (D155).
+
+**The two ways.** By hand is as before: the 10 screenshots and `hand/notes.md`, the 65 notes word for word. The other way is the same screenshots and the same notes in the same order, plus each note's number and close-up, and the marked copies. So the only difference is the pointing. It has no rules, no checks, no labels, no review sheets and none of the package's instructions. The marks keep the colours Pinch gave them, which come from the labels, so its notes file says "A mark's colour means nothing."
+
+**The run.** Same tasks, 2 runs each, 12 new builds and 6 pairs, judged blind by the author, in `~/pinch-test-2`. The script is unchanged: the second way is a zip in `pinch/`, so its results say "Pinch".
+
+**The verdict, set now.** No hand minutes exist, so this reads the pairs and the changes, on the thresholds at the top of this page:
+
+- **Pointing carries it:** at least 75% of pairs and 40% fewer changes. The package should lead with the author's words and marks, and the rules step back.
+- **Pointing helps:** more than half the pairs and no more changes. The same direction, on weaker evidence.
+- **Pointing adds nothing:** anything else. Words and screenshots do as well, and Pinch would have to earn its place by being faster than writing, which then needs real hand minutes.
+
+**Limits known now:**
+
+- Six pairs and one person, as before.
+- It doesn't compare the rules with the pointing directly: each is measured against the plain file, on different builds.
+- The author has seen the first builds, knows the plain file won, and has read Claude's reasons, which may colour what they look for. The judging is still blind.
+- The notes are still the words as they came out, wrong words included, and neither way is writing really done by hand.
+
+### Pointing without the rules: the results, 2026-11-05
+
+**Pointing carries it.** Judged blind, the same words with marks and close-ups won all 6 pairs and needed 7 changes against the plain file's 24, 71% fewer. All 12 builds finished the first time. `score` says "Needs the minutes", and its "Pinch" column is the pointing, as set above.
+
+| Task | Run | Closer | Changes plain file | Changes pointing |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | Pointing | 4 | 1 |
+| Pricing | 2 | Pointing | 3 | 1 |
+| Account | 1 | Pointing | 3 | 1 |
+| Account | 2 | Pointing | 4 | 1 |
+| Your rules | 1 | Pointing | 6 | 2 |
+| Your rules | 2 | Pointing | 4 | 1 |
+
+It's the first time anything has reached these thresholds with a real person. So far, one person has ranked them: the same words with pointing, over the plain file, over the rules. That order joins two sittings and hasn't been tested head to head.
+
+**Why isn't known.** No build's report says it used the close-ups, though the reports don't list what a build opened, and the two ways look alike: lilac, white cards, ink hands. In the 3 pairs Claude opened, the pointing builds kept to one centred column or a narrow card where the plain file's split the page into two columns or a wide card. The author's one note in this sitting agrees: "side by side like the left one is not a good option". The rules' narrow column lost in the first sitting, though, so width alone doesn't explain it.
+
+**Limits of this result:**
+
+- **Change counts depend on what's beside them.** The same plain file needed 10 changes in the first sitting and 24 in this one. A pricing page from it got 0 there, and a near twin got 4 here. So read the pairs first, and don't compare counts across sittings: 7 here and 18 for the rules there say nothing about each other.
+- Six pairs from one person, one take, one set of references and the same three tasks. 6 of 6 comes up by chance about 1 time in 64.
+- The author had seen the first builds and Claude's reasons, though both ways here carry the things those reasons named.
+- This is pointing against the same spoken words without pointing. It says nothing yet about notes really written by hand, or about minutes.
+
+### Pointing against the rules: the test, set before it runs, 2026-11-05
+
+Two sittings put pointing above the plain file and the plain file above the rules, but nothing has put the two side by side, and change counts moved between sittings. Reading notes into rules is also the paid step (D98), so this decides what the package leads with (D156).
+
+**The two ways.** Both come from the author's same take, so the words, marks and close-ups are the same.
+
+- **Pointing** is the input from the last test: the screenshots, the notes with their numbers and close-ups, and the marked copies.
+- **Rules** is the whole export as it first ran: the rules, notes, labels, checks, close-ups, marked copies, review sheets and instructions.
+
+**The run.** Same tasks, 2 runs each, 12 new builds and 6 pairs, judged blind by the author, in `~/pinch-test-3`. The script is unchanged. Pointing sits in its hand slot and the rules in its Pinch slot, so in `results.md` "By hand" means pointing and "Pinch" means rules. The minutes come from the same take: 14 for pointing and 17 for rules, which leaves out the wait for the reading and its credits.
+
+**The verdict, set now,** from pointing's side:
+
+- **Pointing wins:** at least 75% of pairs and 40% fewer changes. The package leads with the author's words and marks, and the rules step back.
+- **Pointing holds:** at least half the pairs and no more changes. Rules cost minutes, a wait and credits and don't pay for them here, so they stop being the default.
+- **Rules ahead:** anything else. The sittings contradict each other, neither result stands, and the package stays as it is until a fresh take settles it.
+
+**Limits known now:**
+
+- Six pairs, one person, one take, and the author's third sitting on the same three tasks.
+- A rules build that draws a rule number into its page, as one did in the first sitting, gives itself away. Such builds stay in, and Claude counts them in the results without telling the author beforehand.
+- Neither way is notes really written by hand.
+
+### Pointing against the rules: the results, 2026-11-05
+
+**Pointing wins.** Judged blind, pointing won 5 of 6 pairs and needed 8 changes against the rules' 16, 50% fewer, in 14 minutes against 17 and the wait for a reading. `score` says "Not better" because its "Pinch" column is the rules here.
+
+| Task | Run | Closer | Changes pointing | Changes rules |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | Pointing | 1 | 4 |
+| Pricing | 2 | Pointing | 1 | 3 |
+| Account | 1 | Pointing | 1 | 4 |
+| Account | 2 | Rules | 3 | 1 |
+| Your rules | 1 | Pointing | 1 | 2 |
+| Your rules | 2 | Pointing | 1 | 2 |
+
+**The three sittings agree,** on one take:
+
+| Sitting | Closer | Pairs | Changes |
+| --- | --- | ---: | --- |
+| Rules against the plain file | Plain file | 5 of 6 | 10 and 18 |
+| Pointing against the plain file | Pointing | 6 of 6 | 7 and 24 |
+| Pointing against the rules | Pointing | 5 of 6 | 8 and 16 |
+
+**Rule numbers may have given builds away.** Three of the 6 rules builds show a rule number in their text, such as "R15", and all 3 lost. No pointing build shows one. Without those pairs, pointing won 2 of 3 and needed 5 changes against 8, 38% fewer: the same direction, just short of the 40% bar.
+
+**What the pages show,** from the 2 account pairs Claude opened, as the author left no notes this time, and not tested:
+
+- With one column each way, flat lilac behind white cards beat a gradient fading into grey, 1 change against 4. The first sitting's widest gap on this task was the same contrast, 0 against 4. The package keeps its colour rules to marketing heroes, which fits, but doesn't prove it.
+- The rules' one win beat a pointing build that set its cards side by side. Side by side also lost on lilac in the last sitting, where the author wrote "side by side like the left one is not a good option". So the layout may count for more than which way made the page.
+
+**Limits of this result:**
+
+- One person, one take of 65 notes, one set of references and the same three tasks, on the author's third sitting. 5 of 6 alone comes up by chance about 1 time in 9.
+- 65 notes are few enough for an agent to read whole. Rules may earn their place at hundreds of notes, or across months and projects, which this can't see.
+- Standalone pages, not work in a repository with a design system, where D154 says Pinch's people work.
+- Neither way is notes really written by hand, so "better than manual" is still untested, and so are hand minutes.
+
+### The package changed, 2026-11-05
+
+Since D157, Pinch's Export gives the words and the pointing with no rules, so "Pinch's package" above means the older export, which is now Back up. For a new test or a round, the Pinch side is: add the screenshots, talk them through, Export, and put the zip in `pinch/`, with no reading and no questions. The two rounds set above haven't run. They still decide whether to build a loop, on this package, and their written corrections would be the first notes really written by hand.
+
+### The rounds on the new package: set before they run, 2026-11-05
+
+What changes from the rounds set in D154 (D158):
+
+- **The folder is `~/pinch-test-2`,** whose two ways are the plain file and pointing. Each way corrects its own first build of the pricing page, then the account page.
+- **Pinch's way:** the new build on the author's machine in Chrome, since it isn't deployed and the app's own browser blocks the microphone: a production build with the browser's voice model, as the live site has. The author's 65 notes are loaded into it first through Pinch's own import, which redraws their marks in one colour; the words came back identical to the plain file. The author talks over the build, says "This is ours", and presses Export. The zip holds the 65 notes and the corrections so far.
+- **By hand:** Claude shows the build, and the author types at most five corrections as a message in the chat, which is how someone corrects Claude by hand. Claude copies them word for word into `hand/notes.md`.
+- **Minutes** come from the session's timestamps: for Pinch from the author's "start" to their "exported", leaving out the wait for the words to be read as the author estimates it, and by hand from Claude showing the build to the author's message.
+
+**The verdict doesn't change.** On the last 4 pairs, the rule at the top of this page, with these minutes: build a loop only at **Dramatically better**, and only if the author answers yes to "would you do another round unprompted?".
+
+**Limits known now:**
+
+- Four pairs and one person. The first real microphone on this package is also its first correction.
+- Only the judging is blind: correcting says which way made the build being corrected.
+- Pinch goes first each time, though each way corrects a different build.
+- The hand way's earlier notes are the author's spoken words, as before. Only its corrections are really written by hand.
+
+**Round 1, first try, 2026-11-05: thrown out.** The take's words came back as 21 notes of looping nonsense, so nothing was built from it and its minutes don't count. The recording itself was sound: 94 seconds from the built-in microphone at a normal level, with long pauses between a few short sentences. On the same audio, the larger model on this machine (whisper.cpp, large-v3-turbo) heard "I'm missing the secondary button." and "I have nothing bad to say at this time.", and invented a little in the pauses. The browser's model (whisper-base.en) heard "I'm using the a continued button." and "I have nothing but to see it this time.", and filled the pauses with loops. 205 of its 264 words had no length, against none of 297 on a synthetic take with no pauses, but dropping those still leaves loops. So the small model needs talk without long pauses, as in the author's first take, and Pinch gave no warning before exporting the result.
+
+**The rounds use the larger model (D159).** At the author's choice, round 1 and round 2 read the words with whisper.cpp's large-v3-turbo on this Mac, not the browser's model. This replaces "wrong words count against Pinch" and "with the browser's voice model" above. So the result says whether talking and pointing beats typing, and not whether the live site's words are good enough, which this first try says they aren't for talk with long pauses.
+
+**Round 1, as it ran.** The second try read well, and "This is ours" was heard. The author said more than five things, so the limit of five notes was lifted for the typing too: each way says as much as it would. One thought often split across several notes at the author's pauses, 19 in all, kept as they came. Chrome had lost the local sign-in, so its export held only this take, and Claude added the 65 notes to the zip as a signed-in export would have them, with the words untouched. Minutes are in `round-1/test.json`, from the session's timestamps, with about 12 seconds' wait for the words taken off Pinch's and the clock restarted when the author asked what to type.
+
+**Round 1's result.** The account page, judged blind: pointing won both pairs and needed 5 changes against typing's 7, 29% fewer, in 3 minutes against 3.7. The author's notes on the pairs: pointing's illustrations and icons were better, and typing's font and two cards side by side were better, both things the author's typed corrections had named.
+
+**Round 2, as it ran.** The author signed in again in Chrome. Its export brought back the 21 notes of the thrown-out try in place of the 19 real ones, probably because Claude deleted them on the server while the tab was open and the tab saved them back. Claude built the round's zip from round 1's real zip and this take's 12 notes, words untouched, so it holds 65, 19 and 12. Minutes are in `round-2/test.json`.
+
+**Round 2's minutes by hand, set before its pairs are judged.** The timestamps give 10.2 minutes, against 3.7 in round 1. The author first wasn't sure, then confirmed they didn't step away, so `round-2/test.json` holds 10.2, which includes any time spent looking and thinking. Whether the message was typed or dictated isn't known. At round 1's pace of 31.6 words a minute, its 177 words would take 5.6 minutes, so the result also says what the verdict would be at that figure.
+
+### The rounds: the results, 2026-11-06
+
+**Dramatically better, on the minutes.** Judged blind, pointing won 3 of the 4 pairs and needed 9 changes against writing's 12, 25% fewer, in 4.9 minutes against 13.9, 0.35 times. That passes the rule's second way, at least half the pairs in half the minutes or less. It doesn't pass the first, which needs 40% fewer changes.
+
+| Round | Task | Run | Closer | Changes writing | Changes pointing |
+| --- | --- | --- | --- | ---: | ---: |
+| 1 | Account | 1 | Pointing | 4 | 2 |
+| 1 | Account | 2 | Pointing | 3 | 3 |
+| 2 | Your rules | 1 | Writing | 1 | 3 |
+| 2 | Your rules | 2 | Pointing | 4 | 1 |
+
+**It hangs on one number.** Round 2's writing took 10.2 minutes against round 1's 3.7. The author didn't step away, but isn't sure what else was in it. At round 1's pace of writing, 5.6 minutes, the total is 9.3 and the ratio 0.53, which is **Better, not dramatically**: the rule's half is just missed.
+
+**What the author wrote on the pairs:** each way taught different things. Pointing's illustrations and icons were preferred, and writing's font and two cards side by side, which their written corrections had named. Their own best page would take from both.
+
+**Limits of this result:**
+
+- Four pairs and one person, who knew which way made each build they corrected.
+- Pointing ran on the larger voice model on this Mac (D159), with speech detection. On the live site's small model the same talk came out as nonsense, so this is not yet what people get.
+- Only the corrections were really written by hand. Both ways' first 65 notes were the author's spoken words, so a whole first take by hand is still untested, and may be typed or dictated in round 2's case: that isn't known.
+- A talked correction splits one thought across several notes at the pauses, 31 notes in all, against two written messages. Agents followed them in order, but nobody has asked whether they'd do better whole.
+- Both rounds' zips were put together by Claude from Pinch's exports, because of a lost sign-in and notes restored by an open tab, words untouched. Those two faults are in how the test ran, and the sign-in's cause isn't known.
+
+**The other half of D154's condition:** asked whether they would do another round unprompted, the author answered "Yes, I would". So the condition is met, on the minutes as timed (D160).
+
+### Speech for the live site: what was tested, 2026-11-06
+
+The browser's words, on the author's two real takes: round 2, which is steady talk, and the thrown-out take, which is a few short sentences with long pauses. Errors are against the larger model on this Mac for round 2, and against three sentences it heard in the thrown-out take. All in a real browser with the graphics card, except the two marked. Sizes are the one-time download.
+
+| Setup | Download | Round 2, words off | The take with pauses |
+| --- | ---: | ---: | --- |
+| Today: base.en, decoder q8 | 136 MB | 10% | Misheard, and loops on some runs |
+| base.en, repeated phrases blocked | 136 MB | 10% | Worse, loops |
+| base.en, decoder on the processor | 136 MB | 10% | Misheard |
+| base.en, decoder q4 or full | 206 to 291 MB | 10% | Worse, loops |
+| base.en, speech detection, on the processor | 80 MB | 18% | Worse: "and I hope you enjoy the video" |
+| small.en | 586 MB | 12% | Misheard, no loops |
+| small.en, speech detection, on the processor | 252 MB | 17% | Worse |
+| large-v3-turbo | 564 MB | 7% | "I'm missing the secondary button", "The icons are too plain", no loops |
+
+Settings don't fix it, and the graphics card isn't the cause: every base.en setup misheard the thrown-out take, and which of them looped changed from run to run. Speech detection, which helps the larger model on this Mac, hurts these when each stretch is read alone. Only the large model holds up, and it runs in a browser. Two real takes are a small test, and it has only run on this Mac.
+

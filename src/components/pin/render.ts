@@ -25,9 +25,11 @@ import { zip, type ZipEntry } from '@/lib/pin/zip';
 /*
  * Pinch's drawing, in the browser: a copy of each image with its notes
  * drawn on, a close-up crop of every note, a contact sheet of the batch, and
- * the zip that carries them. Marker colours: green works, red doesn't, amber
- * both.
+ * the zip that carries them. Marks have one colour (D157): a label sorted from
+ * spoken words is often wrong, and the words say it anyway.
  */
+
+export const MARK_COLOR = '#2563eb';
 
 export const VERDICT_COLOR = {
   good: '#16a34a',
@@ -332,7 +334,7 @@ function drawMark(
   number: number,
   px: (x: number, y: number) => [number, number],
   unit: number,
-  color = VERDICT_COLOR[verdictOf(mark)],
+  color = MARK_COLOR,
   busy?: Busy,
 ) {
   const r = 11 * unit;

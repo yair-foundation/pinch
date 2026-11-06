@@ -277,8 +277,7 @@ function ReferenceDialog({
           {[
             r.source ? sourceLabel(r.source) : '',
             count(r.notes.length, 'note'),
-            r.rules ? `feeds ${count(r.rules, 'rule')}` : 'feeds no rule yet',
-            r.unread ? `${r.unread} not read` : '',
+            r.rules ? `feeds ${count(r.rules, 'rule')}` : '',
           ]
             .filter(Boolean)
             .join(' · ')}

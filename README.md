@@ -1,8 +1,8 @@
 # Pinch
 
-Tag screenshots for your agent. Add a batch of screens, mark what works and what doesn't with a dot, an area or an arrow, and say why and what it's about (visual, layout, copy, interaction, flow, accessibility). Then open Your rules: Pinch reads your notes, finds the patterns across images and keeps them as one taste library of rules, each with the notes and close-ups it draws on. Overlapping notes become one rule, notes that pull different ways keep where each holds, and a new batch strengthens a rule, adds one or flags a conflict. Edit or remove any rule, slice them by topic, and connect your agent: over MCP it fetches the current rules for each task, and a rule's close-ups with where each spot is when it needs to see them (D94), or copy them as a prompt for one chat (D93).
+Teach your agent your taste by talking. Add screenshots, talk them through while you point, and Export: your words, the screenshots, marked copies and a close-up of each spot, as a package your agent reads (D131, D157). In a blind test on the author's own take, this beat the same words in a plain file and beat a package of rules drawn from them ([docs/hand-vs-pinch.md](docs/hand-vs-pinch.md)).
 
-Pinch is $19 once, with a Google sign-in, sold through Lemon Squeezy (D81, D87). Marking images needs no account, and Your rules shows the first two rules Pinch finds; every rule, connecting an agent and AI suggestions come with buying. A buyer's rules are kept in their account, screenshots included, on every device they sign in on. Until Google sign-in and Lemon Squeezy are both configured, nothing is gated and Pinch works as a free, account-less tool whose rules stay in the browser.
+Pinch is free for now (D157). It needs no account; a Google sign-in keeps your notes and screenshots on every device. Reading notes into rules and the credits that paid for it (D98) are hidden behind `READING_SHOWN` in `src/lib/pin/notes-package.ts`, not deleted: rules already kept still show, and Back up and the MCP server still give them.
 
 Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message); a session holds as many images as the browser has room for (D103).
 
@@ -34,10 +34,10 @@ Talk through screenshots, and have your own agent read the notes into rules, wit
 
 ```bash
 brew install whisper-cpp ffmpeg
-pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… for .env.local
+pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… and PINCH_WHISPER_VAD=… for .env.local
 ```
 
-Then in `.env.local`: that `PINCH_WHISPER_MODEL`, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
+Then in `.env.local`: those two, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
 
 1. Add screenshots, press R and talk while you point; F, then Enter. The notes show on each screen.
 2. Your rules, Connect agent, Sign in (a local account, no Google), Connect: run the command it shows. It adds the server as `pinch-local`, beside the live `pinch`.
@@ -97,7 +97,7 @@ Every variable is optional; the tool runs with none. Copy `.env.example` to `.en
 - **The rules benchmark.** `ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/run.ts <out-dir> [runs] [builds] [held-out]` reads the cases in `scripts/rules-bench/cases.ts` with a plain prompt, with Pinch before the foundation and with Pinch as it is, has a judge score each against the case's key, then puts each one's guidance to work on a fresh task (D90), beside generic guidance: impeccable's design skill, Pinch's own principles, and impeccable with Pinch's rules (`BENCH_GUIDANCE` picks the arms). A few dollars a run; results in [docs/rules-bench.md](docs/rules-bench.md).
 - **What a reading costs.** `ANTHROPIC_API_KEY=… node --import tsx scripts/rules-bench/cost.ts <out-dir> [runs]` makes the route's reading with 1, 5 and 30 notes against libraries of 0, 50 and 200 rules (`cost-library.json`), as the route does today and with the prompt cached (cold, then warm), and keeps every attempt's tokens and cost, retries included (D96). A few dollars a run; results in [docs/cost-bench.md](docs/cost-bench.md).
 - **Close-ups in the reading.** `ANTHROPIC_API_KEY=… NODE_PATH=<a node_modules holding playwright> node --import tsx scripts/rules-bench/crops.ts <out-dir> [runs]` draws the screens in `scripts/rules-bench/crop-cases.ts`, cuts each note's close-up as Pinch would, reads the notes with words only and with close-ups, and has a judge score both against the case's key (D96). About a dollar a run; results in [docs/rules-bench.md](docs/rules-bench.md).
-- **Hand vs Pinch.** `node --import tsx scripts/hand-vs-pinch/run.ts init|build|judge|score <dir>` tests whether an agent's work from Pinch's package beats the same screenshots noted by hand for Claude (D145): the author makes both inputs and times them, the builds run through their own Claude Code with no MCP servers or skills, and they judge the pairs blind. No API key; the protocol and the verdict are in [docs/hand-vs-pinch.md](docs/hand-vs-pinch.md).
+- **Hand vs Pinch.** `node --import tsx scripts/hand-vs-pinch/run.ts init|build|judge|score|round <dir>` tests whether an agent's work from Pinch's package beats the same screenshots noted by hand for Claude (D145): the author makes both inputs and times them, the builds run through their own Claude Code with no MCP servers or skills, and they judge the pairs blind. No API key; the protocol and the verdict are in [docs/hand-vs-pinch.md](docs/hand-vs-pinch.md).
 - **Reading saved notes.** `GET /api/pin/notes` lists the saved days; `?day=YYYY-MM-DD` returns a day's document (each note under its random id, with `at` and, once tagged, `tags`); `?summary=YYYY-MM` counts a month's notes by area. In production send the password: `curl -u admin:$ADMIN_PASSWORD "https://get-pinch.io/api/pin/notes?summary=2026-10"`. In `next dev` without `ADMIN_PASSWORD` the route is open.
 
 ## Project structure
