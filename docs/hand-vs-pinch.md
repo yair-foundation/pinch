@@ -725,3 +725,28 @@ A box says where a note is but not what it's on, and it can be wrong or sit on t
 - Apple's Vision isn't what a browser would run, so a win here doesn't yet say a browser can read text as well.
 - The notes are the words as they came out of the small model, wrong words included, on both sides.
 
+
+### Marks described in words: the results, 2026-11-06
+
+**Words help.** Judged blind, words won 5 of the 6 pairs and needed 13 changes against today's marks' 20, 35% fewer, in the same minutes. That passes "more than half the pairs and no more changes" and misses "Words win", which needs 40% fewer. `results.md` says "Better", with words in its "Pinch" column. By the rule set above, they get built if they're cheap in a browser.
+
+| Task | Run | Closer | Changes today's marks | Changes words |
+| --- | --- | --- | ---: | ---: |
+| Pricing | 1 | Today's marks | 2 | 5 |
+| Pricing | 2 | Words | 4 | 2 |
+| Account | 1 | Words | 4 | 1 |
+| Account | 2 | Words | 4 | 1 |
+| Your rules | 1 | Words | 2 | 2 |
+| Your rules | 2 | Words | 4 | 2 |
+
+**What the author wrote on the pairs:** words' pages mostly won on layout, and illustrations went the other way. In 4 of the 6 pairs the author preferred today's marks' illustrations or disliked those from words, including one that repeated a robot's hand on every picture. The author also called both pages of one pair "very messy".
+
+**Why isn't known.** It may be the words, the dimmed close-ups, or both, as the test ran them together. Dimming could explain the illustrations, since it hides what's around a spot, but nothing here shows that.
+
+**What it costs in a browser,** not yet measured: where a mark sits, its colours and the dimming need no download and a few lines each. Reading the text under a mark is the one real cost: Apple's Vision did it here, and a browser would need something like ppu-paddle-ocr, at about 6.4 MB beside the 570 MB voice model. Whether that reads as well is the next check, on the same close-ups, with no judging.
+
+**Limits of this result:**
+
+- Six pairs and one person, on the author's fifth sitting on these tasks. 5 of 6 comes up by chance about 1 time in 9.
+- Words and dimming are tested together, so only both together have earned this result.
+- Change counts depend on what's beside them, so 13 and 20 say nothing about other sittings.
