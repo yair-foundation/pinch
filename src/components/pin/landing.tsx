@@ -59,25 +59,25 @@ const SCREENS = [
   {
     title: 'Sunday market',
     notes: [
-      { text: 'That title is huge and I love it. Keep the scale.' },
-      { text: 'The button is too shy. Give it some weight.' },
-      { text: 'This lemon has jokes. More of this, please.' },
+      { text: 'Huge, and I love it. Keep this scale.' },
+      { text: 'Too shy. Give it some weight.' },
+      { text: 'This one has jokes. More, please.' },
     ],
   },
   {
     title: 'Night train',
     notes: [
-      { text: 'Dark, and I can still read it. Rare.' },
-      { text: 'That moon has nothing to do and does it well.' },
-      { text: 'The button gets lost at night. Make it glow.' },
+      { text: 'Dark, and I can still read this. Rare.' },
+      { text: 'Nothing to do, and does it well.' },
+      { text: 'Lost down here. Make it glow.' },
     ],
   },
   {
     title: 'Tiny bank',
     notes: [
-      { text: 'Big number. Now I believe it.' },
-      { text: 'Three badges is two too many.' },
-      { text: 'The pig stays. Everything else can move.' },
+      { text: 'This big? Now I believe it.' },
+      { text: 'Three of these is two too many.' },
+      { text: 'This stays. Everything else can move.' },
     ],
   },
 ];
@@ -129,9 +129,9 @@ const TITLES = [
 ] as const;
 
 const SAYS = [
-  ['THAT TITLE?', 'KEEP IT BIG.'],
-  ['THAT NUMBER?', 'LOVE IT BIG.'],
-  ['THAT BUTTON?', 'MORE OF THAT.'],
+  ['THAT ONE.', 'KEEP IT BIG.'],
+  ['AND THIS.', 'LOVE IT BIG.'],
+  ['THIS TOO.', 'MORE OF THAT.'],
 ] as const;
 
 const SPOT_ROOM = 12;
