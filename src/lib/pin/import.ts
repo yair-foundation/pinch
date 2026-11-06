@@ -30,6 +30,7 @@ const noteSchema = z.object({
   aiSuggested: z.object({ works: use.optional(), doesNotWork: use.optional() }).optional(),
   origin: z.string().max(20).optional(),
   where: z.string().max(500).optional(),
+  spoken: z.string().max(10000).optional(),
 });
 const assetSchema = z.object({
   number: z.string().max(4),
@@ -92,6 +93,7 @@ function markOf(n: PinchExport['assets'][number]['notes'][number], id: string): 
     bad: n.doesNotWork,
     // A note said aloud stays one (D137), so the reel still numbers and shows it.
     origin: n.origin === 'voice' ? 'voice' : 'user',
+    ...(n.origin === 'voice' && n.spoken ? { quote: n.spoken } : {}),
     ...(n.best && n.works.trim() ? { best: true } : {}),
     ...(topics.length ? { topics } : {}),
     ...(accepted.good || accepted.bad ? { accepted } : {}),
@@ -151,5 +153,6 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       ...(n.best && n.works.trim() ? { best: true as const } : {}),
       ...(n.origin === 'voice' ? { said: true as const } : {}),
       ...(n.where ? { where: n.where } : {}),
+      ...(n.spoken ? { spoken: n.spoken } : {}),
     })),
   );

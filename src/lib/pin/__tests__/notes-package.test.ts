@@ -139,6 +139,14 @@ describe('the notes package', () => {
     assert.doesNotMatch(plain, /My own work|Tag:|My best example/);
   });
 
+  it('gives a note in the order it was said, where it knows that', () => {
+    const spoken = 'Too harsh here. No dividers though.';
+    const { text } = pack([
+      batch('a', [note('01.1', { works: 'No dividers though.', doesNotWork: 'Too harsh here.', spoken })]),
+    ]);
+    assert.match(text, /\) Too harsh here\. No dividers though\.\n/);
+  });
+
   it('says a mark in words under its note, and what the close-ups show', () => {
     const where = 'Where: top left, on "Choose a plan". Colours: #ffffff, #020202.';
     const { text } = pack([batch('a', [note('01.1', { where })])]);

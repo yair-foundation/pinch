@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Asset } from '../model';
+import { assetsOf, batchNotes, readExport } from '../import';
+import { type Asset, manifest } from '../model';
 import type { PointerSample, Take } from '../narration';
+import { takePackage } from '../notes-package';
 import {
   applyTake,
   claimsOf,
@@ -306,6 +308,38 @@ describe('voice notes: a take applied', () => {
       one.marks[0].good,
       "The button is small and flat. It's an obvious action. It doesn't shout.",
     );
+  });
+
+  it('keeps the words in the order they were said, all the way to the package', () => {
+    // The author's own note: sorted into works and doesn't, it came out with its sentences swapped.
+    const said = [
+      'And this one is great.',
+      'I think that comparison to typing is not the right comparison because everyone today is using.',
+      'Whisper, Flow.',
+      'Notetakers, like Granola.',
+      'So the comparison is not relevant.',
+    ].join(' ');
+    const words = say(said);
+    const [one] = applyTake(
+      [asset('one'), asset('two')],
+      take(words, rest(0.3, 0.7, 0, words.at(-1)?.end ?? 0)),
+    );
+    assert.equal(one.marks.length, 1);
+    assert.ok(one.marks[0].good && one.marks[0].bad, 'the note holds both sides');
+    const data = manifest([one], '2026-11-06T10:00:00.000Z');
+    const encode = (x: string) => new TextEncoder().encode(x);
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const files = new Map<string, Uint8Array>([
+      ['pinch-x/notes.json', encode(JSON.stringify(data))],
+      [`pinch-x/${data.assets[0].image}`, PNG],
+    ]);
+    const exp = readExport(files);
+    assert.equal(batchNotes(exp)[0].spoken, said);
+    const pack = takePackage(exp, files, '2026-11-06T10:00:00.000Z');
+    assert.ok(new TextDecoder().decode(pack.files[0].data).includes(said));
+    let n = 0;
+    const back = assetsOf(exp, files, () => `id${++n}`).assets[0].asset;
+    assert.equal(back.marks[0].quote, said, 'opening the export again keeps them');
   });
 
   it('starts a note for another thing pointed at, and picks up "it" with nothing pointed at', () => {
