@@ -1,20 +1,32 @@
 /*
  * The landing's drawings (D169): Pinch's own world of screenshots, a pointer, a talker and an agent.
- * Hand-drawn SVG in the landing's colours, styled by \`.o\` and \`.t\` in \`landing.css\`.
+ * Hand-drawn SVG in the landing's colours, styled by `.o` and `.t` in `landing.css`.
  */
 
 type ArtProps = { className?: string };
 
+/** The marks on each sample screen, in its 320 by 300 drawing. */
+export const MOCK_SPOTS = [
+  [
+    { n: 1, x: 14, y: 50, w: 146, h: 74 },
+    { n: 2, x: 14, y: 164, w: 120, h: 46 },
+    { n: 3, x: 186, y: 62, w: 120, h: 136 },
+  ],
+  [
+    { n: 1, x: 14, y: 54, w: 172, h: 70 },
+    { n: 2, x: 202, y: 36, w: 94, h: 94 },
+    { n: 3, x: 14, y: 160, w: 126, h: 48 },
+  ],
+  [
+    { n: 1, x: 14, y: 44, w: 116, h: 92 },
+    { n: 2, x: 14, y: 150, w: 170, h: 40 },
+    { n: 3, x: 186, y: 66, w: 120, h: 112 },
+  ],
+];
+
 /** The author's cursor (D135): an arrow with no leg, in a drawing 82 by 85, its tip at 8.2, 10.6. */
 export const CURSOR_PATH =
   'M32.6389 74.8863L8.18983 10.5709C7.61473 9.05806 9.00696 7.59711 10.4499 8.19924L71.7928 33.7977C73.1748 34.3746 73.3641 36.3478 72.1123 37.1274L49.7021 51.0827C49.4565 51.2356 49.252 51.4502 49.1065 51.7079L35.814 75.2193C35.0715 76.5328 33.1897 76.3353 32.6389 74.8863Z';
-
-/** The marks on the mock page, in its 320 by 300 drawing. */
-export const MOCK_SPOTS = [
-  { n: 1, x: 14, y: 50, w: 146, h: 74 },
-  { n: 2, x: 14, y: 164, w: 120, h: 46 },
-  { n: 3, x: 186, y: 62, w: 120, h: 136 },
-];
 
 export function PinchScene({ className }: ArtProps) {
   return (
@@ -347,19 +359,44 @@ export function StepHand({ className }: ArtProps) {
   );
 }
 
-export function Robot({ className }: ArtProps) {
+/** The agent, looking through a reel viewer: the reel turns, and the lever goes down, on each turn. */
+export function Robot({
+  className,
+  turns = 0,
+  pulling = false,
+}: ArtProps & { turns?: number; pulling?: boolean }) {
   return (
     <svg className={className} width="150" height="124" viewBox="0 0 150 124" aria-hidden="true">
       <path className="o" fill="none" d="M75 26V8" />
       <circle className="o" cx="75" cy="8" r="6" fill="#f2613f" style={{ strokeWidth: 3 }} />
       <rect className="o" x="26" y="26" width="98" height="110" rx="20" fill="#ffc93c" />
-      <rect className="o" x="38" y="42" width="74" height="40" rx="14" fill="#17131f" />
-      <circle cx="60" cy="62" r="8" fill="#fff" />
-      <circle cx="90" cy="62" r="8" fill="#fff" />
-      <circle cx="62" cy="65" r="3.500" fill="#17131f" />
-      <circle cx="92" cy="65" r="3.500" fill="#17131f" />
-      <rect className="o" x="12" y="50" width="14" height="30" rx="5" fill="#f59bd8" />
-      <rect className="o" x="124" y="50" width="14" height="30" rx="5" fill="#f59bd8" />
+      <rect className="o" x="12" y="62" width="14" height="30" rx="5" fill="#f59bd8" />
+      <rect className="o" x="124" y="62" width="14" height="30" rx="5" fill="#f59bd8" />
+      <g className="viewer-reel" style={{ transform: `rotate(${turns * 51.43}deg)` }}>
+        <circle className="o" cx="75" cy="50" r="19" fill="#fff" style={{ strokeWidth: 3 }} />
+        {[0, 51.43, 102.86, 154.29, 205.71, 257.14, 308.57].map((angle) => (
+          <rect
+            key={angle}
+            x="72"
+            y="34"
+            width="6"
+            height="6"
+            rx="1"
+            fill="#5a32d1"
+            transform={`rotate(${angle} 75 50)`}
+          />
+        ))}
+        <circle cx="75" cy="50" r="3" fill="#17131f" />
+      </g>
+      <rect className="o" x="30" y="54" width="90" height="44" rx="14" fill="#f2613f" />
+      <circle className="o" cx="56" cy="76" r="12" fill="#17131f" style={{ strokeWidth: 3 }} />
+      <circle className="o" cx="94" cy="76" r="12" fill="#17131f" style={{ strokeWidth: 3 }} />
+      <circle cx="52" cy="72" r="3" fill="#fff" />
+      <circle cx="90" cy="72" r="3" fill="#fff" />
+      <g className="viewer-lever" data-down={pulling}>
+        <path d="M122 68L142 68" stroke="#17131f" strokeWidth="6" strokeLinecap="round" />
+        <circle className="o" cx="145" cy="68" r="5" fill="#fff6e0" style={{ strokeWidth: 3 }} />
+      </g>
     </svg>
   );
 }
@@ -382,17 +419,11 @@ export function Bubble({ className }: ArtProps) {
   );
 }
 
-export function MarkedPage({
-  className,
-  shown = () => true,
-}: ArtProps & { shown?: (i: number) => boolean }) {
+const TITLE_FONT = { fontFamily: "'Bricolage Grotesque',sans-serif", letterSpacing: '-.5px' };
+
+function SundayMarket() {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 320 300"
-      role="img"
-      aria-label="A marked screenshot of a market landing page, with numbers 1, 2 and 3 on the title, the button and a lemon illustration."
-    >
+    <>
       <rect
         x="1"
         y="1"
@@ -484,9 +515,160 @@ export function MarkedPage({
         stroke="#17131f"
         strokeWidth="2"
       />
+    </>
+  );
+}
 
+function NightTrain() {
+  return (
+    <>
+      <rect
+        x="1"
+        y="1"
+        width="318"
+        height="298"
+        rx="12"
+        fill="#241a4d"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+      <circle cx="26" cy="24" r="6" fill="#ffc93c" />
+      <path d="M42 24h44M240 24h20M270 24h26" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+      <g fill="#fff">
+        <circle cx="176" cy="40" r="2" />
+        <circle cx="150" cy="130" r="2" />
+        <circle cx="286" cy="146" r="2" />
+        <circle cx="208" cy="168" r="2" />
+        <circle cx="262" cy="196" r="2" />
+      </g>
+      <text x="22" y="82" fontSize="25" style={{ ...TITLE_FONT, fill: '#fff' }}>
+        Sleep your way
+      </text>
+      <text x="22" y="110" fontSize="25" style={{ ...TITLE_FONT, fill: '#fff' }}>
+        to Lisbon.
+      </text>
+      <path
+        d="M22 134H124M22 146H100"
+        stroke="#fff"
+        strokeWidth="3.500"
+        strokeLinecap="round"
+        opacity=".45"
+      />
+      <rect x="22" y="168" width="110" height="32" rx="8" fill="#3d3268" />
+      <text
+        x="77"
+        y="189"
+        textAnchor="middle"
+        fontSize="11.500"
+        style={{ fill: '#cfc6f2', letterSpacing: 0 }}
+      >
+        Book a bed
+      </text>
+      <circle className="o" cx="249" cy="83" r="36" fill="#ffc93c" />
+      <circle cx="238" cy="74" r="7" fill="#e8ad22" />
+      <circle cx="262" cy="96" r="5" fill="#e8ad22" />
+      <path className="t" d="M238 92c5 6 12 6 17 0" />
+      <rect className="o" x="-6" y="236" width="332" height="40" rx="10" fill="#f2613f" />
+      <rect x="22" y="246" width="44" height="18" rx="4" fill="#ffc93c" />
+      <rect x="86" y="246" width="44" height="18" rx="4" fill="#fff6e0" />
+      <rect x="150" y="246" width="44" height="18" rx="4" fill="#ffc93c" />
+      <rect x="214" y="246" width="44" height="18" rx="4" fill="#fff6e0" />
+      <path d="M0 288H320" stroke="#fff" strokeWidth="3" strokeDasharray="14 12" opacity=".5" />
+    </>
+  );
+}
+
+function TinyBank() {
+  return (
+    <>
+      <rect
+        x="1"
+        y="1"
+        width="318"
+        height="298"
+        rx="12"
+        fill="#dff3ea"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+      <circle cx="26" cy="24" r="6" fill="#3b9f87" />
+      <path
+        d="M42 24h44M240 24h20M270 24h26"
+        stroke="#17131f"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <text x="22" y="118" fontSize="76" style={TITLE_FONT}>
+        $3
+      </text>
+      <g fontSize="9.500" textAnchor="middle" style={{ letterSpacing: 0 }}>
+        <rect x="22" y="158" width="46" height="24" rx="12" fill="#f59bd8" />
+        <text x="45" y="174">
+          NEW
+        </text>
+        <rect x="74" y="158" width="46" height="24" rx="12" fill="#ffc93c" />
+        <text x="97" y="174">
+          HOT
+        </text>
+        <rect x="126" y="158" width="50" height="24" rx="12" fill="#d8c3f6" />
+        <text x="151" y="174">
+          WOW
+        </text>
+      </g>
+      <path
+        className="o"
+        fill="#f59bd8"
+        d="M196 124C196 98 222 84 248 84C276 84 298 102 298 126C298 150 276 166 248 166C222 166 196 150 196 124Z"
+      />
+      <path className="o" fill="#f59bd8" d="M224 92L216 72L240 84Z" />
+      <rect x="236" y="92" width="26" height="5" rx="2.500" fill="#17131f" />
+      <circle cx="224" cy="118" r="4" fill="#17131f" />
+      <ellipse
+        className="o"
+        cx="204"
+        cy="132"
+        rx="11"
+        ry="9"
+        fill="#fff"
+        style={{ strokeWidth: 3 }}
+      />
+      <path className="t" d="M216 174v-10M280 174v-12" />
+      <rect
+        x="22"
+        y="214"
+        width="276"
+        height="62"
+        rx="10"
+        fill="#fff"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+      <path
+        d="M38 234H170M38 250H128"
+        stroke="#544e60"
+        strokeWidth="3.500"
+        strokeLinecap="round"
+        opacity=".6"
+      />
+      <circle cx="268" cy="245" r="14" fill="#3b9f87" />
+    </>
+  );
+}
+
+const MOCK_ART = [SundayMarket, NightTrain, TinyBank];
+
+/** A sample screen with its marks, which come one at a time. */
+export function MarkedPage({
+  className,
+  screen = 0,
+  shown = () => true,
+}: ArtProps & { screen?: number; shown?: (i: number) => boolean }) {
+  const Art = MOCK_ART[screen];
+  return (
+    <svg className={className} viewBox="0 0 320 300" aria-hidden="true">
+      <Art />
       <g fontSize="14" textAnchor="middle">
-        {MOCK_SPOTS.map((spot, i) => (
+        {MOCK_SPOTS[screen].map((spot, i) => (
           <g key={spot.n} className="mock-spot" data-on={shown(i)}>
             <rect
               x={spot.x}

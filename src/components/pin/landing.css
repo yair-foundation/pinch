@@ -223,6 +223,46 @@
   opacity: 1;
   transition: opacity 0.25s ease 0.5s;
 }
+/* The package's screens on a reel, turning as the tool's do: the same slots as `reel.tsx`. */
+.pinch-landing .package-reel {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: 20px;
+  background: var(--ink);
+  container-type: size;
+}
+.pinch-landing .reel-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 72cqw;
+  transition:
+    transform 0.8s cubic-bezier(0.3, 1.25, 0.45, 1),
+    opacity 0.4s ease;
+}
+.pinch-landing .viewer-reel {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.8s cubic-bezier(0.3, 1.25, 0.45, 1);
+}
+.pinch-landing .viewer-lever {
+  transform-box: fill-box;
+  transform-origin: left center;
+  transition: transform 0.35s ease;
+}
+.pinch-landing .viewer-lever[data-down='true'] {
+  transform: rotate(38deg);
+}
+.pinch-landing .note-set {
+  animation: landing-notes 0.35s ease;
+}
+@keyframes landing-notes {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
 .pinch-landing .note {
   opacity: 0.25;
   transition: opacity 0.4s ease;
@@ -234,6 +274,12 @@
   .pinch-landing .wave[data-on='true'] i {
     animation: none;
   }
+  .pinch-landing .note-set {
+    animation: none;
+  }
+  .pinch-landing .reel-card,
+  .pinch-landing .viewer-reel,
+  .pinch-landing .viewer-lever,
   .pinch-landing .demo-cursor,
   .pinch-landing .spot,
   .pinch-landing .spot-number,
