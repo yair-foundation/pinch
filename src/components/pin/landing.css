@@ -30,6 +30,22 @@
   word-spacing: 0.04em;
   line-height: 1;
 }
+/* The lines of the title share a place, and each wipes up over the last (D172). Clipped, not moved, so the marks can measure them. */
+.pinch-landing .title-rotor {
+  display: grid;
+}
+.pinch-landing .title-line {
+  grid-area: 1 / 1;
+  clip-path: inset(calc(100% + 0.2em) -0.2em -0.2em);
+}
+.pinch-landing .title-line[data-state='on'] {
+  clip-path: inset(-0.2em);
+  transition: clip-path 0.55s cubic-bezier(0.45, 0, 0.2, 1);
+}
+.pinch-landing .title-line[data-state='past'] {
+  clip-path: inset(-0.2em -0.2em calc(100% + 0.2em));
+  transition: clip-path 0.55s cubic-bezier(0.45, 0, 0.2, 1);
+}
 .pinch-landing .subtitle {
   font-family: var(--font-landing-display), sans-serif;
   font-variation-settings:
@@ -179,7 +195,11 @@
   clip-path: inset(-4px 100% 100% -4px round 16px);
   transition:
     clip-path 0.65s cubic-bezier(0.45, 0, 0.2, 1),
-    opacity 0.3s ease;
+    opacity 0.3s ease,
+    left 0.55s cubic-bezier(0.45, 0, 0.2, 1),
+    top 0.55s cubic-bezier(0.45, 0, 0.2, 1),
+    width 0.55s cubic-bezier(0.45, 0, 0.2, 1),
+    height 0.55s cubic-bezier(0.45, 0, 0.2, 1);
 }
 .pinch-landing .spot[data-on='true'] {
   opacity: 1;
@@ -205,7 +225,10 @@
 }
 .pinch-landing .spot-number[data-on='true'] {
   transform: scale(1);
-  transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1) 0.5s;
+  transition:
+    transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1) 0.5s,
+    left 0.55s cubic-bezier(0.45, 0, 0.2, 1),
+    top 0.55s cubic-bezier(0.45, 0, 0.2, 1);
 }
 .pinch-landing .mock-spot rect {
   stroke-dasharray: 1;
@@ -312,6 +335,9 @@
   .pinch-landing .reel-card,
   .pinch-landing .viewer-reel,
   .pinch-landing .viewer-lever,
+  .pinch-landing .title-line,
+  .pinch-landing .title-line[data-state='on'],
+  .pinch-landing .title-line[data-state='past'],
   .pinch-landing .demo-cursor,
   .pinch-landing .spot,
   .pinch-landing .spot-number,

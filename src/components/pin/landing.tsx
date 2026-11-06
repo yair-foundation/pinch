@@ -121,6 +121,13 @@ const ROWS = [
 const LINK = 'underline underline-offset-4 hover:text-(--ink)';
 
 /** What the designer says as the cursor marks the title, the price and the button. */
+/** The page's title, one line to a spot of the take (D172). Each line's last words get the first mark. */
+const TITLES = [
+  ['Point at it.', 'Say why.'],
+  ['Teach AI', 'your taste.'],
+  ['Retire', '“make it pop.”'],
+] as const;
+
 const SAYS = [
   ['THAT TITLE?', 'KEEP IT BIG.'],
   ['THAT NUMBER?', 'LOVE IT BIG.'],
@@ -179,11 +186,18 @@ export function Landing({
   const [shots, setShots] = useState(1);
   const { notes } = SHOTS[shots];
   const hero = useRef<HTMLElement>(null);
-  const sayWhy = useRef<HTMLSpanElement>(null);
+  const titleEnds = [
+    useRef<HTMLSpanElement>(null),
+    useRef<HTMLSpanElement>(null),
+    useRef<HTMLSpanElement>(null),
+  ];
   const price = useRef<HTMLSpanElement>(null);
   const start = useRef<HTMLButtonElement>(null);
-  const rects = useRects(hero, [sayWhy, price, start]);
+  const measured = useRects(hero, [...titleEnds, price, start]);
   const heroTake = useTake(SAYS.length, hero);
+  // The title changes as the cursor leaves a spot, and the first mark moves onto the new words.
+  const title = heroTake.still ? 0 : heroTake.spot;
+  const rects = measured.length ? [measured[title], ...measured.slice(TITLES.length)] : [];
   const story = useRef<HTMLDivElement>(null);
   const storyTake = useTake(SCREENS.length * ON_A_SCREEN, story, ON_A_SCREEN);
   const here = rects[heroTake.spot];
@@ -210,8 +224,29 @@ export function Landing({
         className="relative overflow-hidden bg-(--lilac) pt-24"
       >
         <div className="relative z-10 px-6 text-center">
-          <h1 className="title m-0 text-[clamp(56px,9.6vw,138px)]">
-            Point at it. <span ref={sayWhy}>Say why.</span>
+          <h1
+            aria-label={TITLES[0].join(' ')}
+            className="title title-rotor m-0 text-[clamp(56px,9.6vw,138px)]"
+          >
+            {TITLES.map(([opening, end], i) => (
+              <span
+                key={end}
+                aria-hidden
+                data-state={
+                  i === title
+                    ? 'on'
+                    : (i - title + TITLES.length) % TITLES.length === 1
+                      ? 'next'
+                      : 'past'
+                }
+                className="title-line text-balance"
+              >
+                {opening}{' '}
+                <span ref={titleEnds[i]} className="inline-block">
+                  {end}
+                </span>
+              </span>
+            ))}
           </h1>
           <p className="mx-auto mt-7 mb-0 max-w-[640px] text-[22px] leading-[1.45] text-balance">
             Add screenshots of designs you like and talk about them while you point. Your design

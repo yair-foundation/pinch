@@ -2,7 +2,7 @@
 
 ## Current state (2026-11-06)
 
-Since D169 the landing is an illustrated page in its own colours, headed "Point at it. Say why.", and the dark gallery is off it. The tool is unchanged.
+Since D169 the landing is an illustrated page in its own colours, headed in turns by "Point at it. Say why.", "Teach AI your taste." and "Retire “make it pop.”" (D172), and the dark gallery is off it. The tool is unchanged.
 
 Since D163 anyone new sees only this: add screenshots, talk them through, and Export from the end card, one take to one package, with no account, and nothing of a take leaves the browser. Since D164 that holds for everyone: Your notes is off the page, and people who saved notes or rules before get one item in the menu, Export my saved notes. Nothing on the server was deleted, and a connected agent keeps working, but no new agent key can be made.
 
