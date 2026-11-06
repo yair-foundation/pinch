@@ -59,57 +59,25 @@ const SCREENS = [
   {
     title: 'Sunday market',
     notes: [
-      {
-        text: 'That title is huge and I love it. Keep the scale.',
-        where: 'Top left, on “Fresh on Sunday.”',
-        dot: 'var(--ink)',
-      },
-      {
-        text: 'The button is too shy. Give it some weight.',
-        where: 'Middle left, on “See the stalls”',
-        dot: '#3b9f87',
-      },
-      {
-        text: 'This lemon has jokes. More of this, please.',
-        where: 'Middle right',
-        dot: 'var(--butter)',
-      },
+      { text: 'That title is huge and I love it. Keep the scale.' },
+      { text: 'The button is too shy. Give it some weight.' },
+      { text: 'This lemon has jokes. More of this, please.' },
     ],
   },
   {
     title: 'Night train',
     notes: [
-      {
-        text: 'Dark, and I can still read it. Rare.',
-        where: 'Top left, on “Sleep your way to Lisbon.”',
-        dot: '#241a4d',
-      },
-      {
-        text: 'That moon has nothing to do and does it well.',
-        where: 'Top right',
-        dot: 'var(--butter)',
-      },
-      {
-        text: 'The button gets lost at night. Make it glow.',
-        where: 'Middle left, on “Book a bed”',
-        dot: '#3d3268',
-      },
+      { text: 'Dark, and I can still read it. Rare.' },
+      { text: 'That moon has nothing to do and does it well.' },
+      { text: 'The button gets lost at night. Make it glow.' },
     ],
   },
   {
     title: 'Tiny bank',
     notes: [
-      { text: 'Big number. Now I believe it.', where: 'Top left, on “$3”', dot: 'var(--ink)' },
-      {
-        text: 'Three badges is two too many.',
-        where: 'Middle left, on “New”, “Hot”, “Wow”',
-        dot: '#f59bd8',
-      },
-      {
-        text: 'The pig stays. Everything else can move.',
-        where: 'Middle right',
-        dot: '#f59bd8',
-      },
+      { text: 'Big number. Now I believe it.' },
+      { text: 'Three badges is two too many.' },
+      { text: 'The pig stays. Everything else can move.' },
     ],
   },
 ];
@@ -405,22 +373,11 @@ export function Landing({
                   <h3 className="subtitle m-0 text-[26px] leading-tight">
                     {SCREENS[screen].title}
                   </h3>
-                  <ol className="m-0 mt-5 list-none space-y-5 p-0">
+                  <ol className="m-0 mt-4 list-none space-y-3 p-0">
                     {SCREENS[screen].notes.map((note, i) => (
-                      <li key={note.where} className="note flex gap-3" data-on={shownHere(i)}>
-                        <span className="subtitle w-5 shrink-0 text-[18px] leading-snug text-(--violet)">
-                          {i + 1}
-                        </span>
-                        <div>
-                          <p className="m-0 text-[18px] leading-snug font-medium">{note.text}</p>
-                          <p className="mt-1 mb-0 flex items-center gap-2 text-[15px] leading-snug text-(--soft)">
-                            <span
-                              className="inline-block size-[10px] shrink-0 rounded-full border border-(--ink)"
-                              style={{ background: note.dot }}
-                            />
-                            {note.where}
-                          </p>
-                        </div>
+                      <li key={note.text} className="note flex gap-2.5" data-on={shownHere(i)}>
+                        <span className="note-number">{i + 1}</span>
+                        <p className="note-bubble m-0">{note.text}</p>
                       </li>
                     ))}
                   </ol>
