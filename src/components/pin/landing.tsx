@@ -1,11 +1,12 @@
 'use client';
 
 import { Bricolage_Grotesque, Figtree } from 'next/font/google';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Bubble,
   MarkedPage,
+  MOCK_SPOTS,
   PinchScene,
   Robot,
   StepAdd,
@@ -14,6 +15,7 @@ import {
   StepSay,
   TalkScene,
 } from './landing-art';
+import { DemoCursor, SpotMark, useTake, Wave } from './landing-demo';
 import './landing.css';
 
 /*
@@ -91,6 +93,53 @@ const ROWS = [
 
 const LINK = 'underline underline-offset-4 hover:text-(--ink)';
 
+/** What the designer says as the cursor marks the title, the price and the button. */
+const SAYS = [
+  ['THAT TITLE?', 'KEEP IT BIG.'],
+  ['THAT NUMBER?', 'LOVE IT BIG.'],
+  ['THAT BUTTON?', 'MORE OF THAT.'],
+] as const;
+
+const SPOT_ROOM = 12;
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** The spots above the fold, in `root`, followed as the window changes and the fonts arrive. */
+function useRects(
+  root: React.RefObject<HTMLElement | null>,
+  targets: React.RefObject<HTMLElement | null>[],
+) {
+  const [rects, setRects] = useState<Rect[]>([]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the refs stay the same ones
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const measure = () => {
+      const from = el.getBoundingClientRect();
+      setRects(
+        targets.flatMap((t) => {
+          const r = t.current?.getBoundingClientRect();
+          return r
+            ? [
+                {
+                  x: r.left - from.left - SPOT_ROOM,
+                  y: r.top - from.top - SPOT_ROOM,
+                  w: r.width + 2 * SPOT_ROOM,
+                  h: r.height + 2 * SPOT_ROOM,
+                },
+              ]
+            : [];
+        }),
+      );
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    document.fonts?.ready.then(measure);
+    return () => watch.disconnect();
+  }, [root]);
+  return rects;
+}
+
 export function Landing({
   dragging,
   inert,
@@ -102,6 +151,18 @@ export function Landing({
 }) {
   const [shots, setShots] = useState(1);
   const { notes } = SHOTS[shots];
+  const hero = useRef<HTMLElement>(null);
+  const sayWhy = useRef<HTMLSpanElement>(null);
+  const price = useRef<HTMLSpanElement>(null);
+  const start = useRef<HTMLButtonElement>(null);
+  const rects = useRects(hero, [sayWhy, price, start]);
+  const heroTake = useTake(SAYS.length, hero);
+  const story = useRef<HTMLDivElement>(null);
+  const storyTake = useTake(MOCK_SPOTS.length, story);
+  const here = rects[heroTake.spot];
+  const mock = MOCK_SPOTS[storyTake.spot];
+  // The cursor comes to a spot's corner, and drags across it as the mark is drawn.
+  const across = (stage: string) => stage !== 'travel';
   return (
     <div
       data-landing
@@ -114,16 +175,39 @@ export function Landing({
         dragging && 'outline-4 -outline-offset-4 outline-(--violet)',
       )}
     >
-      <section aria-label="Start" className="relative overflow-hidden bg-(--lilac) pt-24">
+      <section
+        ref={hero}
+        aria-label="Start"
+        className="relative overflow-hidden bg-(--lilac) pt-24"
+      >
         <div className="relative z-10 px-6 text-center">
-          <h1 className="title m-0 text-[clamp(56px,9.6vw,138px)]">Point at it. Say why.</h1>
+          <h1 className="title m-0 text-[clamp(56px,9.6vw,138px)]">
+            Point at it. <span ref={sayWhy}>Say why.</span>
+          </h1>
           <p className="mx-auto mt-7 mb-0 max-w-[640px] text-[22px] leading-[1.45] text-balance">
             Add screenshots of designs you like and talk about them while you point. Your design
             agent gets a package it can read.
           </p>
         </div>
+        <Wave on={heroTake.talking} className="mt-6 flex justify-center xl:hidden" />
         <PinchScene className="absolute bottom-0 left-0 hidden xl:block" />
-        <TalkScene className="absolute right-0 bottom-0 hidden xl:block" />
+        <TalkScene
+          className="absolute right-0 bottom-0 hidden xl:block"
+          say={SAYS[heroTake.spot]}
+        />
+        <Wave
+          on={heroTake.talking}
+          className="absolute right-[150px] bottom-[196px] z-10 hidden xl:inline-flex"
+        />
+        {rects.map((rect, i) => (
+          <SpotMark key={SAYS[i][0]} rect={rect} number={i + 1} on={heroTake.shown(i)} />
+        ))}
+        {here && (
+          <DemoCursor
+            left={`${here.x + (across(heroTake.stage) ? here.w : 0)}px`}
+            top={`${here.y + (across(heroTake.stage) ? here.h : 0)}px`}
+          />
+        )}
         <div className="relative z-10 mx-auto mt-12 w-full max-w-[720px] rounded-t-[40px] bg-(--violet) px-[6px]">
           <p className="m-0 py-[11px] text-center text-[17px] font-semibold text-white">
             Free for now
@@ -131,9 +215,14 @@ export function Landing({
           <div className="grid grid-cols-1 gap-12 rounded-t-[32px] bg-white px-6 pt-11 pb-12 sm:px-12 md:grid-cols-[1.02fr_1fr]">
             <div>
               <h2 className="subtitle m-0 text-[30px] leading-none">Pinch</h2>
-              <p className="figure mt-6 mb-0 text-[116px]">$0</p>
+              <p className="figure mt-6 mb-0 text-[116px]">
+                <span ref={price} className="inline-block">
+                  $0
+                </span>
+              </p>
               <p className="mt-3 mb-0 text-[17px] text-(--soft)">free, no account</p>
               <button
+                ref={start}
                 type="button"
                 onClick={onChoose}
                 className="press mt-8 block w-full cursor-pointer rounded-2xl border-2 border-b-[6px] border-(--ink) bg-(--butter) py-[15px] text-center text-[18px] font-semibold text-(--ink)"
@@ -220,16 +309,23 @@ export function Landing({
             <Bubble className="absolute top-0 right-[196px] z-0 hidden sm:block" />
             <Robot className="absolute top-[8px] right-[44px] z-0 hidden sm:block" />
             <div className="relative z-10 rounded-[32px] bg-(--violet) px-[6px] pb-[6px]">
-              <p className="m-0 py-[10px] pl-8 text-[15px] font-semibold text-white">
-                Your package
-              </p>
+              <div className="flex items-center justify-between py-[10px] pr-8 pl-8">
+                <p className="m-0 text-[15px] font-semibold text-white">Your package</p>
+                <Wave on={storyTake.talking} className="story-wave inline-flex" />
+              </div>
               <div className="grid grid-cols-1 gap-8 rounded-[26px] bg-white p-7 md:grid-cols-[296px_1fr]">
-                <MarkedPage className="block w-full rounded-xl" />
+                <div ref={story} className="relative self-start">
+                  <MarkedPage className="block w-full rounded-xl" shown={storyTake.shown} />
+                  <DemoCursor
+                    left={`${((mock.x + (across(storyTake.stage) ? mock.w : 0)) / 320) * 100}%`}
+                    top={`${((mock.y + (across(storyTake.stage) ? mock.h : 0)) / 300) * 100}%`}
+                  />
+                </div>
                 <div>
                   <h3 className="subtitle m-0 text-[26px] leading-tight">Sunday market</h3>
                   <ol className="m-0 mt-5 list-none space-y-5 p-0">
                     {SAMPLE.map((note, i) => (
-                      <li key={note.where} className="flex gap-3">
+                      <li key={note.where} className="note flex gap-3" data-on={storyTake.shown(i)}>
                         <span className="subtitle w-5 shrink-0 text-[18px] leading-snug text-(--violet)">
                           {i + 1}
                         </span>

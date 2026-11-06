@@ -5,6 +5,13 @@
 
 type ArtProps = { className?: string };
 
+/** The marks on the mock page, in its 320 by 300 drawing. */
+export const MOCK_SPOTS = [
+  { n: 1, x: 14, y: 50, w: 146, h: 74 },
+  { n: 2, x: 14, y: 164, w: 120, h: 46 },
+  { n: 3, x: 186, y: 62, w: 120, h: 136 },
+];
+
 export function PinchScene({ className }: ArtProps) {
   return (
     <svg
@@ -135,7 +142,10 @@ export function PinchScene({ className }: ArtProps) {
   );
 }
 
-export function TalkScene({ className }: ArtProps) {
+export function TalkScene({
+  className,
+  say = ['THAT BUTTON?', 'MORE OF THAT.'],
+}: ArtProps & { say?: readonly [string, string] }) {
   return (
     <svg
       className={className}
@@ -226,10 +236,10 @@ export function TalkScene({ className }: ArtProps) {
         d="M28 136H182C194 136 202 144 202 156V192C202 204 194 212 182 212H168L196 250L128 212H28C16 212 8 204 8 192V156C8 144 16 136 28 136Z"
       />
       <text x="105" y="168" textAnchor="middle" fontSize="17">
-        THAT BUTTON?
+        {say[0]}
       </text>
       <text x="105" y="192" textAnchor="middle" fontSize="17">
-        MORE OF THAT.
+        {say[1]}
       </text>
 
       <g transform="translate(-14 0)">
@@ -362,7 +372,10 @@ export function Bubble({ className }: ArtProps) {
   );
 }
 
-export function MarkedPage({ className }: ArtProps) {
+export function MarkedPage({
+  className,
+  shown = () => true,
+}: ArtProps & { shown?: (i: number) => boolean }) {
   return (
     <svg
       className={className}
@@ -463,48 +476,34 @@ export function MarkedPage({ className }: ArtProps) {
       />
 
       <g fontSize="14" textAnchor="middle">
-        <rect
-          x="14"
-          y="50"
-          width="146"
-          height="74"
-          rx="6"
-          fill="none"
-          stroke="#5a32d1"
-          strokeWidth="3"
-        />
-        <circle cx="160" cy="50" r="14" fill="#fff" stroke="#5a32d1" strokeWidth="3" />
-        <text x="160" y="55" style={{ letterSpacing: 0 }}>
-          1
-        </text>
-        <rect
-          x="14"
-          y="164"
-          width="120"
-          height="46"
-          rx="8"
-          fill="none"
-          stroke="#5a32d1"
-          strokeWidth="3"
-        />
-        <circle cx="134" cy="164" r="14" fill="#fff" stroke="#5a32d1" strokeWidth="3" />
-        <text x="134" y="169" style={{ letterSpacing: 0 }}>
-          2
-        </text>
-        <rect
-          x="186"
-          y="62"
-          width="120"
-          height="136"
-          rx="8"
-          fill="none"
-          stroke="#5a32d1"
-          strokeWidth="3"
-        />
-        <circle cx="302" cy="62" r="14" fill="#fff" stroke="#5a32d1" strokeWidth="3" />
-        <text x="302" y="67" style={{ letterSpacing: 0 }}>
-          3
-        </text>
+        {MOCK_SPOTS.map((spot, i) => (
+          <g key={spot.n} className="mock-spot" data-on={shown(i)}>
+            <rect
+              x={spot.x}
+              y={spot.y}
+              width={spot.w}
+              height={spot.h}
+              rx="8"
+              fill="none"
+              stroke="#5a32d1"
+              strokeWidth="3"
+              pathLength={1}
+            />
+            <g className="mock-number">
+              <circle
+                cx={spot.x + spot.w}
+                cy={spot.y}
+                r="14"
+                fill="#fff"
+                stroke="#5a32d1"
+                strokeWidth="3"
+              />
+              <text x={spot.x + spot.w} y={spot.y + 5} style={{ letterSpacing: 0 }}>
+                {spot.n}
+              </text>
+            </g>
+          </g>
+        ))}
       </g>
     </svg>
   );

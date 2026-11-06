@@ -118,3 +118,124 @@
     transition: none;
   }
 }
+
+/* The take acted out: a sound wave, a cursor and the marks it leaves. */
+.pinch-landing .wave {
+  height: 44px;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+.pinch-landing .wave i {
+  display: block;
+  width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: currentColor;
+  transform: scaleY(0.1);
+  transition: transform 0.25s ease;
+}
+.pinch-landing .wave[data-on='true'] i {
+  animation: landing-wave 0.85s ease-in-out infinite;
+}
+@keyframes landing-wave {
+  0%,
+  100% {
+    transform: scaleY(0.14);
+  }
+  50% {
+    transform: scaleY(var(--peak));
+  }
+}
+.pinch-landing .story-wave {
+  height: 24px;
+  gap: 3px;
+  color: #fff;
+}
+.pinch-landing .story-wave i {
+  width: 3px;
+}
+.pinch-landing .demo-cursor {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  transition:
+    left 0.75s cubic-bezier(0.45, 0, 0.2, 1),
+    top 0.75s cubic-bezier(0.45, 0, 0.2, 1);
+}
+.pinch-landing .spot {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  border: 4px solid var(--violet);
+  border-radius: 16px;
+  opacity: 0;
+  clip-path: inset(-4px 100% 100% -4px round 16px);
+  transition:
+    clip-path 0.65s cubic-bezier(0.45, 0, 0.2, 1),
+    opacity 0.3s ease;
+}
+.pinch-landing .spot[data-on='true'] {
+  opacity: 1;
+  clip-path: inset(-4px -4px -4px -4px round 16px);
+}
+.pinch-landing .spot-number {
+  position: absolute;
+  z-index: 21;
+  display: flex;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--violet);
+  border-radius: 50%;
+  background: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  pointer-events: none;
+  transform: scale(0);
+  transition: transform 0.2s ease;
+}
+.pinch-landing .spot-number[data-on='true'] {
+  transform: scale(1);
+  transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1) 0.5s;
+}
+.pinch-landing .mock-spot rect {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.65s cubic-bezier(0.45, 0, 0.2, 1);
+}
+.pinch-landing .mock-spot[data-on='true'] rect {
+  stroke-dashoffset: 0;
+}
+.pinch-landing .mock-spot .mock-number {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.pinch-landing .mock-spot[data-on='true'] .mock-number {
+  opacity: 1;
+  transition: opacity 0.25s ease 0.5s;
+}
+.pinch-landing .note {
+  opacity: 0.25;
+  transition: opacity 0.4s ease;
+}
+.pinch-landing .note[data-on='true'] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pinch-landing .wave[data-on='true'] i {
+    animation: none;
+  }
+  .pinch-landing .demo-cursor,
+  .pinch-landing .spot,
+  .pinch-landing .spot-number,
+  .pinch-landing .spot-number[data-on='true'],
+  .pinch-landing .mock-spot rect,
+  .pinch-landing .mock-spot .mock-number,
+  .pinch-landing .mock-spot[data-on='true'] .mock-number,
+  .pinch-landing .note {
+    transition: none;
+  }
+}

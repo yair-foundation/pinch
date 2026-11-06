@@ -48,8 +48,8 @@ Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-mu
 
 ## Motion
 
-- Short and purposeful: the small pieces falling from the landing's pinch (D169, the one decorative motion), the shimmer while rules load, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). No other decorative motion.
-- **Reduced motion is honoured.** The theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; the landing's pieces stay still and its buttons don't move when pressed; the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
+- Short and purposeful: the landing's take acted out, a cursor marking spots while a sound wave moves, and the small pieces falling from its pinch (D169, the one decorative scene), the shimmer while rules load, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). No other decorative motion.
+- **Reduced motion is honoured.** The theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden`; on the landing every mark stands there, the wave lies flat, and the pieces and buttons don't move; the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
 
 ## Icons
 
