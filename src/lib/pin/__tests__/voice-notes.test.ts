@@ -72,6 +72,56 @@ describe('voice notes: claims', () => {
   });
 });
 
+describe('voice notes: pauses', () => {
+  /** Words at the given start times, in ms, each 200ms long. */
+  const timed = (...said: [string, number][]) =>
+    said.map(([text, start]) => ({ text, start, end: start + 200 }));
+
+  it('keeps a sentence whole across a pause in it, as the author talks', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(
+          ["It's", 0],
+          ['setting', 300],
+          ['a', 600],
+          ['nice', 900],
+          ['atmosphere', 1200],
+          ['and', 2500],
+          ['vibes.', 2800],
+          ['It', 4600],
+          ['is', 4900],
+          ['too', 5200],
+          ['much', 5500],
+          ['height.', 7000],
+        ),
+      ).map((c) => c.text),
+      ["It's setting a nice atmosphere and vibes.", 'It is too much height.'],
+    );
+  });
+  it('ends a sentence at a pause before a capital, with no full stop to go on', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(['Great', 0], ['title', 300], ['The', 1500], ['icons', 1800], ['are', 2100], ['plain', 2400]),
+      ).map((c) => c.text),
+      ['Great title.', 'The icons are plain.'],
+    );
+  });
+  it('ends one at a very long pause, whatever comes next', () => {
+    assert.deepEqual(
+      claimsOf(timed(['Great', 0], ['title', 300], ['the', 7000], ['icons', 7300])).map(
+        (c) => c.text,
+      ),
+      ['Great title.', 'The icons.'],
+    );
+  });
+  it('keeps a word said alone, but not a stray one', () => {
+    assert.deepEqual(
+      claimsOf(timed(['Nice.', 0], ['Um.', 2000], ['A.', 4000])).map((c) => c.text),
+      ['Nice.'],
+    );
+  });
+});
+
 describe('voice notes: works or avoid', () => {
   it('reads praise as what works and faults as what to avoid', () => {
     assert.equal(verdictOfClaim('I love how calm this header is.'), 'good');

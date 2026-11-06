@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D161.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D162.
 
 ## Open (need the user)
 
@@ -12,6 +12,10 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-11-06 — D162 A pause no longer ends a sentence in the middle, and a word said alone is kept (the user: "Fix split notes"). Amends D131.** Any pause of 0.7 seconds ended a sentence, and pulling stretched words back (D159) made every pause show. The author's round 2 take came out as 12 notes with thoughts cut in two: "I prefer." and "More contemporary, fresh font". A leftover single word was dropped, which lost "height" from "too much height".
+  - **The rule.** Whisper starts a sentence with a capital, so after a pause a word in lower case goes on with the same thought. A capital after a pause still starts a new sentence, and a pause of 6 seconds or more does too, whatever comes next. The longest pause inside a sentence on that take was 3.5 seconds.
+  - **One word.** A word of three letters or more said alone stays, as "Nice" over what the pointer is on can be a whole note. Filler and stray short words still go.
+  - **Checked on the author's real take,** with its own pointer path: 12 notes became 7 whole ones, no words were lost, and the marks still sit on the title, the price, the card and the illustrations. One take is a small test, and a model that capitalises after a pause in mid-sentence would still split there.
 - **2026-11-06 — D161 The browser reads a take with the large voice model where it can, from a one-time download of about 570 MB (the user: "Switch to large model"). Amends D140.** On the author's two real takes, in a real browser, the base model misheard short sentences and could loop over the pauses between them, whatever its settings, and speech detection made it worse. A stronger small model didn't help. Only large-v3-turbo held up, at 7% against 10% off on steady talk, and it heard the take the base model turned to nonsense. Since D157 the words reach the agent with nothing cleaning them up, so they have to be right. It also keeps the voice on the person's machine and costs nothing to run. The comparison is in [hand-vs-pinch.md](hand-vs-pinch.md).
   - **Where it can't run.** It needs WebGPU with 16-bit floats and memory reported at 8 GB or more, or none reported (`voiceTiers`). Anything else starts on the base model, and a model that won't load or run gives way to the next, with the warning from D159 behind them.
   - **The download starts when there are images,** not at Finish, so that it doesn't hold up the words, and the reel says how far it has come. A browser set to save data waits until Finish.

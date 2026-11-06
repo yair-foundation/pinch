@@ -69,13 +69,24 @@ const FILLER = new Set([
   'oh',
 ]);
 
+/** A pause this long ends a sentence whatever comes next: the thought has moved on. */
+const LOST_THREAD = 6000;
+
+/**
+ * Whether a pause before this word ends the sentence (D162). Whisper starts a sentence with a
+ * capital, so a word in lower case after a pause goes on with the same thought, as people stop to
+ * look or think in the middle of one: "a nice atmosphere … and vibes".
+ */
+const pauseEnds = (word: TimedWord, gap: number) =>
+  gap >= LOST_THREAD || (gap >= SENTENCE_PAUSE && !/^[^\p{L}\p{N}]*\p{Ll}/u.test(word.text));
+
 /** What was said, as claims: a sentence each, split at a contrast. */
 export function claimsOf(words: readonly TimedWord[]): Claim[] {
   const sentences: TimedWord[][] = [];
   let current: TimedWord[] = [];
   words.forEach((word, i) => {
     const prev = words[i - 1];
-    if (current.length && prev && word.start - prev.end >= SENTENCE_PAUSE) {
+    if (current.length && prev && pauseEnds(word, word.start - prev.end)) {
       sentences.push(current);
       current = [];
     }
@@ -92,7 +103,9 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
     let part: TimedWord[] = [];
     const flush = () => {
       const said = part.map((w) => norm(w.text)).filter(Boolean);
-      if (said.length >= 2 && said.some((w) => !FILLER.has(w))) claims.push(claimOf(part));
+      // One word can be a whole note, "Nice" over what the pointer is on, but not a stray "a".
+      const enough = said.length >= 2 || (said[0]?.length ?? 0) >= 3;
+      if (enough && said.some((w) => !FILLER.has(w))) claims.push(claimOf(part));
       part = [];
     };
     for (const word of sentence) {
