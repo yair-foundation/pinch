@@ -641,7 +641,13 @@ const roundShape = (s: Shape): Shape =>
       : { kind: 'area', x: round4(s.x), y: round4(s.y), w: round4(s.w), h: round4(s.h) };
 
 /** The structured export: everything the README says, as data. */
-export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = plainCrop) {
+export function manifest(
+  assets: Asset[],
+  exportedAt: string,
+  cropOf: CropOf = plainCrop,
+  /** Each note's mark in words (D166), when the export has worked it out. */
+  whereOf?: (a: Asset, m: Mark) => string | undefined,
+) {
   const list = exportable(assets);
   return {
     tool: 'Pinch',
@@ -678,6 +684,7 @@ export function manifest(assets: Asset[], exportedAt: string, cropOf: CropOf = p
             pixels: shapePixels(m.shape, a.width, a.height),
             crop: files.crop(j),
             cropPixels: cropOf(a, m),
+            ...(whereOf?.(a, m) ? { where: whereOf(a, m) } : {}),
             ...(m.origin === 'ai'
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : m.origin === 'voice'

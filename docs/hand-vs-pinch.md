@@ -750,3 +750,29 @@ A box says where a note is but not what it's on, and it can be wrong or sit on t
 - Six pairs and one person, on the author's fifth sitting on these tasks. 5 of 6 comes up by chance about 1 time in 9.
 - Words and dimming are tested together, so only both together have earned this result.
 - Change counts depend on what's beside them, so 13 and 20 say nothing about other sittings.
+
+### Reading text in a browser: what was checked, 2026-11-06
+
+The marks test used Apple's Vision, and its rule builds words only if they're cheap in a browser. So [ppu-paddle-ocr](https://github.com/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr) 6.6.1 (MIT) with its PP-OCRv6 tiny models ran in a real browser on the first take's 10 screenshots, at full size, about 2880 by 1920, on one M1 Pro. Each note's text was picked out the same way as in the test, and Apple's text was the yardstick. No judging was needed.
+
+**It reads about as well.** It read 720 of Apple's 746 words, 97%. Of the 53 spots where Apple read text, it read all the words on 43, at least half on 9 and under half on 1.
+
+| | Result |
+| --- | --- |
+| Other words it read | 40 of 760. On the one spot opened, they were real badge labels Apple had missed |
+| Its misses | Words run together ("arenot", "1201555"), a styled logo ("HENEWYORKERS"), and light grey "Filter" |
+| Time | 21–23 seconds for 10 screens, about 2 seconds each, with the graphics card or without |
+| Download | About 11 MB: 6 MB of models from Hugging Face, a 4.6 MB runtime file from jsDelivr, and about 0.4 MB of code |
+
+**What it needs:**
+
+- **Whole screens, not spots.** Reading only each spot was barely quicker and cut text in half: 29 of 63 spots came out at least 80% like Apple's, against 48 for whole screens.
+- **A filter for icons.** It reads icons as stray characters, such as "国", at high confidence, so confidence can't remove them. The figures above drop any word without two letters or digits in a row, unless it's a number. Single-character words in Chinese or Japanese would go too.
+- **A worker,** so the page doesn't freeze. This check ran on the page itself.
+- **Pinch's own ONNX Runtime.** It ran on the version Pinch already has, with the same counts. Inside Pinch it loads a different build of that version from the voice model's, so that's a second file, 4.6 MB over the network.
+
+**Installing it** also brings OpenCV and a native canvas, about 44 MB, into `node_modules`. They stayed out of the browser bundle.
+
+**The verdict: cheap,** so by the rule set above, words get built (D166).
+
+**Limits:** one machine, one take of mostly English screens, and Apple's text is a yardstick, not the truth. Whether it holds on slower machines isn't known.

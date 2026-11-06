@@ -49,8 +49,12 @@ const INTRO = [
   '',
   'When you design for me, read all of this first and open the images: it is everything you know about my taste.',
   '',
-  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes, and each close-up shows one spot. A mark's colour means nothing.",
 ];
+/** For notes kept before D166, whose close-ups have the mark drawn on them. */
+const MARKS_DRAWN =
+  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes, and each close-up shows one spot. A mark's colour means nothing.";
+const MARKS_IN_WORDS =
+  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours. A mark's colour means nothing.";
 
 /** A note's words, as they were said. */
 const wordsOf = (n: BatchNote) =>
@@ -83,7 +87,8 @@ export function notesPackage(
 ): { files: PackageFile[]; notes: number; missing: number } {
   const root = notesPackageRoot(stamp);
   const images: PackageFile[] = [];
-  const lines = [...INTRO];
+  const inWords = c.batches.some((b) => b.notes.some((n) => n.where));
+  const lines = [...INTRO, inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
   let notes = 0;
   let missing = 0;
   for (const [i, b] of c.batches.entries()) {
@@ -120,6 +125,7 @@ export function notesPackage(
         lines.push(
           `- ${n.ref.split('.')[1]}. ${crop ? `(\`${crop}\`) ` : ''}${n.best ? 'My best example: ' : ''}${wordsOf(n)}`,
         );
+        if (n.where) lines.push(`  ${n.where}`);
       }
     }
   }

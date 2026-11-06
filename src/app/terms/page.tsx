@@ -64,7 +64,8 @@ export default function Terms() {
           <p>
             Your screenshots, recordings, notes and rules are yours. Recordings of your voice stay
             in your browser: a voice model, downloaded once from Hugging Face, turns them into
-            words there, and Pinch never receives them. Your images and notes stay in your browser
+            words there, and Pinch never receives them. A small text model, also from Hugging Face, reads
+            the text on your screenshots there. Your images and notes stay in your browser
             unless you signed in to keep notes before; those keep their screenshots in your account, stored privately for
             you alone, up to 200 MB free and 2 GB once you have bought a pack. Delete your account in
             Pinch and your notes and rules are deleted; any credits you hold stay with your email. In Pinch, “How Pinch uses your

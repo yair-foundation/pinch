@@ -74,6 +74,8 @@ export type BatchNote = {
   best?: true;
   /** Said aloud (D131): its works or doesn't was sorted by its words, so a reading may turn it (D147). */
   said?: true;
+  /** Its mark said in words (D166): "Where: top left, on "Plans". Colours: #ffffff." */
+  where?: string;
 };
 
 export type Batch = {
