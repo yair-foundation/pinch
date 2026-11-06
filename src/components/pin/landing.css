@@ -1,0 +1,243 @@
+/*
+ * The landing (D169) keeps its own colours and type in both themes: flat lilac, bright accents and a
+ * big grotesque, for the one page that has to be remembered. The tool stays neutral, because a
+ * surface around a screenshot being judged has to stay out of the way.
+ */
+.pinch-landing {
+  --ink: #17131f;
+  --soft: #544e60;
+  --lilac: #d8c3f6;
+  --mist: #f6f1fd;
+  --violet: #5a32d1;
+  --butter: #ffc93c;
+  --line: #e6e1ee;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-landing-body), system-ui, sans-serif;
+}
+
+.pinch-landing .title {
+  font-family: var(--font-landing-display), sans-serif;
+  font-variation-settings:
+    'opsz' 96,
+    'wdth' 96;
+  font-weight: 750;
+  letter-spacing: -0.028em;
+  word-spacing: 0.04em;
+  line-height: 1;
+}
+.pinch-landing .subtitle {
+  font-family: var(--font-landing-display), sans-serif;
+  font-variation-settings:
+    'opsz' 32,
+    'wdth' 98;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.pinch-landing .figure {
+  font-family: var(--font-landing-display), sans-serif;
+  font-variation-settings:
+    'opsz' 96,
+    'wdth' 92;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  word-spacing: 0.02em;
+  line-height: 0.95;
+}
+
+.pinch-landing svg .o {
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pinch-landing svg .t {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  fill: none;
+}
+.pinch-landing svg text {
+  font-family: var(--font-landing-body), sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  fill: var(--ink);
+}
+
+.pinch-landing .press {
+  transition: transform 0.12s ease;
+}
+.pinch-landing .press:hover {
+  transform: translateY(-2px);
+}
+.pinch-landing .press:active {
+  transform: translateY(3px);
+}
+.pinch-landing a:focus-visible,
+.pinch-landing button:focus-visible {
+  outline: 3px solid var(--violet);
+  outline-offset: 3px;
+}
+
+.pinch-landing .tag::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--butter);
+  border-left: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  transform: rotate(45deg);
+}
+
+.pinch-landing .bit {
+  animation: landing-bob 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.pinch-landing .bit:nth-child(2n) {
+  animation-delay: -1.1s;
+}
+.pinch-landing .bit:nth-child(3n) {
+  animation-delay: -1.9s;
+}
+@keyframes landing-bob {
+  50% {
+    transform: translateY(6px) rotate(12deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pinch-landing .bit {
+    animation: none;
+  }
+  .pinch-landing .press {
+    transition: none;
+  }
+}
+
+/* The take acted out: a sound wave, a cursor and the marks it leaves. */
+.pinch-landing .wave {
+  height: 44px;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+.pinch-landing .wave i {
+  display: block;
+  width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: currentColor;
+  transform: scaleY(0.1);
+  transition: transform 0.25s ease;
+}
+.pinch-landing .wave[data-on='true'] i {
+  animation: landing-wave 0.85s ease-in-out infinite;
+}
+@keyframes landing-wave {
+  0%,
+  100% {
+    transform: scaleY(0.14);
+  }
+  50% {
+    transform: scaleY(var(--peak));
+  }
+}
+.pinch-landing .story-wave {
+  height: 24px;
+  gap: 3px;
+  color: #fff;
+}
+.pinch-landing .story-wave i {
+  width: 3px;
+}
+.pinch-landing .demo-cursor {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  overflow: visible;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.25));
+  transition:
+    left 0.75s cubic-bezier(0.45, 0, 0.2, 1),
+    top 0.75s cubic-bezier(0.45, 0, 0.2, 1);
+}
+.pinch-landing .spot {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  border: 4px solid var(--violet);
+  border-radius: 16px;
+  opacity: 0;
+  clip-path: inset(-4px 100% 100% -4px round 16px);
+  transition:
+    clip-path 0.65s cubic-bezier(0.45, 0, 0.2, 1),
+    opacity 0.3s ease;
+}
+.pinch-landing .spot[data-on='true'] {
+  opacity: 1;
+  clip-path: inset(-4px -4px -4px -4px round 16px);
+}
+.pinch-landing .spot-number {
+  position: absolute;
+  z-index: 21;
+  display: flex;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--violet);
+  border-radius: 50%;
+  background: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  pointer-events: none;
+  transform: scale(0);
+  transition: transform 0.2s ease;
+}
+.pinch-landing .spot-number[data-on='true'] {
+  transform: scale(1);
+  transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1) 0.5s;
+}
+.pinch-landing .mock-spot rect {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.65s cubic-bezier(0.45, 0, 0.2, 1);
+}
+.pinch-landing .mock-spot[data-on='true'] rect {
+  stroke-dashoffset: 0;
+}
+.pinch-landing .mock-spot .mock-number {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.pinch-landing .mock-spot[data-on='true'] .mock-number {
+  opacity: 1;
+  transition: opacity 0.25s ease 0.5s;
+}
+.pinch-landing .note {
+  opacity: 0.25;
+  transition: opacity 0.4s ease;
+}
+.pinch-landing .note[data-on='true'] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pinch-landing .wave[data-on='true'] i {
+    animation: none;
+  }
+  .pinch-landing .demo-cursor,
+  .pinch-landing .spot,
+  .pinch-landing .spot-number,
+  .pinch-landing .spot-number[data-on='true'],
+  .pinch-landing .mock-spot rect,
+  .pinch-landing .mock-spot .mock-number,
+  .pinch-landing .mock-spot[data-on='true'] .mock-number,
+  .pinch-landing .note {
+    transition: none;
+  }
+}

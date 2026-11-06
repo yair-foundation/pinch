@@ -1,0 +1,520 @@
+/*
+ * The landing's drawings (D169): Pinch's own world of screenshots, a pointer, a talker and an agent.
+ * Hand-drawn SVG in the landing's colours, styled by \`.o\` and \`.t\` in \`landing.css\`.
+ */
+
+type ArtProps = { className?: string };
+
+/** The author's cursor (D135): an arrow with no leg, in a drawing 82 by 85, its tip at 8.2, 10.6. */
+export const CURSOR_PATH =
+  'M32.6389 74.8863L8.18983 10.5709C7.61473 9.05806 9.00696 7.59711 10.4499 8.19924L71.7928 33.7977C73.1748 34.3746 73.3641 36.3478 72.1123 37.1274L49.7021 51.0827C49.4565 51.2356 49.252 51.4502 49.1065 51.7079L35.814 75.2193C35.0715 76.5328 33.1897 76.3353 32.6389 74.8863Z';
+
+/** The marks on the mock page, in its 320 by 300 drawing. */
+export const MOCK_SPOTS = [
+  { n: 1, x: 14, y: 50, w: 146, h: 74 },
+  { n: 2, x: 14, y: 164, w: 120, h: 46 },
+  { n: 3, x: 186, y: 62, w: 120, h: 136 },
+];
+
+export function PinchScene({ className }: ArtProps) {
+  return (
+    <svg
+      className={className}
+      width="340"
+      height="560"
+      viewBox="0 0 340 560"
+      role="img"
+      aria-label="A hand pinches tiny screenshots into a box, below a line of pegged-up designs, saying: this one."
+    >
+      <path className="o" fill="none" d="M0 34H300" />
+      <circle cx="304" cy="34" r="8" fill="#17131f" />
+      <g transform="rotate(-3 62 90)">
+        <rect className="o" x="22" y="44" width="82" height="100" rx="6" fill="#fff" />
+        <rect className="o" x="32" y="55" width="62" height="38" rx="3" fill="#f59bd8" />
+        <circle cx="63" cy="74" r="10" fill="#ffc93c" className="t" />
+        <path className="t" d="M34 106H90M34 118H72" />
+        <rect className="o" x="55" y="26" width="13" height="28" rx="4" fill="#ffc93c" />
+      </g>
+      <g transform="rotate(2 160 90)">
+        <rect className="o" x="120" y="44" width="82" height="100" rx="6" fill="#ffc93c" />
+        <path d="M131 80V62h44M131 88h60" className="t" style={{ strokeWidth: 7 }} />
+        <rect className="o" x="131" y="108" width="40" height="18" rx="9" fill="#17131f" />
+        <rect className="o" x="154" y="26" width="13" height="28" rx="4" fill="#f59bd8" />
+      </g>
+      <g transform="rotate(-2 256 86)">
+        <rect className="o" x="218" y="44" width="76" height="94" rx="6" fill="#3b9f87" />
+        <circle className="o" cx="256" cy="80" r="20" fill="#fff" />
+        <circle cx="256" cy="80" r="7" fill="#f2613f" />
+        <path d="M232 120h48" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
+        <rect className="o" x="250" y="26" width="13" height="28" rx="4" fill="#fff" />
+      </g>
+
+      <rect className="o" x="-10" y="182" width="104" height="80" fill="#3b9f87" />
+      <path
+        d="M12 186v74M58 186v74"
+        stroke="#17131f"
+        strokeWidth="3"
+        strokeDasharray="1 9"
+        strokeLinecap="round"
+      />
+      <rect className="o" x="90" y="172" width="44" height="100" rx="14" fill="#fff" />
+      <path
+        className="o"
+        fill="#f59bd8"
+        d="M134 186C174 160 240 172 262 236C272 266 276 292 270 314C266 328 250 326 246 314C238 292 222 272 204 262C194 270 214 300 240 324C222 336 190 326 166 300C154 288 144 276 134 268Z"
+      />
+      <path
+        className="t"
+        d="M174 196c6 8 8 16 6 26M198 192c8 8 10 18 8 30M204 262c10 2 18 8 26 18"
+      />
+      <path className="t" d="M292 186l14-18M304 222l22-10M304 258h24" />
+      <rect
+        className="o"
+        style={{ strokeWidth: 3 }}
+        x="252"
+        y="324"
+        width="14"
+        height="14"
+        rx="2"
+        fill="#fff"
+        transform="rotate(12 259 331)"
+      />
+      <g>
+        <rect
+          className="bit o"
+          style={{ strokeWidth: 3 }}
+          x="268"
+          y="358"
+          width="11"
+          height="11"
+          rx="2"
+          fill="#f59bd8"
+        />
+        <rect
+          className="bit o"
+          style={{ strokeWidth: 3 }}
+          x="232"
+          y="374"
+          width="11"
+          height="11"
+          rx="2"
+          fill="#fff"
+        />
+        <rect
+          className="bit o"
+          style={{ strokeWidth: 3 }}
+          x="262"
+          y="396"
+          width="11"
+          height="11"
+          rx="2"
+          fill="#ffc93c"
+        />
+        <rect
+          className="bit o"
+          style={{ strokeWidth: 3 }}
+          x="218"
+          y="412"
+          width="11"
+          height="11"
+          rx="2"
+          fill="#fff"
+        />
+      </g>
+
+      <path
+        className="o"
+        fill="#fff"
+        d="M30 300H172C184 300 192 308 192 320V348C192 360 184 368 172 368H72L38 396L46 368H30C18 368 10 360 10 348V320C10 308 18 300 30 300Z"
+      />
+      <text x="101" y="340" textAnchor="middle" fontSize="19">
+        THIS ONE.
+      </text>
+
+      <path className="o" fill="#fff" d="M74 448L44 420L126 420L150 448Z" />
+      <path className="o" fill="#ffc93c" d="M312 448L336 416L256 416L226 448Z" />
+      <rect className="o" x="74" y="446" width="238" height="130" rx="8" fill="#f2613f" />
+      <rect className="o" x="128" y="474" width="130" height="50" rx="10" fill="#f59bd8" />
+      <text x="193" y="495" textAnchor="middle" fontSize="12.5">
+        FOR YOUR
+      </text>
+      <text x="193" y="512" textAnchor="middle" fontSize="12.5">
+        AGENT
+      </text>
+      <path d="M96 470v50M112 470v30" stroke="#fff" strokeWidth="7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function TalkScene({
+  className,
+  say = ['THAT BUTTON?', 'MORE OF THAT.'],
+}: ArtProps & { say?: readonly [string, string] }) {
+  return (
+    <svg
+      className={className}
+      width="340"
+      height="560"
+      viewBox="0 0 340 560"
+      role="img"
+      aria-label="A curly-haired designer talks into a microphone, saying: that button? More of that. A black cat hunts a computer mouse at their feet."
+    >
+      <g transform="translate(34 56) scale(.9)">
+        <g fill="#ffc93c" className="o">
+          <circle cx="206" cy="232" r="32" />
+          <circle cx="242" cy="200" r="36" />
+          <circle cx="290" cy="198" r="38" />
+          <circle cx="328" cy="232" r="32" />
+          <circle cx="196" cy="276" r="24" />
+          <circle cx="338" cy="280" r="24" />
+        </g>
+        <g fill="#ffc93c">
+          <circle cx="206" cy="232" r="30" />
+          <circle cx="242" cy="200" r="34" />
+          <circle cx="290" cy="198" r="36" />
+          <circle cx="328" cy="232" r="30" />
+          <circle cx="196" cy="276" r="22" />
+          <circle cx="338" cy="280" r="22" />
+          <circle cx="265" cy="240" r="60" />
+        </g>
+
+        <path
+          className="o"
+          fill="#3b9f87"
+          d="M150 570C154 480 176 424 238 408H296C340 420 356 480 360 570Z"
+        />
+        <path className="t" d="M246 410L268 436L288 410" />
+        <path className="t" d="M268 436V570" />
+        <path className="o" fill="#f59bd8" d="M246 372V404C246 426 288 426 288 404V372Z" />
+
+        <path
+          className="o"
+          fill="#f59bd8"
+          d="M211 268C212 232 238 216 268 216C298 216 322 232 323 268C325 320 303 384 267 384C231 384 209 320 211 268Z"
+        />
+        <path
+          className="o"
+          fill="#ffc93c"
+          d="M210 276C232 274 262 262 276 236C286 256 304 270 324 274C324 238 302 210 268 210C232 210 208 238 210 276Z"
+        />
+        <circle cx="246" cy="302" r="7" fill="#17131f" />
+        <circle cx="292" cy="302" r="7" fill="#17131f" />
+        <path className="t" d="M235 285c6-4 12-5 18-3M285 282c6-2 12-1 18 3" />
+        <circle cx="229" cy="326" r="9" fill="#f2613f" opacity=".85" />
+        <circle cx="309" cy="326" r="9" fill="#f2613f" opacity=".85" />
+        <path
+          className="o"
+          fill="#17131f"
+          style={{ strokeWidth: 3 }}
+          d="M254 336C262 342 278 342 286 336C286 354 276 362 270 362C264 362 254 354 254 336Z"
+        />
+
+        <path
+          d="M176 560C160 520 160 482 176 448"
+          fill="none"
+          stroke="#17131f"
+          strokeWidth="48"
+          strokeLinecap="round"
+        />
+        <path
+          d="M176 560C160 520 160 482 176 448"
+          fill="none"
+          stroke="#3b9f87"
+          strokeWidth="40"
+          strokeLinecap="round"
+        />
+        <path d="M180 430L198 366" stroke="#17131f" strokeWidth="16" strokeLinecap="round" />
+        <circle className="o" cx="201" cy="352" r="19" fill="#ffc93c" />
+        <path className="t" d="M190 345l20 16M197 336l16 14M187 356l14 12" />
+        <path
+          className="o"
+          fill="#f59bd8"
+          d="M158 420C166 400 194 404 200 420C206 440 186 458 170 452C158 448 152 434 158 420Z"
+        />
+        <path className="t" d="M168 424h22M164 436h24" />
+      </g>
+
+      <path
+        className="o"
+        fill="#fff"
+        d="M28 136H182C194 136 202 144 202 156V192C202 204 194 212 182 212H168L196 250L128 212H28C16 212 8 204 8 192V156C8 144 16 136 28 136Z"
+      />
+      <text x="105" y="168" textAnchor="middle" fontSize="17">
+        {say[0]}
+      </text>
+      <text x="105" y="192" textAnchor="middle" fontSize="17">
+        {say[1]}
+      </text>
+
+      <g transform="translate(-14 0)">
+        <path
+          fill="#17131f"
+          d="M24 570C14 520 20 486 32 462L26 428L52 446C62 442 72 442 82 446L108 428L104 462C118 490 124 530 118 570Z"
+        />
+        <ellipse cx="54" cy="478" rx="9" ry="6" fill="#fff" />
+        <ellipse cx="84" cy="478" rx="9" ry="6" fill="#fff" />
+        <ellipse cx="59" cy="480" rx="3.500" ry="5" fill="#17131f" />
+        <ellipse cx="89" cy="480" rx="3.500" ry="5" fill="#17131f" />
+        <path d="M65 490h8l-4 5Z" fill="#f59bd8" />
+      </g>
+      <path className="o" fill="#fff" d="M106 564C100 516 166 510 170 564Z" />
+      <path className="o" fill="#f59bd8" style={{ strokeWidth: 3 }} d="M133 528h8v12h-8Z" />
+      <path d="M100 536c8-4 18-2 20 8s-10 16-20 12Z" fill="#17131f" />
+    </svg>
+  );
+}
+
+export function StepAdd({ className }: ArtProps) {
+  return (
+    <svg className={className} width="112" height="104" viewBox="0 0 112 104" aria-hidden="true">
+      <g transform="rotate(-9 44 54)">
+        <rect className="o" x="10" y="20" width="66" height="72" rx="6" fill="#f59bd8" />
+      </g>
+      <g transform="rotate(5 56 50)">
+        <rect className="o" x="24" y="10" width="66" height="76" rx="6" fill="#fff" />
+        <rect
+          className="o"
+          style={{ strokeWidth: 3 }}
+          x="33"
+          y="20"
+          width="48"
+          height="28"
+          rx="3"
+          fill="#d8c3f6"
+        />
+        <circle cx="57" cy="34" r="8" fill="#f2613f" className="t" />
+        <path className="t" d="M34 60H78M34 72H60" />
+      </g>
+      <circle className="o" cx="90" cy="78" r="17" fill="#ffc93c" />
+      <path className="t" d="M90 70v16M82 78h16" />
+    </svg>
+  );
+}
+
+export function StepSay({ className }: ArtProps) {
+  return (
+    <svg className={className} width="112" height="104" viewBox="0 0 112 104" aria-hidden="true">
+      <path className="t" d="M14 30l8 6M8 54h10M14 78l8-6M98 30l-8 6M104 54H94M98 78l-8-6" />
+      <rect className="o" x="38" y="8" width="36" height="58" rx="18" fill="#3b9f87" />
+      <path className="t" d="M38 28h14M38 40h14M60 28h14M60 40h14" />
+      <path className="o" fill="none" d="M28 48c0 42 56 42 56 0" />
+      <path className="o" fill="none" d="M56 80v14" />
+      <rect className="o" x="36" y="90" width="40" height="10" rx="5" fill="#f59bd8" />
+    </svg>
+  );
+}
+
+export function StepPoint({ className }: ArtProps) {
+  return (
+    <svg className={className} width="112" height="104" viewBox="0 0 112 104" aria-hidden="true">
+      <rect className="o" x="8" y="10" width="72" height="60" rx="6" fill="#ffc93c" />
+      <path className="t" d="M20 26H60M20 38H44" />
+      <circle className="o" cx="26" cy="56" r="11" fill="#fff" style={{ strokeWidth: 3 }} />
+      <text x="26" y="61" fontSize="13" textAnchor="middle" style={{ letterSpacing: 0 }}>
+        1
+      </text>
+      <path
+        className="o"
+        fill="#fff"
+        transform="translate(44 38) scale(.75)"
+        style={{ strokeWidth: 5.3 }}
+        d={CURSOR_PATH}
+      />
+      <path className="t" d="M96 40l8-8M100 54h9" />
+    </svg>
+  );
+}
+
+export function StepHand({ className }: ArtProps) {
+  return (
+    <svg className={className} width="112" height="104" viewBox="0 0 112 104" aria-hidden="true">
+      <path className="o" fill="#fff" d="M22 38L8 22H46L56 38Z" />
+      <path className="o" fill="#ffc93c" d="M90 38L104 22H66L56 38Z" />
+      <rect className="o" x="22" y="38" width="68" height="58" rx="5" fill="#f2613f" />
+      <rect
+        className="o"
+        style={{ strokeWidth: 3 }}
+        x="36"
+        y="54"
+        width="40"
+        height="24"
+        rx="5"
+        fill="#f59bd8"
+      />
+      <path className="t" d="M44 62h24M44 70h14" />
+      <path className="t" d="M56 14V4M38 12l-4-8M74 12l4-8" />
+    </svg>
+  );
+}
+
+export function Robot({ className }: ArtProps) {
+  return (
+    <svg className={className} width="150" height="124" viewBox="0 0 150 124" aria-hidden="true">
+      <path className="o" fill="none" d="M75 26V8" />
+      <circle className="o" cx="75" cy="8" r="6" fill="#f2613f" style={{ strokeWidth: 3 }} />
+      <rect className="o" x="26" y="26" width="98" height="110" rx="20" fill="#ffc93c" />
+      <rect className="o" x="38" y="42" width="74" height="40" rx="14" fill="#17131f" />
+      <circle cx="60" cy="62" r="8" fill="#fff" />
+      <circle cx="90" cy="62" r="8" fill="#fff" />
+      <circle cx="62" cy="65" r="3.500" fill="#17131f" />
+      <circle cx="92" cy="65" r="3.500" fill="#17131f" />
+      <rect className="o" x="12" y="50" width="14" height="30" rx="5" fill="#f59bd8" />
+      <rect className="o" x="124" y="50" width="14" height="30" rx="5" fill="#f59bd8" />
+    </svg>
+  );
+}
+
+export function Bubble({ className }: ArtProps) {
+  return (
+    <svg className={className} width="270" height="92" viewBox="0 0 270 92" aria-hidden="true">
+      <path
+        className="o"
+        fill="#fff"
+        d="M20 4H224C236 4 244 12 244 22V36L266 52L244 56V58C244 68 236 76 224 76H20C10 76 4 68 4 58V22C4 12 10 4 20 4Z"
+      />
+      <text x="124" y="34" textAnchor="middle" fontSize="16.500">
+        FINALLY, SOME
+      </text>
+      <text x="124" y="57" textAnchor="middle" fontSize="16.500">
+        DIRECTION.
+      </text>
+    </svg>
+  );
+}
+
+export function MarkedPage({
+  className,
+  shown = () => true,
+}: ArtProps & { shown?: (i: number) => boolean }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 320 300"
+      role="img"
+      aria-label="A marked screenshot of a market landing page, with numbers 1, 2 and 3 on the title, the button and a lemon illustration."
+    >
+      <rect
+        x="1"
+        y="1"
+        width="318"
+        height="298"
+        rx="12"
+        fill="#fff6e0"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+      <circle cx="26" cy="24" r="6" fill="#3b9f87" />
+      <path
+        d="M42 24h44M240 24h20M270 24h26"
+        stroke="#17131f"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <text
+        x="22"
+        y="80"
+        fontSize="29"
+        style={{ fontFamily: "'Bricolage Grotesque',sans-serif", letterSpacing: '-.5px' }}
+      >
+        Fresh on
+      </text>
+      <text
+        x="22"
+        y="111"
+        fontSize="29"
+        style={{ fontFamily: "'Bricolage Grotesque',sans-serif", letterSpacing: '-.5px' }}
+      >
+        Sunday.
+      </text>
+      <path
+        d="M22 138H150M22 152H128"
+        stroke="#544e60"
+        strokeWidth="3.500"
+        strokeLinecap="round"
+        opacity=".6"
+      />
+      <rect x="22" y="172" width="104" height="30" rx="8" fill="#3b9f87" />
+      <text
+        x="74"
+        y="192"
+        textAnchor="middle"
+        fontSize="11"
+        style={{ fill: '#fff', letterSpacing: 0 }}
+      >
+        See the stalls
+      </text>
+      <path
+        className="o"
+        fill="#ffc93c"
+        d="M204 118C224 88 276 92 288 128C298 162 266 194 232 186C202 180 188 146 204 118Z"
+      />
+      <path className="o" fill="#3b9f87" d="M252 94C252 78 264 68 280 70C280 84 268 96 252 94Z" />
+      <circle cx="228" cy="134" r="4" fill="#17131f" />
+      <circle cx="256" cy="130" r="4" fill="#17131f" />
+      <path className="t" d="M232 152c8 7 18 6 26-2" />
+      <circle cx="216" cy="146" r="6" fill="#f59bd8" />
+      <circle cx="270" cy="142" r="6" fill="#f59bd8" />
+      <rect
+        x="22"
+        y="228"
+        width="84"
+        height="50"
+        rx="8"
+        fill="#fff"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+      <rect
+        x="118"
+        y="228"
+        width="84"
+        height="50"
+        rx="8"
+        fill="#f59bd8"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+      <rect
+        x="214"
+        y="228"
+        width="84"
+        height="50"
+        rx="8"
+        fill="#d8c3f6"
+        stroke="#17131f"
+        strokeWidth="2"
+      />
+
+      <g fontSize="14" textAnchor="middle">
+        {MOCK_SPOTS.map((spot, i) => (
+          <g key={spot.n} className="mock-spot" data-on={shown(i)}>
+            <rect
+              x={spot.x}
+              y={spot.y}
+              width={spot.w}
+              height={spot.h}
+              rx="8"
+              fill="none"
+              stroke="#5a32d1"
+              strokeWidth="3"
+              pathLength={1}
+            />
+            <g className="mock-number">
+              <circle
+                cx={spot.x + spot.w}
+                cy={spot.y}
+                r="14"
+                fill="#fff"
+                stroke="#5a32d1"
+                strokeWidth="3"
+              />
+              <text x={spot.x + spot.w} y={spot.y + 5} style={{ letterSpacing: 0 }}>
+                {spot.n}
+              </text>
+            </g>
+          </g>
+        ))}
+      </g>
+    </svg>
+  );
+}

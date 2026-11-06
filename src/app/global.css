@@ -33,7 +33,7 @@
 html {
   scrollbar-gutter: stable;
 }
-/* The landing never scrolls the page; a reserved gutter would show as a strip beside the ring. */
+/* The landing scrolls inside the app's frame, so the page itself never needs a gutter. */
 html:has([data-landing]) {
   scrollbar-gutter: auto;
 }

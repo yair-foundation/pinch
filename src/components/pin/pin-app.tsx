@@ -1,9 +1,6 @@
 'use client';
 
-import {
-  Plus,
-  X,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import {
   useCallback,
@@ -20,8 +17,6 @@ import {
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
-import { IDLE_TALK } from '@/lib/pin/ring-demo';
-import { RING_PICTURES } from '@/lib/pin/ring-pictures';
 import { unzip } from '@/lib/pin/unzip';
 import { applyTake, flipVerdict, removedScreens } from '@/lib/pin/voice-notes';
 import { isPdf } from '@/lib/pin/pdf-pages';
@@ -35,13 +30,10 @@ import {
 import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
-import { RingDemo, Waveform } from './ring-demo';
-import { type RingControl, RingGallery } from './ring-gallery';
+import { Landing } from './landing';
 import {
   AccountMenu,
   DeleteAccountDialog,
-  OFFER,
-  type Offer,
   signOut,
   useMe,
 } from './account';
@@ -939,7 +931,12 @@ function Workspace() {
   };
 
   return (
-    <div className="relative flex h-dvh min-h-0 flex-col bg-background text-foreground">
+    <div
+      className={cn(
+        'relative flex h-dvh min-h-0 flex-col bg-background text-foreground',
+        landing && 'overflow-y-auto',
+      )}
+    >
       {/* While a dialog is open, everything behind it is inert: no focus, no clicks, nothing read. */}
       <header
         inert={dialog !== null}
@@ -1070,10 +1067,9 @@ function Workspace() {
       )}
 
       {!loaded ? null : !asset ? (
-        <EmptyState
+        <Landing
           dragging={dragging}
           inert={dialog !== null}
-          offer={READING_SHOWN && me?.paywall ? { ...OFFER, price: me.price } : undefined}
           onChoose={() => fileInput.current?.click()}
         />
       ) : (
@@ -1327,156 +1323,4 @@ function ShortcutsDialog({
   );
 }
 
-/*
- * The landing (D133): the title types itself in at the top left while the ring of the author's
- * pictures spins in below it, on the page's own ground, after a reference clip. What Pinch does
- * and Add images sit under the title; the footer keeps the offer and the links.
- */
-/** The ring's pictures (D133) and what the demo marks on each (D135). */
-const RING_SOURCES = RING_PICTURES.map((p) => p.src);
-const RING_TARGETS = RING_PICTURES.map((p) => p.target);
 
-const LANDING_TITLE = 'Teach AI your taste.';
-
-/** The landing's main button, and what shows beside it while files are dragged over the page. */
-const LANDING_BUTTON =
-  'flex h-10 items-center gap-2 rounded-full bg-neutral-900 px-5 text-sm font-medium text-white transition-colors duration-150 motion-reduce:transition-none hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 dark:focus-visible:outline-white';
-const LANDING_HINT = 'm-0 text-[13px] leading-relaxed text-foreground';
-const FOOTER_LINK =
-  '-mx-1 rounded px-1 underline underline-offset-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
-
-const GLYPHS = 'ABCDEFGHJKLMNOPRSTUVWXYZabcdefghkmnoprstuvwxyz+-_/';
-
-/**
- * The text as it types itself in once `run` turns on: each letter flickers through noise, then
- * settles, left to right. Blank but holding its lines until then; all at once under reduced motion.
- */
-function useTypedIn(text: string, run: boolean): string {
-  const [shown, setShown] = useState(() => text.replace(/[^\n]/g, ' '));
-  useEffect(() => {
-    if (!run) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setShown(text);
-      return;
-    }
-    const begun = performance.now();
-    let frame = 0;
-    const tick = (now: number) => {
-      const p = (now - begun) / 700;
-      setShown(
-        [...text]
-          .map((ch, i) => {
-            const at = (i / text.length) * 0.8;
-            if (ch === '\n' || ch === ' ' || p >= at + 0.2) return ch;
-            return p < at ? ' ' : GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-          })
-          .join(''),
-      );
-      if (p < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [text, run]);
-  return shown;
-}
-
-function EmptyState({
-  dragging,
-  inert,
-  offer,
-  onChoose,
-}: {
-  dragging: boolean;
-  inert: boolean;
-  /** The one offer and the free credits, once billing is on (D98). */
-  offer?: Offer & { price: string };
-  onChoose: () => void;
-}) {
-  // The title types in as the ring starts to spin, or after a second if its pictures are slow.
-  const [spinning, setSpinning] = useState(false);
-  const title = useTypedIn(LANDING_TITLE, spinning);
-  // The demo over the ring drives it and tells the waveform how loudly someone is talking.
-  const [ring, setRing] = useState<RingControl | null>(null);
-  const talking = useRef(IDLE_TALK);
-  useEffect(() => {
-    const wait = setTimeout(() => setSpinning(true), 1000);
-    return () => clearTimeout(wait);
-  }, []);
-  return (
-    <section
-      data-landing
-      aria-label="Start"
-      inert={inert}
-      className={cn(
-        'relative flex min-h-0 flex-1 flex-col bg-background',
-        // Files over the window: the whole page takes them.
-        dragging && 'ring-2 ring-foreground/40 ring-inset',
-      )}
-    >
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full flex-col">
-          <div className="shrink-0 px-6 pt-28 sm:px-[8vw]">
-            <h1 className="m-0 font-display text-[clamp(1.75rem,3.4vw,2.75rem)] leading-[1.04] font-light tracking-[-0.035em] text-black dark:text-white">
-              <span className="sr-only">{LANDING_TITLE.replace('\n', ' ')}</span>
-              <span aria-hidden className="whitespace-pre-wrap">
-                {title}
-              </span>
-            </h1>
-            <p className="mt-4 mb-0 max-w-md text-[13px] leading-relaxed text-balance text-muted-foreground">
-              Walk through your screenshots out loud. Pinch turns what you say into a package for
-              your agent.
-            </p>
-            {/* The waveform sits in this row, centred on the page and on the button (D135). */}
-            <div className="relative mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <button type="button" onClick={onChoose} className={LANDING_BUTTON}>
-                <Plus className="size-4" aria-hidden />
-                Add images
-              </button>
-              <p className={LANDING_HINT} aria-live="polite">
-                {dragging && 'Drop to add them.'}
-              </p>
-              <Waveform
-                level={talking}
-                className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-black dark:text-white"
-              />
-            </div>
-          </div>
-          {/*
-           * The ring's frame: zero to start from and grown into the free space. The cursor comes in
-           * from outside it, so it clips (D135).
-           */}
-          <div className="relative min-h-[15rem] w-full flex-[1_1_0px] overflow-hidden">
-            <RingGallery
-              pictures={RING_SOURCES}
-              onStart={() => setSpinning(true)}
-              onControl={setRing}
-              className="absolute inset-0 size-full"
-            />
-            <RingDemo ring={ring} talking={talking} targets={RING_TARGETS} />
-          </div>
-          <p className="m-0 flex shrink-0 flex-wrap justify-between gap-x-6 gap-y-1 px-6 pb-4 text-[13px] leading-relaxed text-muted-foreground sm:px-[8vw]">
-            <span className="text-balance">
-              {offer
-                ? `Talking through images is free. Start free with ${offer.free} credits; top up anytime. Your voice is never kept.`
-                : 'Free, no account. Nothing leaves your browser.'}
-            </span>
-            <span>
-              <a href="/terms" className={FOOTER_LINK}>
-                Terms
-              </a>{' '}
-              · Created by{' '}
-              <a
-                href="https://yair-works.vercel.app"
-                target="_blank"
-                rel="noopener"
-                className={FOOTER_LINK}
-              >
-                Yair Cohen
-              </a>
-            </span>
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
