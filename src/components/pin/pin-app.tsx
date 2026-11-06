@@ -1,8 +1,6 @@
 'use client';
 
 import {
-  ArrowLeft,
-  Library,
   Plus,
   X,
 } from 'lucide-react';
@@ -17,28 +15,29 @@ import {
 import {
   type Asset,
   cleanScreenTag,
-  exportName,
-  itemsOf,
-  type Mark,
   type Source,
   verdictOf,
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
-import { noteFingerprint } from '@/lib/pin/learnings';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import { IDLE_TALK } from '@/lib/pin/ring-demo';
 import { RING_PICTURES } from '@/lib/pin/ring-pictures';
 import { unzip } from '@/lib/pin/unzip';
 import { applyTake, flipVerdict, removedScreens } from '@/lib/pin/voice-notes';
 import { isPdf } from '@/lib/pin/pdf-pages';
-import { updatePrice } from '@/lib/pin/credits';
-import { READING_SHOWN } from '@/lib/pin/notes-package';
+import {
+  NOTE_TEXT_SAVED,
+  NOTES_FILE,
+  notesPackageRoot,
+  READING_SHOWN,
+  takePackage,
+} from '@/lib/pin/notes-package';
+import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
 import { RingDemo, Waveform } from './ring-demo';
 import { type RingControl, RingGallery } from './ring-gallery';
 import {
-  AccessGate,
   AccountMenu,
   DeleteAccountDialog,
   OFFER,
@@ -47,21 +46,22 @@ import {
   useMe,
 } from './account';
 import { cloudBackend } from './cloud-store';
-import { CollectionsView } from './collections';
 import { browserBackend } from './collections-store';
 import { Dialog, hit } from './dialog';
 import { pdfPages } from './pdf';
 import { Reel } from './reel';
 import {
   buildExport,
+  download,
   prepareImage,
 } from './render';
+import { readSaved, savedNotesPackage } from './saved-notes';
 import * as store from './store';
 
 /*
  * Pinch: add a batch of screenshots and talk through them on the reel (D131, `reel.tsx`), the
- * microphone and the pointer kept as a take; Export gives the package (D157). Images stay in
- * this browser; the text of written notes is saved anonymously (`notes-log.ts`).
+ * microphone and the pointer kept as a take; Export gives the package (D157, D163). Nothing of a
+ * take leaves this browser. Notes and rules saved before go out with one export (D164).
  */
 
 const newId = () =>
@@ -146,10 +146,6 @@ class History {
     return ids;
   }
 }
-
-/** A note's fingerprint as the rules keep it, to find it among the open images (D110). */
-const markPrint = (a: Asset, m: Mark) =>
-  noteFingerprint(exportName(a), itemsOf(m.good).join('\n'), itemsOf(m.bad).join('\n'));
 
 /** A key in a shortcut hint. */
 function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -260,7 +256,7 @@ export function PinApp() {
 /** One tab's name, so a tab can tell its own saves from another's. */
 const TAB_ID = newId();
 
-type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'delete' | 'pay';
+type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'delete';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
 const digestOf = (list: Asset[]) => {
@@ -299,27 +295,28 @@ function Workspace() {
   const [volatile, setVolatile] = useState(false);
   // Another tab saved this session since it was loaded here; this tab stops saving until reloaded.
   const stale = useRef(false);
-  // The batch, or the collections in its place (D79). Per visit.
-  const [view, setView] = useState<'batch' | 'collections'>('batch');
-  // The end card's Export (D157): the notes page opens and the package goes.
-  const [exportNext, setExportNext] = useState(false);
-  const viewRef = useRef(view);
-  viewRef.current = view;
-  // Who is looking, and their credits (D81, D98). Anyone marks images and reads notes into
-  // rules with their credits; AI suggestions are for buyers, once billing is on.
+  // Who is looking (D81, D98).
   const { me, refresh: refreshMe } = useMe();
-  // Credits are counted once billing is on, except for buyers of the original offer (D98).
-  const credits =
-    me?.paywall && me.credits && !me.credits.original
-      ? { balance: me.credits.balance, closed: me.credits.closed }
-      : null;
-  // The rules live in the account once signed in, in this browser otherwise.
+  // What was saved before D164 is in the account once signed in, and may be in this browser too.
   const cloudKey = me?.user && me.cloud && me.folder ? `${me.cloud} ${me.folder}` : '';
-  const backend = useMemo(() => {
-    if (!cloudKey) return browserBackend;
+  const savedIn = useMemo(() => {
+    if (!cloudKey) return [browserBackend];
     const [mode, folder] = cloudKey.split(' ');
-    return cloudBackend(folder, mode as 'blob' | 'memory');
+    return [cloudBackend(folder, mode as 'blob' | 'memory'), browserBackend];
   }, [cloudKey]);
+  // Notes or rules saved before takes became export-only (D163), for their owner to take (D164).
+  const [hasSaved, setHasSaved] = useState(false);
+  useEffect(() => {
+    let current = true;
+    readSaved(savedIn)
+      .then((saved) => {
+        if (current) setHasSaved(saved !== null);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [savedIn]);
   const history = useRef<History>(null as unknown as History);
   history.current ??= new History();
   // The latest session, kept in step with history so handlers never read a stale render.
@@ -550,7 +547,7 @@ function Workspace() {
   const sent = useRef<Record<string, string> | null>(null);
   const sendingNotes = useRef(false);
   const flushNotes = useCallback((leaving = false) => {
-    if (local.get(SAVE_NOTES_KEY) === 'off') return;
+    if (!NOTE_TEXT_SAVED || local.get(SAVE_NOTES_KEY) === 'off') return;
     if (!sent.current) {
       try {
         sent.current = JSON.parse(local.get(SENT_KEY) ?? '{}');
@@ -804,7 +801,7 @@ function Workspace() {
       addFiles([...(e.dataTransfer?.files ?? [])]);
     };
     const onPaste = (e: ClipboardEvent) => {
-      if (isTyping(e.target) || viewRef.current === 'collections') return;
+      if (isTyping(e.target)) return;
       const files = [...(e.clipboardData?.files ?? [])];
       if (files.length) addFiles(files);
     };
@@ -854,6 +851,65 @@ function Workspace() {
     }
   }, [markExported]);
 
+  /** This take as the package an agent reads (D163): all of Pinch's output, one click from the end. */
+  const exportTake = useCallback(async () => {
+    try {
+      const made = await batchZip();
+      if (!made) {
+        setStatus({ tone: 'info', text: 'There are no notes to export yet.' });
+        return;
+      }
+      const found = await unzip(await made.blob.arrayBuffer());
+      const stamp = new Date().toISOString();
+      const pack = takePackage(readExport(found), found, stamp);
+      download(
+        new Blob(zip(pack.files) as BlobPart[], { type: 'application/zip' }),
+        `${notesPackageRoot(stamp).slice(0, -1)}.zip`,
+      );
+      setStatus({
+        tone: pack.missing ? 'error' : 'info',
+        text: pack.missing
+          ? `Exported ${count(pack.notes, 'note')}, but ${count(pack.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
+          : `Exported ${count(pack.notes, 'note')}. Point your agent at ${NOTES_FILE}.`,
+      });
+    } catch {
+      setStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });
+    }
+  }, [batchZip]);
+
+  /** Everything saved before D164, for its owner to take: all that's left of Your notes. */
+  const exportSaved = useCallback(async () => {
+    try {
+      const pack = await savedNotesPackage(savedIn, (done, total) =>
+        setStatus({ tone: 'info', text: `Preparing ${done} of ${total}…`, sticky: true }),
+      );
+      if (!pack) {
+        setStatus({ tone: 'info', text: 'There are no saved notes to export.' });
+        return;
+      }
+      download(
+        new Blob(zip(pack.files) as BlobPart[], { type: 'application/zip' }),
+        `${notesPackageRoot(new Date().toISOString()).slice(0, -1)}.zip`,
+      );
+      const what = [
+        pack.notes ? count(pack.notes, 'note') : '',
+        pack.rules ? count(pack.rules, 'rule') : '',
+      ]
+        .filter(Boolean)
+        .join(' and ');
+      setStatus({
+        tone: pack.missing ? 'error' : 'info',
+        text: pack.missing
+          ? `Exported ${what}, but ${count(pack.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
+          : pack.notes
+            ? `Exported ${what}. Point your agent at ${NOTES_FILE}.`
+            : `Exported ${what}.`,
+      });
+    } catch {
+      setStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });
+    }
+  }, [savedIn]);
+
   /**
    * The logo goes home, which in Pinch means a new batch: straight there when everything was
    * exported since the last change, after a question when something wasn't.
@@ -865,80 +921,9 @@ function Workspace() {
   };
 
   // The landing: no image yet, so the header floats over the page, on the title's grid.
-  const landing = loaded && !asset && view === 'batch';
-  // The batch's own controls in the header: its count, suggestions, export and keys.
-  const batchTools = view === 'batch' && assets.length > 0;
-  // Credits bought, in this tab or another: the ask goes, and says so.
-  const balanceAtPay = useRef<number | null>(null);
-  useEffect(() => {
-    const balance = me?.credits?.balance;
-    if (dialog !== 'pay' || balance === undefined || balanceAtPay.current === null) return;
-    if (balance > balanceAtPay.current) {
-      closeDialog();
-      setStatus({ tone: 'info', text: `Credits added: ${balance} to use.` });
-    }
-  }, [dialog, me, closeDialog]);
-  const openPay = () => {
-    balanceAtPay.current = me?.credits?.balance ?? 0;
-    openDialog('pay');
-  };
-  // Each open note's best mark, when the author set one, so it reaches the rules (D110).
-  const openBest = useMemo(
-    () =>
-      new Map<string, boolean>(
-        assets.flatMap((a) =>
-          a.marks
-            .filter((m) => verdictOf(m) !== 'empty' && m.best !== undefined)
-            .map((m) => [markPrint(a, m), Boolean(m.best)] as const),
-        ),
-      ),
-    [assets],
-  );
-  /** A best example marked on Your rules, carried to its note on an open image (D110). */
-  const setOpenBest = (print: string, best: boolean) => {
-    const a = assetsRef.current.find((x) => x.marks.some((m) => markPrint(x, m) === print));
-    if (!a) return;
-    update(a.id, (x) => ({
-      ...x,
-      marks: x.marks.map((m) => (markPrint(x, m) === print ? { ...m, best } : m)),
-    }));
-  };
-  // Each open note's screen tags by its fingerprint as kept, so tags typed later reach the rules.
-  const openScreens = useMemo(
-    () =>
-      new Map<string, string | undefined>(
-        assets.flatMap((a) =>
-          a.marks
-            .filter((m) => verdictOf(m) !== 'empty')
-            .map(
-              (m) =>
-                [
-                  noteFingerprint(
-                    exportName(a),
-                    itemsOf(m.good).join('\n'),
-                    itemsOf(m.bad).join('\n'),
-                  ),
-                  cleanScreenTag(a.screenTag) || undefined,
-                ] as const,
-            ),
-        ),
-      ),
-    [assets],
-  );
-  // The open notes as the rules know them, to tell whether coming to the rules brings new ones.
-  const openPrints = useMemo(
-    () =>
-      assets.flatMap((a) =>
-        a.marks
-          .filter((m) => verdictOf(m) !== 'empty')
-          .map((m) => noteFingerprint(exportName(a), m.good, m.bad)),
-      ),
-    [assets],
-  );
-
+  const landing = loaded && !asset;
   const leaveAccount = async (text: string) => {
     closeDialog();
-    setView('batch');
     await refreshMe();
     setStatus({ tone: 'info', text });
   };
@@ -963,12 +948,11 @@ function Workspace() {
             <a
               href={pathname}
               data-home-trigger
-              aria-label={view === 'collections' ? 'Pinch, back to your images' : 'Pinch, start over'}
+              aria-label="Pinch, start over"
               onClick={(e) => {
                 if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
-                if (view === 'collections') setView('batch');
-                else goHome();
+                goHome();
               }}
               className={cn(
                 hoverFill,
@@ -981,31 +965,7 @@ function Workspace() {
           )}
         </div>
         <div className={cn('ml-auto flex items-center', landing ? 'gap-0.5' : 'gap-2')}>
-          {loaded && (
-            // Between the images and the rules, which take their place (D79). With images open
-            // it is the batch's main step (D87): the notes go to the rules, which read them.
-            <button
-              type="button"
-              onClick={() => setView(view === 'batch' ? 'collections' : 'batch')}
-              className={cn(
-                hit,
-                'flex items-center text-sm transition-colors duration-150 motion-reduce:transition-none',
-                landing
-                  ? 'h-7 gap-1.5 rounded-full px-2.5 hover:bg-muted'
-                  : batchTools
-                    ? 'min-h-9 gap-2 rounded-md bg-foreground px-3 font-medium text-background hover:bg-foreground/85'
-                    : 'min-h-9 gap-2 rounded-md border border-border px-3 hover:bg-muted',
-              )}
-            >
-              {view === 'batch' ? (
-                <Library className="size-4" aria-hidden />
-              ) : (
-                <ArrowLeft className="size-4" aria-hidden />
-              )}
-              {view === 'batch' ? 'Your notes' : 'Back'}
-            </button>
-          )}
-          {me?.paywall && me.signIn && !me.user && (
+          {READING_SHOWN && me?.paywall && me.signIn && !me.user && (
             // Signing in keeps the rules and the credits in the account, on any device (D98).
             <a
               href="/api/pin/auth/google"
@@ -1023,6 +983,7 @@ function Workspace() {
             <AccountMenu
               me={me}
               landing={landing}
+              onExportSaved={hasSaved ? () => void exportSaved() : undefined}
               onShortcuts={() => openDialog('shortcuts')}
               onPrivacy={() => openDialog('privacy')}
               onDelete={() => openDialog('delete')}
@@ -1098,32 +1059,7 @@ function Workspace() {
         </div>
       )}
 
-      {!loaded ? null : view === 'collections' ? (
-        <CollectionsView
-          key={cloudKey || 'browser'}
-          inert={dialog !== null}
-          backend={backend}
-          moveFrom={cloudKey ? browserBackend : undefined}
-          openPrints={openPrints}
-          openScreens={openScreens}
-          openBest={openBest}
-          onOpenBest={setOpenBest}
-          batchZip={batchZip}
-          account={me?.user ? 'in' : me?.signIn ? 'out' : 'none'}
-          credits={credits}
-          plan={me?.plan ?? null}
-          onPay={openPay}
-          onCredits={refreshMe}
-          exportOnArrive={exportNext}
-          onExported={() => setExportNext(false)}
-          onBack={() => setView('batch')}
-          onReset={() => {
-            commit([]);
-            setIndex(0);
-          }}
-          onStatus={setStatus}
-        />
-      ) : !asset ? (
+      {!loaded ? null : !asset ? (
         <EmptyState
           dragging={dragging}
           inert={dialog !== null}
@@ -1164,10 +1100,7 @@ function Workspace() {
               marks: a.marks.map((m) => (m.id === markId ? flipVerdict(m) : m)),
             }))
           }
-          onExport={() => {
-            setExportNext(true);
-            setView('collections');
-          }}
+          onExport={() => void exportTake()}
         />
       )}
       {dialog === 'shortcuts' && (
@@ -1185,33 +1118,6 @@ function Workspace() {
           }
         />
       )}
-      {dialog === 'pay' && me && (
-        <Dialog id="pay-title" title="Get credits" opener={opener.current} onClose={closeDialog}>
-          <div className="space-y-3 text-[13px] leading-relaxed text-muted-foreground">
-            <p>
-              {me.credits?.closed && !me.user
-                ? 'Your credits moved into your account when you signed in here. Sign in to use them.'
-                : `${OFFER.credits.toLocaleString('en')} credits are ${me.price}, and never run out. An update takes ${OFFER.update} credits and ${OFFER.note} a note: one note is ${updatePrice(1)} credits, five are ${updatePrice(5)}, thirty are ${updatePrice(30)}. Marking images, your rules and your agent stay free.`}
-            </p>
-            <div className="flex flex-col items-start gap-2">
-              <AccessGate
-                me={me}
-                buttonClass={cn(
-                  hit,
-                  'flex min-h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background',
-                )}
-                hintClass="m-0 text-[13px] text-muted-foreground"
-                onRefresh={refreshMe}
-                onSignOut={async () => {
-                  await signOut();
-                  await leaveAccount('Signed out.');
-                }}
-                onMessage={(tone, text) => setStatus({ tone, text })}
-              />
-            </div>
-          </div>
-        </Dialog>
-      )}
       {dialog === 'home' && (
         <Dialog
           id="home-title"
@@ -1220,8 +1126,9 @@ function Workspace() {
           onClose={closeDialog}
         >
           <p className="m-0 text-muted-foreground">
-            Your {count(assets.length, 'image')} and {count(allMarks.length, 'note')} are kept in
-            this browser until you start over. Open Your notes first to keep them.
+            {allMarks.length > 0
+              ? `Your ${count(assets.length, 'image')} and ${count(allMarks.length, 'note')} are kept in this browser until you start over. Export first to keep them.`
+              : `Your ${count(assets.length, 'image')} ${assets.length === 1 ? 'is' : 'are'} kept in this browser until you start over.`}
           </p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
@@ -1248,19 +1155,21 @@ function Workspace() {
             >
               Start over
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                closeDialog();
-                setView('collections');
-              }}
-              className={cn(
-                hit,
-                'flex min-h-9 items-center rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
-              )}
-            >
-              Open your notes
-            </button>
+            {allMarks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  closeDialog();
+                  void exportTake();
+                }}
+                className={cn(
+                  hit,
+                  'flex min-h-9 items-center rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/85',
+                )}
+              >
+                Export
+              </button>
+            )}
           </div>
         </Dialog>
       )}
@@ -1289,7 +1198,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <ul className="m-0 list-none space-y-2.5 p-0 text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Images',
-          'stay in this browser; once you sign in, your notes keep theirs in your account.',
+          'stay in this browser. If you signed in to keep notes before, those notes keep their images in your account.',
         )}
         {item(
           'Your voice',
@@ -1297,11 +1206,11 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Notes',
-          'have their words kept anonymously for 90 days, topic-tagged by TypeSafe’s Jev.',
+          'stay in this browser until you export them, and Pinch doesn’t keep their words.',
         )}
         {item(
           'Account',
-          'holds your Google email, name and picture; Lemon Squeezy took any payment. An agent’s key is kept only as a hash. Deleting your account deletes your notes and rules; any credits you hold are kept.',
+          'is only for people who already have one, and holds your Google email, name and picture; Lemon Squeezy took any payment. An agent’s key is kept only as a hash. Deleting your account deletes your notes and rules; any credits you hold are kept.',
         )}
         {item(
           'No ads, no analytics.',
@@ -1539,7 +1448,7 @@ function EmptyState({
             <span className="text-balance">
               {offer
                 ? `Talking through images is free. Start free with ${offer.free} credits; top up anytime. Your voice is never kept.`
-                : 'Free, no account. Images stay in this browser, and your voice is never kept.'}
+                : 'Free, no account. Nothing leaves your browser.'}
             </span>
             <span>
               <a href="/terms" className={FOOTER_LINK}>

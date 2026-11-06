@@ -4,7 +4,10 @@ import {
   batchFolder,
   type Collection,
   type PackageFile,
+  rulesOf,
+  rulesText,
 } from './learnings';
+import { batchNotes, type PinchExport } from './import';
 import { assetOf, numberOf } from './library';
 
 /*
@@ -13,7 +16,16 @@ import { assetOf, numberOf } from './library';
  * (docs/hand-vs-pinch.md). An agent reads whatever is in the folder, so labels, rules, checks and
  * instructions stay out: `rulesPackage` still makes the full backup. Pure: the files come in as
  * bytes.
+ *
+ * A take's Export holds that take alone (D163): nothing is kept between takes. Someone who saved
+ * notes or rules before takes them away with `savedPackage` (D164).
  */
+
+/**
+ * Whether the words of notes are saved anonymously (D163). Off, nothing of a take leaves the browser
+ * for someone not signed in.
+ */
+export const NOTE_TEXT_SAVED: boolean = false;
 
 /**
  * Whether the reading of notes into rules, and the credits that pay for it, are on the page (D157).
@@ -23,8 +35,10 @@ export const READING_SHOWN: boolean = false;
 
 export const NOTES_FILE = 'notes.md';
 
-/** The package's folder: "pinch-notes-2026-11-05/". */
-export const notesPackageRoot = (stamp: string) => `pinch-notes-${stamp.slice(0, 10)}/`;
+const toTheMinute = (stamp: string) => stamp.slice(0, 16).replace(/[T:]/g, '-');
+
+/** The package's folder, to the minute so that takes can sit side by side: "pinch-notes-2026-11-05-14-32/". */
+export const notesPackageRoot = (stamp: string) => `pinch-notes-${toTheMinute(stamp)}/`;
 
 /*
  * The first line is what the trial's prompt told its builds, which nobody will say in a real
@@ -64,6 +78,8 @@ export function notesPackage(
   c: Collection,
   files: ReadonlyMap<string, ReadonlyMap<string, Uint8Array> | null>,
   stamp: string,
+  /** One batch's files at the top of the package, with no folder for the batch. */
+  flat = false,
 ): { files: PackageFile[]; notes: number; missing: number } {
   const root = notesPackageRoot(stamp);
   const images: PackageFile[] = [];
@@ -77,7 +93,7 @@ export function notesPackage(
     const place = (path: unknown) => {
       const data = typeof path === 'string' ? found?.get(b.root + path) : undefined;
       if (!data) return null;
-      const name = batchFolder(i, b) + path;
+      const name = (flat ? '' : batchFolder(i, b)) + path;
       images.push({ name: root + name, data });
       return name;
     };
@@ -109,4 +125,57 @@ export function notesPackage(
   }
   const text = new TextEncoder().encode(`${lines.join('\n')}\n`);
   return { files: [{ name: root + NOTES_FILE, data: text }, ...images], notes, missing };
+}
+
+/** A take's package (D163): its export, read back, as the only thing in it. */
+export function takePackage(
+  exp: PinchExport,
+  files: ReadonlyMap<string, Uint8Array>,
+  stamp: string,
+): { files: PackageFile[]; notes: number; missing: number } {
+  const batch: Batch = {
+    id: 'take',
+    name: 'take',
+    addedAt: stamp,
+    exportedAt: exp.exportedAt,
+    root: exp.root,
+    images: exp.assets.length,
+    notes: batchNotes(exp),
+  };
+  const take: Collection = {
+    id: 'take',
+    name: 'take',
+    createdAt: stamp,
+    updatedAt: stamp,
+    batches: [batch],
+    rules: [],
+    read: [],
+  };
+  return notesPackage(take, new Map([[batch.id, files]]), stamp, true);
+}
+
+/** Whether a collection holds anything `savedPackage` would give. */
+export const hasSaved = (c: Collection) =>
+  c.batches.some((b) => b.notes.length > 0) || rulesOf(c).length > 0;
+
+/**
+ * What someone who saved notes or rules before takes away (D164): the notes as the package an agent
+ * gets, and the rules in a file beside its folder, because an agent reads whatever is in the folder.
+ */
+export function savedPackage(
+  c: Collection,
+  files: ReadonlyMap<string, ReadonlyMap<string, Uint8Array> | null>,
+  stamp: string,
+): { files: PackageFile[]; notes: number; rules: number; missing: number } {
+  const made = notesPackage(c, files, stamp);
+  const rules = rulesOf(c);
+  const text = new TextEncoder().encode(`${rulesText(c, rules)}\n`);
+  return {
+    ...made,
+    files: [
+      ...(made.notes ? made.files : []),
+      ...(rules.length ? [{ name: `pinch-rules-${toTheMinute(stamp)}.md`, data: text }] : []),
+    ],
+    rules: rules.length,
+  };
 }

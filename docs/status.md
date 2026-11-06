@@ -1,6 +1,8 @@
 # Status
 
-## Current state (2026-11-05)
+## Current state (2026-11-06)
+
+Since D163 anyone new sees only this: add screenshots, talk them through, and Export from the end card, one take to one package, with no account, and nothing of a take leaves the browser. Since D164 that holds for everyone: Your notes is off the page, and people who saved notes or rules before get one item in the menu, Export my saved notes. Nothing on the server was deleted, and a connected agent keeps working, but no new agent key can be made.
 
 Since D157 the product is shorter still: add screenshots, talk them through, and Export from the end card. The package is `notes.md`, the screenshots, marked copies and close-ups, with no rules, labels or checks. Reading notes into rules and credits are hidden behind `READING_SHOWN`, not deleted, and Pinch is free for now; Back up gives the old export whole. Checked on a production build in light and dark at 1440px, with a stand-in microphone and the browser's voice model: a take through to the zip, the backup with a rule in it, reset, and the network log showing no AI calls. Also in local paid mode with test values: no credits, plan or Update rules on the page or in the menu. One agent, told only to read `notes.md`, opened all 10 images and built a page. Since D161 the browser reads with the large voice model where it can: checked by the author in Chrome with their own microphone, talking with pauses, and the words were right. The fallback to the smaller model is tested only in code. Live on get-pinch.io since 2026-11-06, free for now. The paragraphs below describe what came before.
 

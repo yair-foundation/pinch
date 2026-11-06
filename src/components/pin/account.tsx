@@ -2,8 +2,10 @@
 
 import {
   CircleUserRound,
+  Download,
   Keyboard,
   Lock,
+  LogIn,
   LogOut,
   Moon,
   Sparkles,
@@ -237,6 +239,7 @@ export function AccountMenu({
   me,
   landing,
   suggestions,
+  onExportSaved,
   onShortcuts,
   onPrivacy,
   onDelete,
@@ -247,6 +250,8 @@ export function AccountMenu({
   landing: boolean;
   /** The suggestions switch, when suggestions are available to this visitor. */
   suggestions?: { on: boolean; onToggle: () => void };
+  /** For someone who saved notes or rules before (D164): the one way to take them. */
+  onExportSaved?: () => void;
   onShortcuts: () => void;
   onPrivacy: () => void;
   onDelete: () => void;
@@ -395,6 +400,19 @@ export function AccountMenu({
                 <Lock aria-hidden />
                 <span className="flex-1">How Pinch uses your data</span>
               </button>
+              {onExportSaved && (
+                <button type="button" role="menuitem" onClick={choose(onExportSaved)} className={item}>
+                  <Download aria-hidden />
+                  <span className="flex-1">Export my saved notes</span>
+                </button>
+              )}
+              {/* For people who saved notes in an account before (D163): nobody else needs one. */}
+              {!user && me?.signIn && (
+                <a role="menuitem" href="/api/pin/auth/google" className={item}>
+                  <LogIn aria-hidden />
+                  <span className="flex-1">Sign in for saved notes</span>
+                </a>
+              )}
               {user && (
                 <>
                   <hr className="mx-3 my-1 border-border" />

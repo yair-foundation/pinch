@@ -701,3 +701,27 @@ The browser's words, on the author's two real takes: round 2, which is steady ta
 
 Settings don't fix it, and the graphics card isn't the cause: every base.en setup misheard the thrown-out take, and which of them looped changed from run to run. Speech detection, which helps the larger model on this Mac, hurts these when each stretch is read alone. Only the large model holds up, and it runs in a browser. Two real takes are a small test, and it has only run on this Mac.
 
+### Marks described in words: the test, set before it runs, 2026-11-06
+
+A box says where a note is but not what it's on, and it can be wrong or sit on top of the design. So the author asked whether another way of marking would help, not necessarily a visual one. This tests the idea before anything is built, on the author's first take of 65 notes, with no talking.
+
+**The two ways.** Both have the screenshots, the same words in the same order, the marked copies and today's opening lines.
+
+- **Today's marks:** each note's close-up has the mark drawn on it, as Export gives it now.
+- **Words:** each note also says where it is, the text under the mark and its main colours, such as `Where: top left, on "Choose a plan". Colours: #ffffff, #1a1a2e.` Its close-up has nothing drawn on it, and everything outside the spot is dimmed. The text is read on this Mac with Apple's Vision, and the colours are measured from the pixels.
+
+**The run.** Same tasks, 2 runs each, 12 new builds and 6 pairs, judged blind by the author, in `~/pinch-test-4`. Today's marks sit in the script's hand slot and the words in its Pinch slot, so in `results.md` "By hand" means today's marks and "Pinch" means words. The minutes are the same for both, since the author would do nothing different.
+
+**The verdict, set now,** from the words' side:
+
+- **Words win:** at least 75% of pairs and 40% fewer changes. Build them into Export.
+- **Words help:** more than half the pairs and no more changes. Build them if they're cheap in a browser.
+- **No gain:** anything else. Export keeps today's marks.
+
+**Limits known now:**
+
+- Six pairs and one person, on the author's fifth sitting on these three tasks, so fatigue and familiarity may blunt the difference.
+- It doesn't separate the words from the dimmed close-ups: it tests them together.
+- Apple's Vision isn't what a browser would run, so a win here doesn't yet say a browser can read text as well.
+- The notes are the words as they came out of the small model, wrong words included, on both sides.
+

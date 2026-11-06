@@ -108,9 +108,9 @@ import { TopicPicker } from './topic-picker';
 import { TOPIC_TONES, tagHit } from './topic-style';
 
 /*
- * Your notes (D157): the screenshots the person has talked through, and Export, the package their
- * agent reads. Reading notes into rules is hidden with READING_SHOWN; rules already kept show on a
- * tab of their own. What follows is how that part works.
+ * Not on the page since D164, and imported by nothing: to delete once what an agent connection
+ * needs is decided. Saved notes and rules go out with one export (`saved-notes.ts`) instead. This
+ * was Your notes (D157, D163), for people who saved before takes became export-only.
  *
  * Your rules (D79, D86, D87, D88): the person's one taste library, shown in
  * place of the images from the header. Coming here adds the open images' new
@@ -295,8 +295,6 @@ export function CollectionsView({
   account,
   credits,
   plan,
-  exportOnArrive,
-  onExported,
   onPay,
   onCredits,
   onBack,
@@ -324,9 +322,6 @@ export function CollectionsView({
   credits: { balance: number; closed: boolean } | null;
   /** The account's plan (D123): Pro, or free with Pro's price and checkout; null until plans are on. */
   plan: { pro: boolean; price: string; url?: string } | null;
-  /** Came here by the end card's Export (D157): the package goes once the take's notes are in. */
-  exportOnArrive: boolean;
-  onExported: () => void;
   /** Ask for credits: this update needs more, or they are in the account. */
   onPay: () => void;
   /** An update took credits: read them again. */
@@ -662,12 +657,11 @@ export function CollectionsView({
 
   // Coming here brings the open images' new notes along, once.
   const added = useRef(false);
-  const arrived = useRef<Promise<boolean> | null>(null);
   useEffect(() => {
     if (!c || added.current) return;
     added.current = true;
     const known = knownNotes(c);
-    arrived.current = openPrints.some((p) => !known.has(p)) ? addOpen() : Promise.resolve(true);
+    if (openPrints.some((p) => !known.has(p))) void addOpen();
   }, [c, openPrints, addOpen]);
 
   // Screen tags typed on the open images reach the notes already kept from them (D100).
@@ -892,15 +886,6 @@ export function CollectionsView({
       setBusy(null);
     }
   };
-
-  // From the end card's Export (D157): once the take's notes are in, the package goes.
-  const exportedOnArrival = useRef(false);
-  useEffect(() => {
-    if (!exportOnArrive || exportedOnArrival.current || !arrived.current) return;
-    exportedOnArrival.current = true;
-    onExported();
-    void arrived.current.then((ok) => (ok ? exportAll() : undefined));
-  });
 
   /**
    * Everything, as a zip to keep (D104): the rules, the collection as it is kept, and each batch's
