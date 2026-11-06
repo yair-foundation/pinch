@@ -10,9 +10,15 @@ import { CURSOR_PATH } from './landing-art';
  * on screen, and under reduced motion every mark just stands there with the wave flat.
  */
 
-type Stage = 'travel' | 'draw' | 'talk' | 'rest';
+type Stage = 'travel' | 'draw' | 'talk' | 'rest' | 'turn';
 
-const STAGE_MS: Record<Stage, number> = { travel: 900, draw: 700, talk: 2300, rest: 2200 };
+const STAGE_MS: Record<Stage, number> = {
+  travel: 900,
+  draw: 700,
+  talk: 2300,
+  rest: 2200,
+  turn: 1100,
+};
 
 export type Take = {
   /** The spot being marked, or the last one while the take rests. */
@@ -21,16 +27,24 @@ export type Take = {
   /** Whether the mark on spot `i` is showing. */
   shown: (i: number) => boolean;
   talking: boolean;
+  /** How many times the reel has turned, and whether it is turning now. */
+  turns: number;
+  turning: boolean;
 };
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** The take over `spots` spots, playing round while `root` is on screen. */
-export function useTake(spots: number, root: RefObject<HTMLElement | null>): Take {
+/**
+ * The take over `spots` spots, playing round while `root` is on screen. With `onEach`, the reel turns
+ * after that many spots, on to the next screen, and it goes on turning instead of resting.
+ */
+export function useTake(spots: number, root: RefObject<HTMLElement | null>, onEach?: number): Take {
   const [still] = useState(reducedMotion);
-  const [at, setAt] = useState<{ spot: number; stage: Stage }>(
-    still ? { spot: spots - 1, stage: 'rest' } : { spot: 0, stage: 'travel' },
+  const [at, setAt] = useState<{ spot: number; stage: Stage; turns: number }>(
+    still
+      ? { spot: (onEach ?? spots) - 1, stage: 'rest', turns: 0 }
+      : { spot: 0, stage: 'travel', turns: 0 },
   );
   const [seen, setSeen] = useState(false);
   useEffect(() => {
@@ -46,20 +60,29 @@ export function useTake(spots: number, root: RefObject<HTMLElement | null>): Tak
   useEffect(() => {
     if (!seen) return;
     const next = setTimeout(() => {
-      setAt(({ spot, stage }) => {
-        if (stage === 'travel') return { spot, stage: 'draw' };
-        if (stage === 'draw') return { spot, stage: 'talk' };
-        if (stage === 'talk')
-          return spot + 1 < spots ? { spot: spot + 1, stage: 'travel' } : { spot, stage: 'rest' };
-        return { spot: 0, stage: 'travel' };
+      setAt(({ spot, stage, turns }) => {
+        if (stage === 'travel') return { spot, stage: 'draw', turns };
+        if (stage === 'draw') return { spot, stage: 'talk', turns };
+        if (stage === 'turn') return { spot, stage: 'travel', turns };
+        if (stage === 'talk') {
+          const after = (spot + 1) % spots;
+          if (onEach && (spot + 1) % onEach === 0)
+            return { spot: after, stage: 'turn', turns: turns + 1 };
+          return spot + 1 < spots
+            ? { spot: spot + 1, stage: 'travel', turns }
+            : { spot, stage: 'rest', turns };
+        }
+        return { spot: 0, stage: 'travel', turns };
       });
     }, STAGE_MS[at.stage]);
     return () => clearTimeout(next);
-  }, [seen, at, spots]);
+  }, [seen, at, spots, onEach]);
+  const marking = at.stage !== 'travel' && at.stage !== 'turn';
   return {
     ...at,
-    shown: (i) => i < at.spot || (i === at.spot && at.stage !== 'travel'),
+    shown: (i) => i < at.spot || (i === at.spot && marking),
     talking: at.stage === 'talk',
+    turning: at.stage === 'turn',
   };
 }
 

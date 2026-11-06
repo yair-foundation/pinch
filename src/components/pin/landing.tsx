@@ -1,6 +1,5 @@
 'use client';
 
-import { Bricolage_Grotesque, Figtree } from 'next/font/google';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
@@ -16,6 +15,7 @@ import {
   TalkScene,
 } from './landing-art';
 import { DemoCursor, SpotMark, useTake, Wave } from './landing-demo';
+import { LANDING_FONTS } from './landing-fonts';
 import './landing.css';
 
 /*
@@ -23,13 +23,6 @@ import './landing.css';
  * screen is the awkward part and a page can make it less so. One action, adding screenshots; the
  * window takes dropped files too. It scrolls with the header, which floats over its top.
  */
-
-const display = Bricolage_Grotesque({
-  subsets: ['latin'],
-  axes: ['opsz', 'wdth'],
-  variable: '--font-landing-display',
-});
-const body = Figtree({ subsets: ['latin'], variable: '--font-landing-body' });
 
 const IN_THE_FOLDER = [
   'Your words',
@@ -61,23 +54,57 @@ const STEPS = [
   },
 ];
 
-const SAMPLE = [
+/** The screens on the package's reel, with what was said about each spot. */
+const SCREENS = [
   {
-    text: 'That title is huge and I love it. Keep the scale.',
-    where: 'Top left, on “Fresh on Sunday.”',
-    dot: 'var(--ink)',
+    title: 'Sunday market',
+    notes: [
+      { text: 'That title is huge and I love it. Keep the scale.' },
+      { text: 'The button is too shy. Give it some weight.' },
+      { text: 'This lemon has jokes. More of this, please.' },
+    ],
   },
   {
-    text: 'The button is too shy. Give it some weight.',
-    where: 'Middle left, on “See the stalls”',
-    dot: '#3b9f87',
+    title: 'Night train',
+    notes: [
+      { text: 'Dark, and I can still read it. Rare.' },
+      { text: 'That moon has nothing to do and does it well.' },
+      { text: 'The button gets lost at night. Make it glow.' },
+    ],
   },
   {
-    text: 'This lemon has jokes. More of this, please.',
-    where: 'Middle right',
-    dot: 'var(--butter)',
+    title: 'Tiny bank',
+    notes: [
+      { text: 'Big number. Now I believe it.' },
+      { text: 'Three badges is two too many.' },
+      { text: 'The pig stays. Everything else can move.' },
+    ],
   },
 ];
+const ON_A_SCREEN = 3;
+
+/** The reel's cards: twice round, so that one can cross from one side to the other while hidden. */
+const REEL_CARDS = [...SCREENS, ...SCREENS].map((_, i) => i);
+
+/** The neighbours fade towards the bottom, as the reel turns away into the dark, as in `reel.tsx`. */
+const EDGE_FADE = 'linear-gradient(to bottom, #000 25%, transparent 92%)';
+
+/** A card by its slot on the reel, as in `reel.tsx`: the middle, the edges, and hidden beyond them. */
+function slotStyle(slot: number): React.CSSProperties {
+  if (slot === 0) return { transform: 'translate(-50%, -50%)', zIndex: 2 };
+  const side = slot < 0 ? -1 : 1;
+  return Math.abs(slot) === 1
+    ? {
+        transform: `translate(calc(-50% + ${side * 45}cqw), calc(-50% + 22cqh)) rotate(${side * 15}deg) scale(0.55)`,
+        zIndex: 1,
+        maskImage: EDGE_FADE,
+        WebkitMaskImage: EDGE_FADE,
+      }
+    : {
+        transform: `translate(calc(-50% + ${side * 90}cqw), calc(-50% + 60cqh)) rotate(${side * 30}deg) scale(0.45)`,
+        opacity: 0,
+      };
+}
 
 /** Notes on the shots, for the toggle: 65 is what ten screenshots came to in the author's first take. */
 const SHOTS = [
@@ -158,9 +185,12 @@ export function Landing({
   const rects = useRects(hero, [sayWhy, price, start]);
   const heroTake = useTake(SAYS.length, hero);
   const story = useRef<HTMLDivElement>(null);
-  const storyTake = useTake(MOCK_SPOTS.length, story);
+  const storyTake = useTake(SCREENS.length * ON_A_SCREEN, story, ON_A_SCREEN);
   const here = rects[heroTake.spot];
-  const mock = MOCK_SPOTS[storyTake.spot];
+  const screen = storyTake.turns % SCREENS.length;
+  const onScreen = storyTake.spot % ON_A_SCREEN;
+  const mock = MOCK_SPOTS[screen][onScreen];
+  const shownHere = (i: number) => storyTake.shown(storyTake.spot - onScreen + i);
   // The cursor comes to a spot's corner, and drags across it as the mark is drawn.
   const across = (stage: string) => stage !== 'travel';
   return (
@@ -169,8 +199,7 @@ export function Landing({
       inert={inert}
       className={cn(
         'pinch-landing shrink-0',
-        display.variable,
-        body.variable,
+        LANDING_FONTS,
         // Files over the window: the whole page takes them.
         dragging && 'outline-4 -outline-offset-4 outline-(--violet)',
       )}
@@ -307,38 +336,48 @@ export function Landing({
           </div>
           <div className="relative min-w-0 sm:pt-[104px]">
             <Bubble className="absolute top-0 right-[196px] z-0 hidden sm:block" />
-            <Robot className="absolute top-[8px] right-[44px] z-0 hidden sm:block" />
+            <Robot
+              className="absolute top-[8px] right-[44px] z-0 hidden overflow-visible sm:block"
+              turns={storyTake.turns}
+              pulling={storyTake.turning}
+            />
             <div className="relative z-10 rounded-[32px] bg-(--violet) px-[6px] pb-[6px]">
               <div className="flex items-center justify-between py-[10px] pr-8 pl-8">
                 <p className="m-0 text-[15px] font-semibold text-white">Your package</p>
                 <Wave on={storyTake.talking} className="story-wave inline-flex" />
               </div>
               <div className="grid grid-cols-1 gap-8 rounded-[26px] bg-white p-7 md:grid-cols-[296px_1fr]">
-                <div ref={story} className="relative self-start">
-                  <MarkedPage className="block w-full rounded-xl" shown={storyTake.shown} />
+                <div ref={story} className="package-reel self-start">
+                  {REEL_CARDS.map((card) => {
+                    // Where this card is from the one in the middle, -2 to 3; 3 waits hidden.
+                    const away =
+                      (card - (storyTake.turns % REEL_CARDS.length) + REEL_CARDS.length) %
+                      REEL_CARDS.length;
+                    const slot = away > 3 ? away - REEL_CARDS.length : Math.min(away, 2);
+                    return (
+                      <div key={card} className="reel-card" style={slotStyle(slot)}>
+                        <MarkedPage
+                          className="block w-full rounded-xl"
+                          screen={card % SCREENS.length}
+                          shown={slot === 0 ? shownHere : () => slot < 0}
+                        />
+                      </div>
+                    );
+                  })}
                   <DemoCursor
-                    left={`${((mock.x + (across(storyTake.stage) ? mock.w : 0)) / 320) * 100}%`}
-                    top={`${((mock.y + (across(storyTake.stage) ? mock.h : 0)) / 300) * 100}%`}
+                    left={`${50 + ((mock.x + (across(storyTake.stage) ? mock.w : 0)) / 320 - 0.5) * 72}%`}
+                    top={`${50 + ((mock.y + (across(storyTake.stage) ? mock.h : 0)) / 300 - 0.5) * 67.5}%`}
                   />
                 </div>
-                <div>
-                  <h3 className="subtitle m-0 text-[26px] leading-tight">Sunday market</h3>
-                  <ol className="m-0 mt-5 list-none space-y-5 p-0">
-                    {SAMPLE.map((note, i) => (
-                      <li key={note.where} className="note flex gap-3" data-on={storyTake.shown(i)}>
-                        <span className="subtitle w-5 shrink-0 text-[18px] leading-snug text-(--violet)">
-                          {i + 1}
-                        </span>
-                        <div>
-                          <p className="m-0 text-[18px] leading-snug font-medium">{note.text}</p>
-                          <p className="mt-1 mb-0 flex items-center gap-2 text-[15px] leading-snug text-(--soft)">
-                            <span
-                              className="inline-block size-[10px] rounded-full border border-(--ink)"
-                              style={{ background: note.dot }}
-                            />
-                            {note.where}
-                          </p>
-                        </div>
+                <div key={screen} className="note-set min-h-[296px]">
+                  <h3 className="subtitle m-0 text-[26px] leading-tight">
+                    {SCREENS[screen].title}
+                  </h3>
+                  <ol className="m-0 mt-4 list-none space-y-3 p-0">
+                    {SCREENS[screen].notes.map((note, i) => (
+                      <li key={note.text} className="note flex gap-2.5" data-on={shownHere(i)}>
+                        <span className="note-number">{i + 1}</span>
+                        <p className="note-bubble m-0">{note.text}</p>
                       </li>
                     ))}
                   </ol>

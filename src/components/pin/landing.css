@@ -16,6 +16,10 @@
   font-family: var(--font-landing-body), system-ui, sans-serif;
 }
 
+.pinch-landing.phone-message {
+  background: var(--lilac);
+}
+
 .pinch-landing .title {
   font-family: var(--font-landing-display), sans-serif;
   font-variation-settings:
@@ -135,6 +139,14 @@
   transform: scaleY(0.1);
   transition: transform 0.25s ease;
 }
+.pinch-landing .story-wave {
+  height: 24px;
+  gap: 3px;
+  color: #fff;
+}
+.pinch-landing .story-wave i {
+  width: 3px;
+}
 .pinch-landing .wave[data-on='true'] i {
   animation: landing-wave 0.85s ease-in-out infinite;
 }
@@ -146,14 +158,6 @@
   50% {
     transform: scaleY(var(--peak));
   }
-}
-.pinch-landing .story-wave {
-  height: 24px;
-  gap: 3px;
-  color: #fff;
-}
-.pinch-landing .story-wave i {
-  width: 3px;
 }
 .pinch-landing .demo-cursor {
   position: absolute;
@@ -219,17 +223,95 @@
   opacity: 1;
   transition: opacity 0.25s ease 0.5s;
 }
+/* The package's screens on a reel, turning as the tool's do: the same slots as `reel.tsx`. */
+.pinch-landing .package-reel {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: 20px;
+  background: var(--ink);
+  container-type: size;
+}
+.pinch-landing .reel-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 72cqw;
+  transition:
+    transform 0.8s cubic-bezier(0.3, 1.25, 0.45, 1),
+    opacity 0.4s ease;
+}
+.pinch-landing .viewer-reel {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.8s cubic-bezier(0.3, 1.25, 0.45, 1);
+}
+.pinch-landing .viewer-lever {
+  transform-box: fill-box;
+  transform-origin: left center;
+  transition: transform 0.35s ease;
+}
+.pinch-landing .viewer-lever[data-down='true'] {
+  transform: rotate(38deg);
+}
+.pinch-landing .note-set {
+  animation: landing-notes 0.35s ease;
+}
+@keyframes landing-notes {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* What was said, as chat bubbles: each comes in as its mark is drawn, its place kept until then. */
 .pinch-landing .note {
-  opacity: 0.25;
-  transition: opacity 0.4s ease;
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  transform-origin: left bottom;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .pinch-landing .note[data-on='true'] {
   opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.pinch-landing .note-number {
+  display: flex;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  border: 2px solid var(--violet);
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 800;
+}
+.pinch-landing .note-bubble {
+  width: fit-content;
+  padding: 7px 13px 8px;
+  border: 2px solid var(--ink);
+  border-radius: 16px 16px 16px 4px;
+  background: var(--mist);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
 }
 @media (prefers-reduced-motion: reduce) {
   .pinch-landing .wave[data-on='true'] i {
     animation: none;
   }
+  .pinch-landing .note-set {
+    animation: none;
+  }
+  .pinch-landing .reel-card,
+  .pinch-landing .viewer-reel,
+  .pinch-landing .viewer-lever,
   .pinch-landing .demo-cursor,
   .pinch-landing .spot,
   .pinch-landing .spot-number,
@@ -237,7 +319,8 @@
   .pinch-landing .mock-spot rect,
   .pinch-landing .mock-spot .mock-number,
   .pinch-landing .mock-spot[data-on='true'] .mock-number,
-  .pinch-landing .note {
+  .pinch-landing .note,
+  .pinch-landing .note[data-on='true'] {
     transition: none;
   }
 }
