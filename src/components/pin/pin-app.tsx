@@ -30,6 +30,7 @@ import {
 import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
+import { COMING_BACK_ATTRIBUTE, HAS_SESSION_KEY } from './coming-back';
 import { Landing } from './landing';
 import {
   AccountMenu,
@@ -178,6 +179,11 @@ const local = {
       window.localStorage.setItem(key, value);
     } catch {}
   },
+  remove: (key: string) => {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
+  },
 };
 const SENT_KEY = 'pinch-sent';
 /** "off" when the visitor switched off saving their notes' words (D82). */
@@ -211,7 +217,7 @@ export function PinApp() {
   return (
     <>
       {!desktop && <DesktopOnly />}
-      <div className={desktop ? undefined : 'max-md:hidden'}>
+      <div data-workspace className={desktop ? undefined : 'max-md:hidden'}>
         <Workspace />
       </div>
     </>
@@ -479,6 +485,13 @@ function Workspace() {
   useEffect(() => {
     if (loaded) persist();
   }, [assets, loaded, persist]);
+  // Show the page once the session is in, and say for next time whether one is waiting (D173).
+  useEffect(() => {
+    if (!loaded) return;
+    document.documentElement.removeAttribute(COMING_BACK_ATTRIBUTE);
+    if (assets.length) local.set(HAS_SESSION_KEY, '1');
+    else local.remove(HAS_SESSION_KEY);
+  }, [assets.length, loaded]);
 
   // Another tab saving the session makes this tab's copy stale. BroadcastChannel where it exists;
   // the `storage` event on the saved-at key carries the same news elsewhere.
@@ -895,7 +908,7 @@ function Workspace() {
   };
 
   // The landing: no image yet, so the header floats over the page, on the title's grid.
-  const landing = loaded && !asset;
+  const landing = !asset;
   const leaveAccount = async (text: string) => {
     closeDialog();
     await refreshMe();
@@ -1038,7 +1051,7 @@ function Workspace() {
         </div>
       )}
 
-      {!loaded ? null : !asset ? (
+      {!asset ? (
         <Landing
           dragging={dragging}
           inert={dialog !== null}

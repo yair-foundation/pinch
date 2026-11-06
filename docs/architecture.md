@@ -36,7 +36,7 @@ Client side: the session (images as Blobs, assets and marks as one record) lives
 
 ## Storage
 
-- Browser: IndexedDB `pin-notes` (stores `images`, `state`) and `pinch-collections` (stores `collections`, `batches`; collections kept without an account); `localStorage` `pinch-suggestions` (the Suggestions switch), `pinch-sent`, `pinch-orphans`, `pinch-collection` (the open collection; no longer written since D86), `pinch-save-notes` (`off` when the visitor stopped note saving, D82; read but no longer written since D93), `genui-theme`; cookies `pinch-session`, `pinch-browser` (this browser's random id for its credits before sign-in, D98) and, during sign-in, `pinch-oauth`.
+- Browser: IndexedDB `pin-notes` (stores `images`, `state`) and `pinch-collections` (stores `collections`, `batches`; collections kept without an account); `localStorage` `pinch-suggestions` (the Suggestions switch), `pinch-sent`, `pinch-orphans`, `pinch-collection` (the open collection; no longer written since D86), `pinch-save-notes` (`off` when the visitor stopped note saving, D82; read but no longer written since D93), `pinch-has-session` (a session is waiting, so the first paint hides the workspace, D173), `genui-theme`; cookies `pinch-session`, `pinch-browser` (this browser's random id for its credits before sign-in, D98) and, during sign-in, `pinch-oauth`.
 - Server: the private Blob store under `pin-notes/` (above), `pinch-accounts/`, `pinch-purchases/`, `pinch-users/` (D81) and `pinch-credits/` (D98). Without `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID`, the same code runs on in-memory documents.
 
 ## Deploy

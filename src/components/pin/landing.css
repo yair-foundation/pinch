@@ -30,6 +30,10 @@
   word-spacing: 0.04em;
   line-height: 1;
 }
+/* A session is on its way: see coming-back.ts. */
+html[data-coming-back] [data-workspace] {
+  visibility: hidden;
+}
 /* The lines of the title share a place, and each wipes up over the last (D172). Clipped, not moved, so the marks can measure them. */
 .pinch-landing .title-rotor {
   display: grid;

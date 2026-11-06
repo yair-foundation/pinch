@@ -1,6 +1,6 @@
 'use client';
 
-import { type RefObject, useEffect, useState } from 'react';
+import { type RefObject, useEffect, useState, useSyncExternalStore } from 'react';
 import { cn } from '@/lib/utils';
 import { CURSOR_PATH } from './landing-art';
 
@@ -34,20 +34,29 @@ export type Take = {
   still: boolean;
 };
 
-const reducedMotion = () =>
-  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+
+const watchMotion = (changed: () => void) => {
+  const query = window.matchMedia(REDUCED_MOTION);
+  query.addEventListener('change', changed);
+  return () => query.removeEventListener('change', changed);
+};
+const reducedMotion = () => window.matchMedia(REDUCED_MOTION).matches;
+// The page's HTML can't know the setting, so it is drawn as moving and corrected after hydration.
+const motionInHtml = () => false;
 
 /**
  * The take over `spots` spots, playing round while `root` is on screen. With `onEach`, the reel turns
  * after that many spots, on to the next screen, and it goes on turning instead of resting.
  */
 export function useTake(spots: number, root: RefObject<HTMLElement | null>, onEach?: number): Take {
-  const [still] = useState(reducedMotion);
-  const [at, setAt] = useState<{ spot: number; stage: Stage; turns: number }>(
-    still
-      ? { spot: (onEach ?? spots) - 1, stage: 'rest', turns: 0 }
-      : { spot: 0, stage: 'travel', turns: 0 },
-  );
+  const still = useSyncExternalStore(watchMotion, reducedMotion, motionInHtml);
+  const [moving, setAt] = useState<{ spot: number; stage: Stage; turns: number }>({
+    spot: 0,
+    stage: 'travel',
+    turns: 0,
+  });
+  const at = still ? { spot: (onEach ?? spots) - 1, stage: 'rest' as Stage, turns: 0 } : moving;
   const [seen, setSeen] = useState(false);
   useEffect(() => {
     const el = root.current;
@@ -60,7 +69,7 @@ export function useTake(spots: number, root: RefObject<HTMLElement | null>, onEa
     return () => watch.disconnect();
   }, [root, still]);
   useEffect(() => {
-    if (!seen) return;
+    if (!seen || still) return;
     const next = setTimeout(() => {
       setAt(({ spot, stage, turns }) => {
         if (stage === 'travel') return { spot, stage: 'draw', turns };
@@ -76,9 +85,9 @@ export function useTake(spots: number, root: RefObject<HTMLElement | null>, onEa
         }
         return { spot: 0, stage: 'travel', turns };
       });
-    }, STAGE_MS[at.stage]);
+    }, STAGE_MS[moving.stage]);
     return () => clearTimeout(next);
-  }, [seen, at, spots, onEach]);
+  }, [seen, still, moving, spots, onEach]);
   const marking = at.stage !== 'travel' && at.stage !== 'turn';
   return {
     ...at,
