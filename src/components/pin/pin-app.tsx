@@ -1293,7 +1293,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
         )}
         {item(
           'Your voice',
-          'stays in this browser: a voice model from Hugging Face, downloaded once, turns it into words here, and the recording is kept only in this browser.',
+          'stays in this browser: a voice model from Hugging Face, up to 570 MB and downloaded once, turns it into words here, and the recording is kept only in this browser.',
         )}
         {item(
           'Notes',

@@ -684,3 +684,20 @@ What changes from the rounds set in D154 (D158):
 
 **The other half of D154's condition:** asked whether they would do another round unprompted, the author answered "Yes, I would". So the condition is met, on the minutes as timed (D160).
 
+### Speech for the live site: what was tested, 2026-11-06
+
+The browser's words, on the author's two real takes: round 2, which is steady talk, and the thrown-out take, which is a few short sentences with long pauses. Errors are against the larger model on this Mac for round 2, and against three sentences it heard in the thrown-out take. All in a real browser with the graphics card, except the two marked. Sizes are the one-time download.
+
+| Setup | Download | Round 2, words off | The take with pauses |
+| --- | ---: | ---: | --- |
+| Today: base.en, decoder q8 | 136 MB | 10% | Misheard, and loops on some runs |
+| base.en, repeated phrases blocked | 136 MB | 10% | Worse, loops |
+| base.en, decoder on the processor | 136 MB | 10% | Misheard |
+| base.en, decoder q4 or full | 206 to 291 MB | 10% | Worse, loops |
+| base.en, speech detection, on the processor | 80 MB | 18% | Worse: "and I hope you enjoy the video" |
+| small.en | 586 MB | 12% | Misheard, no loops |
+| small.en, speech detection, on the processor | 252 MB | 17% | Worse |
+| large-v3-turbo | 564 MB | 7% | "I'm missing the secondary button", "The icons are too plain", no loops |
+
+Settings don't fix it, and the graphics card isn't the cause: every base.en setup misheard the thrown-out take, and which of them looped changed from run to run. Speech detection, which helps the larger model on this Mac, hurts these when each stretch is read alone. Only the large model holds up, and it runs in a browser. Two real takes are a small test, and it has only run on this Mac.
+

@@ -21,7 +21,12 @@ import { isWhole, voiceNotes, voicePrefix } from '@/lib/pin/voice-notes';
 import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
-import { browserVoiceOn, MODEL_MB, transcribeInBrowser } from './browser-voice';
+import {
+  browserVoiceOn,
+  MODEL_MB,
+  prepareBrowserVoice,
+  transcribeInBrowser,
+} from './browser-voice';
 import { MARK_COLOR } from './render';
 
 /*
@@ -501,6 +506,14 @@ export function Reel({
       .catch(own);
   }, []);
 
+  // The browser's voice model comes in from the moment there are images (D161), not at Finish.
+  useEffect(() => {
+    if (engine !== 'browser') return;
+    return prepareBrowserVoice((p) => {
+      if (mounted.current) setModel(p < 100 ? p : null);
+    });
+  }, [engine]);
+
   const heard = saved?.take.words
     ? heardOf(
         saved.take,
@@ -635,6 +648,7 @@ export function Reel({
           <span ref={level} className="block h-full w-0 bg-foreground" />
         </span>
         <span className="font-mono tabular-nums">{clock}</span>
+        {model !== null && <span className="tabular-nums">Voice model {Math.floor(model)}%</span>}
         <span className="ml-auto">{at < assets.length ? `${at + 1} of ${assets.length}` : ''}</span>
       </div>
 
