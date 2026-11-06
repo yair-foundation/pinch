@@ -56,6 +56,7 @@ import {
   prepareImage,
 } from './render';
 import { readSaved, savedNotesPackage } from './saved-notes';
+import { screenText } from './screen-text';
 import * as store from './store';
 
 /*
@@ -818,6 +819,11 @@ function Workspace() {
 
   const tagged = assets.filter(hasMarks);
   const allMarks = tagged.flatMap((a) => a.marks.filter((m) => verdictOf(m) !== 'empty'));
+  // The text on each noted screen is read ahead of Export, once a take has made notes (D166).
+  const notedScreens = tagged.map((a) => a.id).join(' ');
+  useEffect(() => {
+    for (const id of notedScreens.split(' ').filter(Boolean)) void screenText(id, store.getImage);
+  }, [notedScreens]);
 
   const startOver = () => {
     const images = assets.length;
@@ -836,12 +842,16 @@ function Workspace() {
     const list = assetsRef.current;
     if (!list.some(hasMarks)) return null;
     try {
-      const made = await buildExport(list, store.getImage, (done, total) =>
-        setStatus({
-          tone: 'info',
-          text: `Preparing ${Math.min(done + 1, total)} of ${total}…`,
-          sticky: true,
-        }),
+      const made = await buildExport(
+        list,
+        store.getImage,
+        (done, total) =>
+          setStatus({
+            tone: 'info',
+            text: `Preparing ${Math.min(done + 1, total)} of ${total}…`,
+            sticky: true,
+          }),
+        (id) => screenText(id, store.getImage),
       );
       // Kept in a collection is kept: going home won't ask about this batch.
       markExported();
@@ -1198,7 +1208,7 @@ function PrivacyDialog({ opener, onClose }: { opener: HTMLElement | null; onClos
       <ul className="m-0 list-none space-y-2.5 p-0 text-[13px] leading-relaxed text-muted-foreground">
         {item(
           'Images',
-          'stay in this browser. If you signed in to keep notes before, those notes keep their images in your account.',
+          'stay in this browser: a small text model from Hugging Face, about 11 MB and downloaded once, reads them here. If you signed in to keep notes before, those notes keep their images in your account.',
         )}
         {item(
           'Your voice',

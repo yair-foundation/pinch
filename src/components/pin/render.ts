@@ -18,13 +18,22 @@ import {
   type Shape,
   verdictOf,
 } from '@/lib/pin/model';
+import {
+  isWholeScreen,
+  mainColours,
+  type Spot,
+  spotOf,
+  type TextLine,
+  textIn,
+  whereLine,
+} from '@/lib/pin/mark-words';
 import { REVIEW, type ReviewCell, reviewPages } from '@/lib/pin/review-sheets';
 import { layoutSheet } from '@/lib/pin/sheet';
 import { zip, type ZipEntry } from '@/lib/pin/zip';
 
 /*
  * Pinch's drawing, in the browser: a copy of each image with its notes
- * drawn on, a close-up crop of every note, a contact sheet of the batch, and
+ * drawn on, a close-up crop of every note with the rest dimmed, a contact sheet of the batch, and
  * the zip that carries them. Marks have one colour (D157): a label sorted from
  * spoken words is often wrong, and the words say it anyway.
  */
@@ -40,6 +49,11 @@ export const VERDICT_COLOR = {
 const SHEET_BG = '#1c1d22';
 /** A crop's longest side: smaller than the 1800px marked copy, so a wide crop still costs less. */
 const CROP_MAX_SIDE = 1200;
+/** How long an export waits for the text on its screens, at the least and for each screen. */
+const TEXT_WAIT_MS = 30_000;
+const TEXT_WAIT_MS_A_SCREEN = 6_000;
+/** A spot is looked at this small to tell its main colours. */
+const COLOUR_SIDE = 96;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 export const bitmapOf = (blob: Blob) => createImageBitmap(blob);
@@ -538,62 +552,48 @@ export function settledCrop(bitmap: ImageBitmap, mark: Mark, grid?: LumaGrid): R
   return grid ? settleCrop(start, grid) : start;
 }
 
-function drawCrop(
-  bitmap: ImageBitmap,
-  mark: Mark,
-  number: number,
-  maxSide: number,
-  rect: Rect,
-  grid: LumaGrid | undefined,
-  color?: string,
-  others: Shape[] = [],
-) {
+/** How dark the rest of a close-up goes around its spot. */
+const DIM = 0.45;
+
+/**
+ * A close-up of one note (D166): the spot bright, the rest dimmed, nothing drawn on it, upscaled when
+ * the crop is small and at most CROP_MAX_SIDE on its long side. `rect` is the crop already settled.
+ */
+export function spotCrop(bitmap: ImageBitmap, spot: Spot, rect: Rect) {
   const side = Math.max(rect.w, rect.h);
-  const scale = Math.min(maxSide / side, Math.max(1, Math.min(2, 480 / side)));
+  const scale = Math.min(CROP_MAX_SIDE / side, Math.max(1, Math.min(2, 480 / side)));
   const w = Math.round(rect.w * scale);
   const h = Math.round(rect.h * scale);
   const { canvas, ctx } = canvasOf(w, h);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
-  const unit = Math.max(1.4, Math.max(w, h) / 700);
-  const px = (x: number, y: number): [number, number] => [
-    (x * bitmap.width - rect.x) * scale,
-    (y * bitmap.height - rect.y) * scale,
-  ];
-  const room = withOthers(busyOn(grid, scale, rect), others, px, unit, []);
-  drawMark(ctx, mark, number, px, unit, color, room);
-  return canvas;
+  if (!isWholeScreen(spot)) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${DIM})`;
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(
+      (spot.x * bitmap.width - rect.x) * scale,
+      (spot.y * bitmap.height - rect.y) * scale,
+      spot.w * bitmap.width * scale,
+      spot.h * bitmap.height * scale,
+    );
+    ctx.fill('evenodd');
+  }
+  return toBlob(canvas, 'image/jpeg', 0.92);
 }
 
-/**
- * A close-up of one note, its marker drawn in, upscaled when the crop is
- * small and at most CROP_MAX_SIDE on its long side. `rect` is the crop
- * already settled (`settledCrop`) and `grid` the image's luma; both are
- * sampled here when not given. `others` are the picture's other notes, which
- * its number keeps off.
- */
-export function cropImage(
-  bitmap: ImageBitmap,
-  mark: Mark,
-  number: number,
-  rect?: Rect,
-  grid: LumaGrid | undefined = lumaGrid(bitmap),
-  others: Shape[] = [],
-) {
-  return toBlob(
-    drawCrop(
-      bitmap,
-      mark,
-      number,
-      CROP_MAX_SIDE,
-      rect ?? settledCrop(bitmap, mark, grid),
-      grid,
-      undefined,
-      others,
-    ),
-    'image/jpeg',
-    0.92,
-  );
+/** A spot's pixels, small: enough to tell its main colours. */
+function spotPixels(bitmap: ImageBitmap, spot: Spot) {
+  const left = Math.max(0, Math.floor(spot.x * bitmap.width));
+  const top = Math.max(0, Math.floor(spot.y * bitmap.height));
+  const width = Math.max(1, Math.min(bitmap.width - left, Math.ceil(spot.w * bitmap.width)));
+  const height = Math.max(1, Math.min(bitmap.height - top, Math.ceil(spot.h * bitmap.height)));
+  const scale = Math.min(1, COLOUR_SIDE / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const { ctx } = canvasOf(w, h);
+  ctx.drawImage(bitmap, left, top, width, height, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h).data;
 }
 
 /** A kept close-up's longest side when it goes with a reading (D98). */
@@ -921,6 +921,8 @@ export async function buildExport(
   assets: Asset[],
   imageOf: (id: string) => Promise<Blob | undefined>,
   onProgress: (done: number, total: number) => void,
+  /** The text on a screen (D166). An export doesn't wait long for it, and goes without if it must. */
+  textOf: (id: string) => Promise<TextLine[]> = async () => [],
 ) {
   const now = new Date();
   const stamp = now.toISOString();
@@ -929,6 +931,8 @@ export async function buildExport(
   const encoder = new TextEncoder();
   const files: ZipEntry[] = [];
   const crops = new Map<string, Rect>();
+  const wheres = new Map<string, string>();
+  const textUntil = performance.now() + Math.max(TEXT_WAIT_MS, TEXT_WAIT_MS_A_SCREEN * assets.length);
   const sheet = contactSheet(list.map((a) => ({ width: a.width, height: a.height })));
   let sheetUsed = false;
   for (const [i, asset] of list.entries()) {
@@ -943,23 +947,23 @@ export async function buildExport(
     sheet.add(i, bitmap, asset, names.number, grid);
     sheetUsed = true;
     files.push({ name: root + names.marked, data: await bytes(markedBlob) });
+    const text = await Promise.race([
+      textOf(asset.id).catch(() => [] as TextLine[]),
+      new Promise<TextLine[]>((done) =>
+        setTimeout(() => done([]), Math.max(0, textUntil - performance.now())),
+      ),
+    ]);
     for (const [j, mark] of written(asset).entries()) {
       const rect = settledCrop(bitmap, mark, grid);
+      const spot = spotOf(mark.shape, bitmap.width, bitmap.height);
       crops.set(`${asset.id}/${mark.id}`, rect);
+      wheres.set(
+        `${asset.id}/${mark.id}`,
+        whereLine(spot, textIn(text, spot), mainColours(spotPixels(bitmap, spot))),
+      );
       files.push({
         name: root + names.crop(j),
-        data: await bytes(
-          await cropImage(
-            bitmap,
-            mark,
-            j + 1,
-            rect,
-            grid,
-            written(asset)
-              .filter((o) => o !== mark)
-              .map((o) => o.shape),
-          ),
-        ),
+        data: await bytes(await spotCrop(bitmap, spot, rect)),
       });
     }
     bitmap.close();
@@ -971,7 +975,13 @@ export async function buildExport(
     { name: root + GUIDE_FILE, data: encoder.encode(agentGuide()) },
     {
       name: `${root}notes.json`,
-      data: encoder.encode(`${JSON.stringify(manifest(assets, stamp, cropOf), null, 2)}\n`),
+      data: encoder.encode(
+        `${JSON.stringify(
+          manifest(assets, stamp, cropOf, (a, m) => wheres.get(`${a.id}/${m.id}`)),
+          null,
+          2,
+        )}\n`,
+      ),
     },
   ];
   if (sheetUsed) entries.push({ name: root + SHEET_FILE, data: await bytes(await sheet.blob()) });

@@ -139,6 +139,17 @@ describe('the notes package', () => {
     assert.doesNotMatch(plain, /My own work|Tag:|My best example/);
   });
 
+  it('says a mark in words under its note, and what the close-ups show', () => {
+    const where = 'Where: top left, on "Choose a plan". Colours: #ffffff, #020202.';
+    const { text } = pack([batch('a', [note('01.1', { where })])]);
+    assert.match(text, /Great big title\.\n {2}Where: top left, on "Choose a plan"\. Colours: #ffffff, #020202\.\n/);
+    assert.match(text, /Each close-up shows one spot, bright, with the rest dimmed\./);
+    assert.match(text, /A mark's colour means nothing\./);
+    const older = pack([batch('a', [note('01.1')])]).text;
+    assert.doesNotMatch(older, /Where:|dimmed/);
+    assert.match(older, /each close-up shows one spot\. A mark's colour means nothing\./);
+  });
+
   it('keeps the words of a batch whose files are gone, and counts the close-ups', () => {
     const b = batch('a', [note('01.1')]);
     const c = { ...newCollection('My rules', 'c1', STAMP), batches: [b] };

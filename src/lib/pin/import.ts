@@ -29,6 +29,7 @@ const noteSchema = z.object({
   crop: z.string().max(300),
   aiSuggested: z.object({ works: use.optional(), doesNotWork: use.optional() }).optional(),
   origin: z.string().max(20).optional(),
+  where: z.string().max(500).optional(),
 });
 const assetSchema = z.object({
   number: z.string().max(4),
@@ -149,5 +150,6 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       crop: n.crop,
       ...(n.best && n.works.trim() ? { best: true as const } : {}),
       ...(n.origin === 'voice' ? { said: true as const } : {}),
+      ...(n.where ? { where: n.where } : {}),
     })),
   );
