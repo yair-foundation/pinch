@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'What is free in Pinch, what happens to credits, and how your content is kept.',
 };
 
-const UPDATED = '2026-11-05';
+const UPDATED = '2026-11-06';
 
 export default function Terms() {
   const email = process.env.PINCH_SUPPORT_EMAIL?.trim();
@@ -31,8 +31,8 @@ export default function Terms() {
         <section>
           <h2>What is free</h2>
           <p>
-            Pinch is free for now: talking through your screenshots, exporting the package for your
-            agent, and keeping your notes in your account.
+            Pinch is free for now: talking through your screenshots and exporting the package for
+            your agent. It needs no account. If you already keep notes in one, they stay yours there.
           </p>
         </section>
         <section>
@@ -64,8 +64,8 @@ export default function Terms() {
           <p>
             Your screenshots, recordings, notes and rules are yours. Recordings of your voice stay
             in your browser: a voice model, downloaded once from Hugging Face, turns them into
-            words there, and Pinch never receives them. Images stay in your browser until you
-            sign in; then your notes keep their screenshots in your account, stored privately for
+            words there, and Pinch never receives them. Your images and notes stay in your browser
+            unless you signed in to keep notes before; those keep their screenshots in your account, stored privately for
             you alone, up to 200 MB free and 2 GB once you have bought a pack. Delete your account in
             Pinch and your notes and rules are deleted; any credits you hold stay with your email. In Pinch, “How Pinch uses your
             data” says what is sent where.
@@ -82,7 +82,7 @@ export default function Terms() {
           <h2>No guarantee</h2>
           <p>
             Pinch is provided as it is. We work to keep it running and your rules safe, but we
-            can’t promise it will never fail; keep a copy of what matters (Back up, on Your notes). As far as the law allows, our liability is limited to what
+            can’t promise it will never fail; keep a copy of what matters (Export). As far as the law allows, our liability is limited to what
             you paid.
           </p>
         </section>

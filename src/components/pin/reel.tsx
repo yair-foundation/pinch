@@ -39,7 +39,7 @@ import { MARK_COLOR } from './render';
  * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
  * Finish and made into notes where the pointer was, with the voice tags heard applied (D137);
  * the end card lists them by screen, and the middle screenshot shows its notes, numbered. From
- * the end card Export takes the notes to Your notes and gives the package (D144, D157).
+ * the end card Export gives the package of this take (D144, D157, D163).
  */
 
 /** What was said over one screen: its voice tags, and the notes the take made, numbered. */
@@ -240,7 +240,7 @@ export function Reel({
   onTake: (take: Take) => void;
   /** Turn a note's verdict round: what works, or what doesn't. */
   onFlip: (assetId: string, markId: string) => void;
-  /** Open Your notes, which keeps the batch's new notes, and give the package (D87, D157). */
+  /** Give the package of this take (D163). */
   onExport: () => void;
 }) {
   const [atEnd, setAtEnd] = useState(false);

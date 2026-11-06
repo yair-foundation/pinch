@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { type Batch, type BatchNote, newCollection } from '../learnings';
-import { NOTES_FILE, notesPackage, notesPackageRoot } from '../notes-package';
+import { type Batch, type BatchNote, type Collection, newCollection } from '../learnings';
+import {
+  hasSaved,
+  NOTES_FILE,
+  notesPackage,
+  notesPackageRoot,
+  savedPackage,
+} from '../notes-package';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 const STAMP = '2026-11-05T10:00:00Z';
@@ -63,6 +69,23 @@ function pack(batches: Batch[]) {
 }
 
 describe('the notes package', () => {
+  it('puts a take at the top of the package, in a folder named to the minute', () => {
+    const b = batch('a', [note('01.1')]);
+    const c = { ...newCollection('My rules', 'c1', STAMP), batches: [b] };
+    const made = notesPackage(c, new Map([['a', exportOf(b)]]), STAMP, true);
+    const root = notesPackageRoot(STAMP);
+    assert.equal(root, 'pinch-notes-2026-11-05-10-00/');
+    assert.deepEqual(made.files.map((f) => f.name.slice(root.length)).sort(), [
+      'crops/01.1.jpg',
+      'images/01.png',
+      'marked/01.jpg',
+      'notes.md',
+    ]);
+    const text = new TextDecoder().decode(made.files[0].data);
+    assert.match(text, /Screenshot: `images\/01\.png`/);
+    assert.match(text, /\(`crops\/01\.1\.jpg`\)/);
+  });
+
   it('holds the notes and what they point at, and nothing else', () => {
     const made = pack([batch('a', [note('01.1'), note('01.2')])]);
     assert.deepEqual(made.names.sort(), [
@@ -124,5 +147,57 @@ describe('the notes package', () => {
     assert.equal(made.missing, 1);
     const text = new TextDecoder().decode(made.files[0].data);
     assert.match(text, /## Vimeo Web\.png\n\n- 1\. Great big title\./);
+  });
+});
+
+describe('what someone who saved notes takes away', () => {
+  const rule = (c: Collection): Collection => ({
+    ...c,
+    rules: [
+      {
+        id: 'r1',
+        text: 'Use one big title.',
+        context: '',
+        topics: [],
+        tags: [],
+        evidence: [],
+        status: 'approved',
+        createdAt: STAMP,
+      },
+    ],
+  });
+  const saved = (batches: Batch[]) => ({ ...newCollection('My rules', 'c1', STAMP), batches });
+  const filesOf = (batches: Batch[]) => new Map(batches.map((b) => [b.id, exportOf(b)]));
+
+  it('puts the rules beside the notes folder, where an agent reading it will not find them', () => {
+    const batches = [batch('a', [note('01.1')])];
+    const made = savedPackage(rule(saved(batches)), filesOf(batches), STAMP);
+    assert.equal(made.notes, 1);
+    assert.equal(made.rules, 1);
+    const names = made.files.map((f) => f.name);
+    assert.ok(names.includes('pinch-rules-2026-11-05-10-00.md'));
+    assert.ok(names.includes(`${notesPackageRoot(STAMP)}${NOTES_FILE}`));
+    const rules = made.files.find((f) => f.name.startsWith('pinch-rules-'));
+    assert.match(new TextDecoder().decode(rules?.data), /Use one big title\./);
+    const notes = made.files.find((f) => f.name.endsWith(NOTES_FILE));
+    assert.doesNotMatch(new TextDecoder().decode(notes?.data), /Use one big title/);
+  });
+
+  it('gives no rules file without rules, and no notes folder without notes', () => {
+    const batches = [batch('a', [note('01.1')])];
+    const onlyNotes = savedPackage(saved(batches), filesOf(batches), STAMP);
+    assert.ok(onlyNotes.files.every((f) => f.name.startsWith(notesPackageRoot(STAMP))));
+    const onlyRules = savedPackage(rule(saved([])), new Map(), STAMP);
+    assert.deepEqual(
+      onlyRules.files.map((f) => f.name),
+      ['pinch-rules-2026-11-05-10-00.md'],
+    );
+  });
+
+  it('counts as saved only what would be in the zip', () => {
+    assert.equal(hasSaved(saved([])), false);
+    assert.equal(hasSaved(saved([batch('a', [])])), false);
+    assert.equal(hasSaved(saved([batch('a', [note('01.1')])])), true);
+    assert.equal(hasSaved(rule(saved([]))), true);
   });
 });

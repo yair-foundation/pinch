@@ -2,7 +2,7 @@
 
 Teach your agent your taste by talking. Add screenshots, talk them through while you point, and Export: your words, the screenshots, marked copies and a close-up of each spot, as a package your agent reads (D131, D157). In a blind test on the author's own take, this beat the same words in a plain file and beat a package of rules drawn from them ([docs/hand-vs-pinch.md](docs/hand-vs-pinch.md)).
 
-Pinch is free for now (D157). It needs no account; a Google sign-in keeps your notes and screenshots on every device. Reading notes into rules and the credits that paid for it (D98) are hidden behind `READING_SHOWN` in `src/lib/pin/notes-package.ts`, not deleted: rules already kept still show, and Back up and the MCP server still give them.
+Pinch is free for now, and needs no account: each take exports its own package, and nothing of it leaves the browser (D157, D163). People who saved notes or rules before take them with one item in the menu (D164). Reading notes into rules and the credits that paid for it (D98) are hidden behind `READING_SHOWN` in `src/lib/pin/notes-package.ts`, not deleted: that export and the MCP server still give the rules already kept.
 
 Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message); a session holds as many images as the browser has room for (D103).
 
@@ -40,7 +40,7 @@ pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… and PINCH_WHISPER
 Then in `.env.local`: those two, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
 
 1. Add screenshots, press R and talk while you point; F, then Enter. The notes show on each screen.
-2. Your rules, Connect agent, Sign in (a local account, no Google), Connect: run the command it shows. It adds the server as `pinch-local`, beside the live `pinch`.
+2. Your rules, Connect agent, Sign in (a local account, no Google), Connect: run the command it shows. The page with this button is off since D164, so put `<CollectionsView>` back in `pin-app.tsx` for it, or reuse a key you made before. It adds the server as `pinch-local`, beside the live `pinch`.
 3. Ask your agent to read your Pinch notes into rules. Open Your rules again to see them.
 
 ## Environment variables
@@ -107,9 +107,9 @@ src/app/                 layout (fonts, metadata, theme), page (the tool at "/")
 src/app/api/pin/         suggest, learn, checks, notes; me, auth/ (google, callback, signout, test), billing/ (webhook,
                          restore), account, cloud/ (collections, batches, upload)
 src/app/terms/           the terms page
-src/components/pin/      the app (pin-app.tsx), collections (collections.tsx; kept in the browser, collections-store.ts,
-                         or the account, cloud-store.ts), Connect agent (connect-agent.tsx), the account menu and its
-                         gate (account.tsx), shimmer, landing ring (WebGL), wordmark, IndexedDB store, canvas and zip
+src/components/pin/      the app (pin-app.tsx), the export of saved notes (saved-notes.ts; kept in the browser,
+                         collections-store.ts, or the account, cloud-store.ts), the old page, unused since D164
+                         (collections.tsx, connect-agent.tsx), the account menu and its gate (account.tsx), shimmer, landing ring (WebGL), wordmark, IndexedDB store, canvas and zip
                          rendering, topic tags and their picker
 src/components/site/     theme provider and toggle
 src/components/ui/       button, switch, tooltip (Base UI)
