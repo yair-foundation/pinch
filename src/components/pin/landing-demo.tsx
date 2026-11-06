@@ -30,6 +30,8 @@ export type Take = {
   /** How many times the reel has turned, and whether it is turning now. */
   turns: number;
   turning: boolean;
+  /** Under reduced motion: the take never plays. */
+  still: boolean;
 };
 
 const reducedMotion = () =>
@@ -83,6 +85,7 @@ export function useTake(spots: number, root: RefObject<HTMLElement | null>, onEa
     shown: (i) => i < at.spot || (i === at.spot && marking),
     talking: at.stage === 'talk',
     turning: at.stage === 'turn',
+    still,
   };
 }
 
