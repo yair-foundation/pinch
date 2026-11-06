@@ -39,6 +39,7 @@ import {
 } from './account';
 import { cloudBackend } from './cloud-store';
 import { browserBackend } from './collections-store';
+import { DesktopOnly } from './desktop-only';
 import { Dialog, hit } from './dialog';
 import { pdfPages } from './pdf';
 import { Reel } from './reel';
@@ -201,35 +202,6 @@ const isZip = (f: File) => /zip/.test(f.type) || /\.zip$/i.test(f.name);
 const isSmallDevice = () =>
   window.matchMedia('(pointer: coarse)').matches ||
   window.screen.width * window.devicePixelRatio < 768;
-
-/**
- * Pinch needs a pointer and room: drawing on an image, side by side with its notes. On a phone or
- * tablet it shows one message instead, in the style of yair-works.vercel.app's: a black screen,
- * the line centred in a frame marked by four small squares. The message is gated by width in CSS
- * (so the server and the first paint agree), and lifted after mount on a desktop-class device:
- * a laptop zoomed to 200% or a narrow window keeps the app (WCAG 1.4.4, 1.4.10).
- */
-function DesktopOnly() {
-  const corner = 'absolute size-1 bg-white';
-  return (
-    <div
-      role="status"
-      className="fixed inset-0 z-[100] hidden bg-black text-center text-[13px] leading-[1.2] tracking-[-0.01em] text-white max-md:block"
-    >
-      <div className="absolute inset-x-3 top-1/2 flex h-28 -translate-y-1/2 items-center justify-center px-10">
-        <span aria-hidden className={cn(corner, '-top-0.5 -left-0.5')} />
-        <span aria-hidden className={cn(corner, '-top-0.5 -right-0.5')} />
-        <span aria-hidden className={cn(corner, '-bottom-0.5 -left-0.5')} />
-        <span aria-hidden className={cn(corner, '-right-0.5 -bottom-0.5')} />
-        <p className="m-0">
-          This experience was designed for desktop.
-          <br />
-          Please revisit from a larger screen.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export function PinApp() {
   const [desktop, setDesktop] = useState(false);

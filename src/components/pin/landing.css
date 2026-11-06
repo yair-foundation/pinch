@@ -16,6 +16,10 @@
   font-family: var(--font-landing-body), system-ui, sans-serif;
 }
 
+.pinch-landing.phone-message {
+  background: var(--lilac);
+}
+
 .pinch-landing .title {
   font-family: var(--font-landing-display), sans-serif;
   font-variation-settings:
@@ -135,6 +139,14 @@
   transform: scaleY(0.1);
   transition: transform 0.25s ease;
 }
+.pinch-landing .story-wave {
+  height: 24px;
+  gap: 3px;
+  color: #fff;
+}
+.pinch-landing .story-wave i {
+  width: 3px;
+}
 .pinch-landing .wave[data-on='true'] i {
   animation: landing-wave 0.85s ease-in-out infinite;
 }
@@ -146,14 +158,6 @@
   50% {
     transform: scaleY(var(--peak));
   }
-}
-.pinch-landing .story-wave {
-  height: 24px;
-  gap: 3px;
-  color: #fff;
-}
-.pinch-landing .story-wave i {
-  width: 3px;
 }
 .pinch-landing .demo-cursor {
   position: absolute;

@@ -1,6 +1,5 @@
 'use client';
 
-import { Bricolage_Grotesque, Figtree } from 'next/font/google';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
@@ -16,6 +15,7 @@ import {
   TalkScene,
 } from './landing-art';
 import { DemoCursor, SpotMark, useTake, Wave } from './landing-demo';
+import { LANDING_FONTS } from './landing-fonts';
 import './landing.css';
 
 /*
@@ -23,13 +23,6 @@ import './landing.css';
  * screen is the awkward part and a page can make it less so. One action, adding screenshots; the
  * window takes dropped files too. It scrolls with the header, which floats over its top.
  */
-
-const display = Bricolage_Grotesque({
-  subsets: ['latin'],
-  axes: ['opsz', 'wdth'],
-  variable: '--font-landing-display',
-});
-const body = Figtree({ subsets: ['latin'], variable: '--font-landing-body' });
 
 const IN_THE_FOLDER = [
   'Your words',
@@ -169,8 +162,7 @@ export function Landing({
       inert={inert}
       className={cn(
         'pinch-landing shrink-0',
-        display.variable,
-        body.variable,
+        LANDING_FONTS,
         // Files over the window: the whole page takes them.
         dragging && 'outline-4 -outline-offset-4 outline-(--violet)',
       )}

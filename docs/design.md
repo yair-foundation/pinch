@@ -23,12 +23,12 @@ Geist for all text in the tool (`--font-sans`) and Geist Mono for keyboard hints
 | Meta (counts, hints) | 13px muted | header, panel |
 | Keyboard key | 12px mono in a bordered chip | `Kbd` |
 
-- **13px is the floor.** Smaller only for secondary information the user can do without (a footnote); never a label, value, action or warning. The desktop-only message is 13px.
+- **13px is the floor.** Smaller only for secondary information the user can do without (a footnote); never a label, value, action or warning. 
 - Placeholders (a grey suggestion, an example) render muted and regular weight.
 
 ## The landing
 
-The landing keeps its own look in both themes (D169), in `landing.tsx`, `landing-art.tsx` and `landing.css`: flat lilac with butter yellow and violet, thick-outlined drawings with some humour, Bricolage Grotesque for titles and big numbers, and Figtree for text. The rules on this page about neutral surfaces, Geist and the type roles are for the tool, where a surface around a screenshot has to stay out of the way. Contrast, keyboard use, hit areas, reduced motion and the copy rules hold here too.
+The landing keeps its own look in both themes (D169), in `landing.tsx`, `landing-art.tsx` and `landing.css`, and so does the message phones get (D170, `desktop-only.tsx`): flat lilac with butter yellow and violet, thick-outlined drawings with some humour, Bricolage Grotesque for titles and big numbers, and Figtree for text. The rules on this page about neutral surfaces, Geist and the type roles are for the tool, where a surface around a screenshot has to stay out of the way. Contrast, keyboard use, hit areas, reduced motion and the copy rules hold here too.
 
 ## Colour
 

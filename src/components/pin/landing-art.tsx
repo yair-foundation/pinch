@@ -518,3 +518,76 @@ export function MarkedPage({
     </svg>
   );
 }
+
+/** A phone's excuse (D170): a poster for the missing mouse, a sorry phone, and the cat that checked. */
+export function MissingMouse({ className }: ArtProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 320 320"
+      role="img"
+      aria-label="A missing poster for a computer mouse. A black cat says: I checked. No mouse. A small phone says: sorry."
+    >
+      <path className="o" fill="none" d="M0 30H320" />
+      <g transform="rotate(-3 112 96)">
+        <rect className="o" x="46" y="40" width="132" height="124" rx="6" fill="#fff" />
+        <text x="112" y="66" textAnchor="middle" fontSize="16">
+          MISSING
+        </text>
+        <path
+          className="o"
+          fill="#ffc93c"
+          d="M88 112C88 92 136 92 136 112V128C136 148 88 148 88 128Z"
+        />
+        <path className="t" d="M112 96V112" />
+        <path className="t" d="M112 96C112 84 124 88 124 78" />
+        <rect className="o" x="105" y="22" width="14" height="28" rx="4" fill="#f59bd8" />
+      </g>
+
+      <path className="o" fill="none" d="M0 312H320" />
+
+      <rect className="o" x="30" y="206" width="74" height="106" rx="12" fill="#fff" />
+      <path className="t" d="M58 216H76" />
+      <circle cx="54" cy="256" r="4" fill="#17131f" />
+      <circle cx="80" cy="256" r="4" fill="#17131f" />
+      <path className="t" d="M58 278C62 270 72 270 76 278" />
+      <path
+        d="M92 240C96 246 98 250 98 253C98 259 86 259 86 253C86 250 88 246 92 240Z"
+        fill="#7cc7e8"
+      />
+
+      <path
+        className="o"
+        fill="#fff"
+        d="M16 168H96C103 168 108 173 108 180V186C108 193 103 198 96 198H70L60 208L60 198H16C9 198 4 193 4 186V180C4 173 9 168 16 168Z"
+      />
+      <text x="56" y="188" textAnchor="middle" fontSize="14">
+        SORRY.
+      </text>
+
+      <g transform="translate(150 -282) scale(1.04)">
+        <path
+          fill="#17131f"
+          d="M24 570C14 520 20 486 32 462L26 428L52 446C62 442 72 442 82 446L108 428L104 462C118 490 124 530 118 570Z"
+        />
+        <ellipse cx="54" cy="478" rx="9" ry="7" fill="#fff" />
+        <ellipse cx="84" cy="478" rx="9" ry="7" fill="#fff" />
+        <ellipse cx="50" cy="475" rx="3.500" ry="5" fill="#17131f" />
+        <ellipse cx="80" cy="475" rx="3.500" ry="5" fill="#17131f" />
+        <path d="M65 490h8l-4 5Z" fill="#f59bd8" />
+      </g>
+
+      <path
+        className="o"
+        fill="#fff"
+        d="M204 56H304C311 56 316 61 316 68V104C316 111 311 116 304 116H262L244 138L244 116H204C197 116 192 111 192 104V68C192 61 197 56 204 56Z"
+      />
+      <text x="254" y="82" textAnchor="middle" fontSize="15">
+        I CHECKED.
+      </text>
+      <text x="254" y="102" textAnchor="middle" fontSize="15">
+        NO MOUSE.
+      </text>
+    </svg>
+  );
+}

@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D169.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D170.
 
 ## Open (need the user)
 
@@ -12,6 +12,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-11-06 — D170 A phone gets a joke and a pointer to the desktop, in the landing's look (the user: "do not support mobile view, show a messge to move to desktop. make it funny with cute humor illustration"). Amends D67.** Pinch needs a mouse to point with, and that is also the joke: a missing poster for one, a sorry phone, and the cat that checked. Who sees it doesn't change: small screens by width, with a laptop zoomed in or a narrow window keeping the app.
 - **2026-11-06 — D169 The landing is illustrated, funny and in its own colours, and the tool stays neutral (the user, between it and the dark gallery: "Yes, on a branch"). Amends D133, D134 and D135, and the headline D165 held back.** Talking to your screen is the awkward part of Pinch, and humour makes that easier in a way a gallery can't. A hand pinching a screenshot also explains the name and the gesture at once, and the author has praised the illustrations and humour in every take on them. A surface around a screenshot being judged has to stay out of the way, so all of this stops at the landing.
   - **The page** is the one the author reviewed with Pinch, with their notes acted on: a roomier top, the side-by-side card, the file list as a code block, one type style in the package card, and dictation in place of typing as the thing to compare with, because everyone already dictates.
   - **A take acted out** (the user: "animated audiowave when it fits and also a cursor marked areas"). Above the fold and in the whole-story section, a cursor marks one spot after another while a sound wave shows someone talking, and the designer's words or the sample notes follow it. It runs only on screen, and stands still under reduced motion.
