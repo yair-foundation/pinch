@@ -6,14 +6,13 @@ import { ThemeProvider } from '@/components/site/theme-provider';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
-  title: 'Pinch: talk through screenshots for your agent',
+  title: 'Pinch: stop giving your design agent the same feedback',
   description:
-    'Talk through a batch of screenshots, pointing at what works and what doesn’t. Pinch turns what you say into rules that Claude, ChatGPT or any agent follows.',
+    'Talk through screenshots while you point. Your design agent keeps every note, and checks its work against them before you see it.',
   icons: { icon: '/pin-notes/icon.svg', apple: '/pin-notes/icon.svg' },
   openGraph: {
     title: 'Pinch',
-    description:
-      'Talk through screenshots, and your agent learns your taste.',
+    description: 'Point at it, say why, once. Your design agent remembers.',
   },
 };
 
