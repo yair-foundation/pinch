@@ -129,14 +129,49 @@ html[data-coming-back] [data-workspace] {
 .pinch-landing .bit:nth-child(3n) {
   animation-delay: -1.9s;
 }
+/* The pegged cards sway from their pegs, each at its own pace. */
+.pinch-landing .sway {
+  animation: landing-sway 3.4s ease-in-out infinite alternate;
+  transform-box: view-box;
+}
+.pinch-landing .sway-1 {
+  transform-origin: 62px 34px;
+  animation-duration: 3.1s;
+}
+.pinch-landing .sway-2 {
+  transform-origin: 160px 34px;
+  animation-duration: 3.7s;
+  animation-delay: -1.3s;
+}
+.pinch-landing .sway-3 {
+  transform-origin: 256px 34px;
+  animation-duration: 3.4s;
+  animation-delay: -2.2s;
+}
+@keyframes landing-sway {
+  from {
+    transform: rotate(-2deg);
+  }
+  to {
+    transform: rotate(2deg);
+  }
+}
+/* The cat's pupils ease toward the pointer. */
+.pinch-landing .gaze {
+  transition: transform 120ms ease-out;
+}
 @keyframes landing-bob {
   50% {
     transform: translateY(6px) rotate(12deg);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pinch-landing .bit {
+  .pinch-landing .bit,
+  .pinch-landing .sway {
     animation: none;
+  }
+  .pinch-landing .gaze {
+    transition: none;
   }
   .pinch-landing .press {
     transition: none;

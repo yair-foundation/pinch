@@ -41,24 +41,30 @@ export function PinchScene({ className }: ArtProps) {
       <path className="o" fill="none" d="M0 34H300" />
       <circle cx="304" cy="34" r="8" fill="#17131f" />
       <g transform="rotate(-3 62 90)">
-        <rect className="o" x="22" y="44" width="82" height="100" rx="6" fill="#fff" />
-        <rect className="o" x="32" y="55" width="62" height="38" rx="3" fill="#f59bd8" />
-        <circle cx="63" cy="74" r="10" fill="#ffc93c" className="t" />
-        <path className="t" d="M34 106H90M34 118H72" />
-        <rect className="o" x="55" y="26" width="13" height="28" rx="4" fill="#ffc93c" />
+        <g className="sway sway-1">
+          <rect className="o" x="22" y="44" width="82" height="100" rx="6" fill="#fff" />
+          <rect className="o" x="32" y="55" width="62" height="38" rx="3" fill="#f59bd8" />
+          <circle cx="63" cy="74" r="10" fill="#ffc93c" className="t" />
+          <path className="t" d="M34 106H90M34 118H72" />
+          <rect className="o" x="55" y="26" width="13" height="28" rx="4" fill="#ffc93c" />
+        </g>
       </g>
       <g transform="rotate(2 160 90)">
-        <rect className="o" x="120" y="44" width="82" height="100" rx="6" fill="#ffc93c" />
-        <path d="M131 80V62h44M131 88h60" className="t" style={{ strokeWidth: 7 }} />
-        <rect className="o" x="131" y="108" width="40" height="18" rx="9" fill="#17131f" />
-        <rect className="o" x="154" y="26" width="13" height="28" rx="4" fill="#f59bd8" />
+        <g className="sway sway-2">
+          <rect className="o" x="120" y="44" width="82" height="100" rx="6" fill="#ffc93c" />
+          <path d="M131 80V62h44M131 88h60" className="t" style={{ strokeWidth: 7 }} />
+          <rect className="o" x="131" y="108" width="40" height="18" rx="9" fill="#17131f" />
+          <rect className="o" x="154" y="26" width="13" height="28" rx="4" fill="#f59bd8" />
+        </g>
       </g>
       <g transform="rotate(-2 256 86)">
-        <rect className="o" x="218" y="44" width="76" height="94" rx="6" fill="#3b9f87" />
-        <circle className="o" cx="256" cy="80" r="20" fill="#fff" />
-        <circle cx="256" cy="80" r="7" fill="#f2613f" />
-        <path d="M232 120h48" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
-        <rect className="o" x="250" y="26" width="13" height="28" rx="4" fill="#fff" />
+        <g className="sway sway-3">
+          <rect className="o" x="218" y="44" width="76" height="94" rx="6" fill="#3b9f87" />
+          <circle className="o" cx="256" cy="80" r="20" fill="#fff" />
+          <circle cx="256" cy="80" r="7" fill="#f2613f" />
+          <path d="M232 120h48" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
+          <rect className="o" x="250" y="26" width="13" height="28" rx="4" fill="#fff" />
+        </g>
       </g>
 
       <rect className="o" x="-10" y="182" width="104" height="80" fill="#3b9f87" />
@@ -161,7 +167,12 @@ export function PinchScene({ className }: ArtProps) {
 export function TalkScene({
   className,
   say = ['THAT BUTTON?', 'MORE OF THAT.'],
-}: ArtProps & { say?: readonly [string, string] }) {
+  gaze,
+}: ArtProps & {
+  say?: readonly [string, string];
+  /** The cat's eyes and pupils, for `useGaze`: the pupils are drawn looking straight ahead. */
+  gaze?: { eyes: React.Ref<SVGGElement>; look: React.Ref<SVGGElement> };
+}) {
   return (
     <svg
       className={className}
@@ -263,10 +274,14 @@ export function TalkScene({
           fill="#17131f"
           d="M24 570C14 520 20 486 32 462L26 428L52 446C62 442 72 442 82 446L108 428L104 462C118 490 124 530 118 570Z"
         />
-        <ellipse cx="54" cy="478" rx="9" ry="6" fill="#fff" />
-        <ellipse cx="84" cy="478" rx="9" ry="6" fill="#fff" />
-        <ellipse cx="59" cy="480" rx="3.500" ry="5" fill="#17131f" />
-        <ellipse cx="89" cy="480" rx="3.500" ry="5" fill="#17131f" />
+        <g ref={gaze?.eyes}>
+          <ellipse cx="54" cy="478" rx="9" ry="6" fill="#fff" />
+          <ellipse cx="84" cy="478" rx="9" ry="6" fill="#fff" />
+        </g>
+        <g ref={gaze?.look} className="gaze" style={{ transform: 'translate(5px, 2px)' }}>
+          <ellipse cx="54" cy="478" rx="3.500" ry="5" fill="#17131f" />
+          <ellipse cx="84" cy="478" rx="3.500" ry="5" fill="#17131f" />
+        </g>
         <path d="M65 490h8l-4 5Z" fill="#f59bd8" />
       </g>
       <path className="o" fill="#fff" d="M106 564C100 516 166 510 170 564Z" />

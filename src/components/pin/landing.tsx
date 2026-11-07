@@ -14,7 +14,7 @@ import {
   StepSay,
   TalkScene,
 } from './landing-art';
-import { DemoCursor, SpotMark, useTake, Wave } from './landing-demo';
+import { DemoCursor, SpotMark, useGaze, useTake, Wave } from './landing-demo';
 import { LANDING_FONTS } from './landing-fonts';
 import './landing.css';
 
@@ -116,7 +116,9 @@ const RESULTS = [
   ['Corrections that come back', '4%', '74%'],
   ['A review that picks what you’d pick', '70%', '32%'],
 ] as const;
-const FEWER_CHANGES = '58%';
+/** Changes asked for a screen, without Pinch and with it: 12.7 and 5.3, so 7.4 fewer each. */
+const FEWER_A_SCREEN = 12.7 - 5.3;
+const SCREENS_SHOWN = [1, 10];
 
 const ROWS = [
   ['Saying where you mean', 'You just point', '“Second card, no, the other one”'],
@@ -141,6 +143,9 @@ const SAYS = [
 ] as const;
 
 const SPOT_ROOM = 12;
+/** The cat's pupils: at rest on the mouse at its feet, and how far they can turn in its eyes. */
+const CAT_REST = { x: 5, y: 2 };
+const CAT_REACH = { x: 5, y: 2 };
 type Rect = { x: number; y: number; w: number; h: number };
 
 /** The spots above the fold, in `root`, followed as the window changes and the fonts arrive. */
@@ -189,7 +194,12 @@ export function Landing({
   inert: boolean;
   onChoose: () => void;
 }) {
+  const [screens, setScreens] = useState(1);
+  const fewer = Math.round(FEWER_A_SCREEN * SCREENS_SHOWN[screens]);
   const hero = useRef<HTMLElement>(null);
+  const catEyes = useRef<SVGGElement>(null);
+  const catLook = useRef<SVGGElement>(null);
+  useGaze(catLook, catEyes, CAT_REST, CAT_REACH);
   const titleEnds = [
     useRef<HTMLSpanElement>(null),
     useRef<HTMLSpanElement>(null),
@@ -262,6 +272,7 @@ export function Landing({
         <TalkScene
           className="absolute right-0 bottom-0 hidden xl:block"
           say={SAYS[heroTake.spot]}
+          gaze={{ eyes: catEyes, look: catLook }}
         />
         <Wave
           on={heroTake.talking}
@@ -440,9 +451,31 @@ export function Landing({
                 screen against them before you see it.
               </p>
             </div>
-            <p className="tag relative m-0 rounded-xl border-2 border-(--ink) bg-(--butter) px-4 py-[10px] text-[18px] font-semibold">
-              {FEWER_CHANGES} fewer changes to ask for
-            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <fieldset className="m-0 flex rounded-full border-2 border-(--ink) bg-white p-[6px]">
+                <legend className="sr-only">How many screens</legend>
+                {SCREENS_SHOWN.map((n, i) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={i === screens}
+                    onClick={() => setScreens(i)}
+                    className={cn(
+                      'cursor-pointer rounded-full px-6 py-[11px] text-[18px] font-medium transition-colors duration-150 motion-reduce:transition-none',
+                      i === screens ? 'bg-(--ink) text-white' : 'bg-transparent text-(--ink)',
+                    )}
+                  >
+                    {n === 1 ? '1 screen' : `${n} screens`}
+                  </button>
+                ))}
+              </fieldset>
+              <p
+                className="tag relative m-0 rounded-xl border-2 border-(--ink) bg-(--butter) px-4 py-[10px] text-[18px] font-semibold"
+                aria-live="polite"
+              >
+                {fewer} fewer changes to ask for
+              </p>
+            </div>
           </div>
           <div className="mt-10 rounded-[32px] border border-(--line) bg-white px-5 py-9 sm:px-10">
             <table className="w-full border-collapse text-left text-[18px]">
