@@ -115,6 +115,10 @@ describe('the notes package', () => {
   it('asks the agent to check its screen against the notes, with the check beside them', () => {
     const made = pack([batch('a', [note('01.1')])]);
     assert.match(made.text, /run the pinch-check agent on the drawing, then fix what it finds/);
+    assert.match(
+      made.text,
+      /Where this project has a design system, use its values, tokens and components as they are/,
+    );
     assert.match(made.text, /copy `pinch-check\.md` from this folder there/);
     const check = made.files.find((f) => f.name === notesPackageRoot(STAMP) + CHECK_FILE);
     const agent = new TextDecoder().decode(check?.data);

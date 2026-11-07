@@ -72,10 +72,19 @@ Look at the drawing you were given. Find where it repeats something the designer
  * The first line is what the trial's prompt told its builds, which nobody will say in a real
  * project. Marks drawn before D157 are coloured by a label that was often wrong, hence the last.
  */
+/*
+ * A project with a design system (D179): on made-up and real design systems alike, the takes added
+ * to it, and this line kept the agent on its values where a note and a token disagreed.
+ */
+const DEFER_LINE =
+  'Where this project has a design system, use its values, tokens and components as they are; read these notes for how and where to use them, and for what still comes out wrong.';
+
 const INTRO = [
   '# My notes on these screenshots',
   '',
   'When you design for me, read all of this first and open the images: it is everything you know about my taste.',
+  '',
+  DEFER_LINE,
   '',
   CHECK_LINE,
   '',

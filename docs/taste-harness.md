@@ -173,6 +173,65 @@ The code check had little to hold because spoken notes seldom carry numbers. So 
 - **Why, likely:** these takes correct the agent's own screens, so most measured numbers describe what was wrong. "Too tiny" beside "text 13px" gives the agent a number, and it sometimes kept it. On a reference the person likes, the numbers would be the target; that is not what this tested.
 - **Limits:** the oracle's strictness, three designers, two builds a cell.
 
+## On top of a design system, 2026-11-07
+
+People now write a design system for their agent: primitives, tokens named by purpose, components with their markup, and rules with reasons in `CLAUDE.md` (Rico, "Build the design system and skills your agent can follow", 2026-11-01). Every test above used standalone pages with none. Does Pinch still add anything? `scripts/taste-harness/design-system.mjs`: for each of the three designers furthest from the agent's taste, a session playing their design-system lead wrote one from their hidden taste, so it is the best case for a design system: it carried nearly all of the taste, down to the voice of the copy. Rounds 4 to 6 were built twice with the design system alone (S) and twice with it and the takes so far (SP), judged blind with the takes alone (M), and scored by the oracle. One build failed (designer 5, round 4, S); its second run stands.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 5 | Measurable points broken |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Nothing | | | | | 95% |
+| The takes alone | 5.9 | 3.0 | 4.2 | 3.83 | 78% |
+| The design system alone | 5.1 | 2.8 | 3.2 | 3.32 | 43% |
+| The design system and the takes | 4.3 | 2.0 | 2.5 | 2.17 | 57% |
+
+- **A design system made from the whole taste beats the takes alone,** most of all on what can be measured: 43% of measurable points broken against 78%. Numbers belong in tokens, as the measured notes also suggested.
+- **The takes still add to it, by eye.** With them, 16% fewer changes, fewer repeats and fewer taste points broken, and the pair ranked above the design system alone in 12 judgings, below it in 1, level in 5.
+- **But the takes pulled measurable values off the tokens:** 57% broken against 43%. The takes were made on screens built without the design system, and where a note and a token disagree, the agent sometimes followed the note.
+- **What it suggests:** Pinch completes a design system rather than competing with it. A design system holds what exists and its numbers; the takes hold how to use it and what still comes out wrong. The package should say so: where the design system gives a value, use it, and read the notes for how. Untested.
+- **Limits:** a design system written from the full hidden taste, which a real team's won't match; three designers, nine cells; the oracle's strictness.
+
+### With a line that defers to the design system, 2026-11-07
+
+The takes pulled measurable values off the tokens, so each take's `notes.md` got one more line, after its first: "Where this project has a design system, use its values, tokens and components as they are; read these notes for how and where to use them, and for what still comes out wrong." Built twice per cell (SPD), and judged blind with the design system alone and with the takes, six screens at a time (`defer-report.py`). One build failed (designer 4, round 4, SPD2); its first run stands.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 6 | Measurable points broken |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| The design system alone | 5.1 | 2.7 | 3.2 | 4.53 | 44% |
+| The design system and the takes | 4.6 | 2.1 | 2.8 | 3.19 | 57% |
+| And the line deferring to it | 4.1 | 1.9 | 2.2 | 2.59 | 50% |
+
+- **The line helps on both counts:** fewer changes than the takes without it (4.1 against 4.6), ranked above them in 10 judgings, below in 3, level in 5, and fewer measurable values off the tokens (50% against 57%).
+- **It keeps the gain over the design system alone:** above it in 13 judgings, below in 1, level in 4, with 20% fewer changes.
+- **It narrows the conflict but doesn't close it:** 50% broken against the design system's own 44%.
+- **Limits:** the same as the design-system test above; this judging ran six screens at a time, so its numbers for S and SP differ a little from the five-screen one.
+
+## On top of a real design system, 2026-11-07
+
+The author supplied real design systems from companies. They stay out of this repository and are named here only by kind. The first is a marketing design system already written for agents: brand guidelines, voice and copy rules, a prompt pack, tokens, licensed fonts, photography and reference pages. `scripts/taste-harness/real-ds.mjs` puts it in each build's project as `./design-system/`. A made-up senior brand designer there, with a taste of their own on top of it (one focal element per section, neighbouring sections never sharing a layout, stats with a source and date, buttons that name a verb and an object, photos cropped tight), corrected two pages built with it, 7 and 8 notes. Three new pages were then built twice with the design system alone and twice with it and the two takes, the takes' `notes.md` carrying the line that defers to the design system, and judged blind, twice each.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 4 |
+| --- | ---: | ---: | ---: | ---: |
+| The design system alone | 7.3 | 4.9 | 5.3 | 3.50 |
+| The design system and the takes | 3.2 | 0.8 | 1.7 | 1.50 |
+
+- **The takes more than halved the changes** on top of a real design system, 56% fewer, and cut repeats from 4.9 to 0.8. In all 6 judgings both builds with the takes ranked above both without.
+- **The design system did its job** in both: the brand's fonts, colours, logo and photography were used throughout. What it left open is where the agent fell back on its defaults, three equal icon cards, a dark slab under the hero, a floating stat, a vague button, and that is what two takes fixed.
+- **Much more than on the made-up design systems** (16 to 20% fewer changes), as expected: those were written from the full taste, and a real one only holds the company's rules, not each designer's judgment within them.
+- **Limits:** one design system, one made-up designer, three pages, six judgings, a judge of the same family of model. The designer's taste was written to sit beyond the system, which is the case Pinch is for, and may make the gap larger than a typical designer's would be.
+
+### A real product design system, 2026-11-07
+
+The second, also supplied by the author and kept out of this repository, is a product design system for dense operations consoles: 105 React components, each with an HTML card and a usage guide written for agents, tokens, an Inter webfont and an example console. Builds load what its own example loads. A made-up senior product designer on that console, with a taste on top of it (one solid primary button per screen, three gap sizes only, numbers right-aligned with the unit in the header, IDs in quiet mono, no card inside a card), corrected two screens, 7 and 8 notes, and three new screens were built and judged as with the first.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 4 |
+| --- | ---: | ---: | ---: | ---: |
+| The design system alone | 7.1 | 3.1 | 4.7 | 3.50 |
+| The design system and the takes | 3.3 | 0.4 | 1.8 | 1.50 |
+
+- **The same as the first:** 54% fewer changes, repeats from 3.1 to 0.4, and both builds with the takes above both without in all 6 judgings.
+- **The takes carried across screens:** corrections made on a runs list (numbers left-aligned, "$" on every cell, IDs in dark ink) held on an analytics screen and a detail page the designer never saw.
+- **Across the two real design systems,** marketing and product: 7.2 changes a page with the design system alone, 3.3 with it and two takes, in all 12 judgings. The limits are the same as above.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.

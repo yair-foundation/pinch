@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D178.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D179.
 
 ## Open (need the user)
 
@@ -12,6 +12,11 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-11-07 — D179 Every Export tells the agent to keep a design system's values, and read the notes for how to use them (the user, of Rico's "Build the design system and skills your agent can follow": "what can we learn from this?", then design systems to test on, then "Ship it"). Amends D174.** People now write a design system for their agent, and every earlier test used pages with none ([taste-harness.md](taste-harness.md)).
+  - **On made-up design systems** written from each designer's whole taste, the takes still added to them by eye (16% fewer changes), but pulled measurable values off the tokens (57% broken against 43%). One line in `notes.md` deferring to the design system gave the best of both: 4.1 changes against 4.6 without it and 5.1 for the design system alone, and 50% of values off the tokens.
+  - **On two real design systems** the author supplied, a marketing one and a product one, kept out of this repository: two takes from a made-up senior designer on top of each cut the changes asked for from 7.2 a page to 3.3, and repeats from about 4 to under 1, ranking above the design system alone in all 12 judgings.
+  - **What changed.** `notes.md` says, after its first line: "Where this project has a design system, use its values, tokens and components as they are; read these notes for how and where to use them, and for what still comes out wrong." With no design system it says nothing.
+  - **Not known.** A real designer on a real team judging blind; the gain on design systems built from a team's taste rather than its brand rules; one made-up designer per real system and three pages each.
 - **2026-11-07 — D178 The check runs on Haiku (the user: "do you think we can make a better architecture where a continues cylcles of iterations will work in a way that will not burn tokens with no real need?", then "go ahead"). Amends D174.** Three ways to spend less were tested against the check as it shipped, on the three made-up designers furthest from the agent's taste, 12 screens each, with the cost of each screen read from its log and the five ways judged blind together ([taste-harness.md](taste-harness.md)).
   - **What a screen costs.** About $0.41 at API prices on Sonnet, nearly all of it the builder writing the page. The check was $0.04 of it, and on Haiku $0.004. Reading the notes again is mostly cached, so it costs little.
   - **What won.** The check on Haiku was no worse: it ranked best of the five and beat the Sonnet check 10 times in 12. So `pinch-check.md` names `model: haiku`. Claude Code reads it; an agent that doesn't runs the check on its own model.
