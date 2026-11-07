@@ -7,8 +7,11 @@
 //           notes make measurable, says which note each finding comes from, and adds no taste
 //   build   each round's task again with the takes (M2), and with the takes and the check (K, K2)
 //   measure the oracle on every page: nothing (A), the takes (M, M2), the takes and the check (K, K2)
+//   spots   the takes again, each note with a line of what was measured at its spot on the page: the
+//           text's size, weight, family, colour and case, and its box's padding, corners, border,
+//           shadow and background (built as N, N2)
 //
-//   OUT=<dir> node scripts/taste-harness/measure.mjs oracle|checks|build|measure
+//   OUT=<dir> node scripts/taste-harness/measure.mjs oracle|checks|build|spots|buildSpots|measure
 //
 // <dir> is rounds.mjs's. ONLY (default d2,d4,d5) and AT_ONCE (8) size it. Stages skip what exists.
 import { spawn, spawnSync } from "node:child_process"
@@ -20,6 +23,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -181,6 +185,117 @@ async function checksStage() {
   await pool(jobs)
 }
 
+/** What a page has at each of a take's spots, as one line per note, measured in Chromium. */
+async function spotsOf(page, boxes) {
+  const { chromium } = createRequire(import.meta.url)(
+    process.env.PW_PATH || "playwright",
+  )
+  const browser = await chromium.launch()
+  try {
+    const tab = await browser.newPage({ viewport: { width: 1440, height: 2400 } })
+    await tab
+      .goto(`file://${page}`, { waitUntil: "networkidle", timeout: 30000 })
+      .catch(() => {})
+    await tab.waitForTimeout(1500)
+    return await tab.evaluate((boxes) => {
+      const hex = (c) => {
+        const m = c.match(/\d+(\.\d+)?/g)
+        if (!m || (m.length > 3 && Number(m.at(3)) === 0)) return null
+        return `#${m
+          .slice(0, 3)
+          .map((x) => Number(x).toString(16).padStart(2, "0"))
+          .join("")}`
+      }
+      return boxes.map((b) => {
+        const spot = { x: b.x * 1440, y: b.y * 2400, w: b.w * 1440, h: b.h * 2400 }
+        const inside = (r) => {
+          const ix = Math.max(0, Math.min(r.right, spot.x + spot.w) - Math.max(r.left, spot.x))
+          const iy = Math.max(0, Math.min(r.bottom, spot.y + spot.h) - Math.max(r.top, spot.y))
+          return r.width * r.height > 0 ? (ix * iy) / (r.width * r.height) : 0
+        }
+        const texts = []
+        for (const el of document.body.querySelectorAll("*")) {
+          const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
+          if (!own) continue
+          const r = el.getBoundingClientRect()
+          if (inside(r) < 0.6) continue
+          const cs = getComputedStyle(el)
+          texts.push({
+            size: Number.parseFloat(cs.fontSize),
+            weight: cs.fontWeight,
+            family: cs.fontFamily.split(",").at(0).replace(/["']/g, "").trim(),
+            colour: hex(cs.color),
+            upper: cs.textTransform === "uppercase",
+          })
+        }
+        const cx = spot.x + spot.w / 2
+        const cy = spot.y + spot.h / 2
+        const box = document
+          .elementsFromPoint(cx, Math.min(cy, 2399))
+          .find((el) => {
+            const r = el.getBoundingClientRect()
+            return r.width * r.height >= 0.4 * spot.w * spot.h && el !== document.body && el !== document.documentElement
+          })
+        const parts = []
+        if (texts.length) {
+          const sizes = texts.map((t) => t.size)
+          const big = texts.reduce((a, t) => (t.size > a.size ? t : a))
+          const lo = Math.min(...sizes)
+          const hi = Math.max(...sizes)
+          const colours = [...new Set(texts.map((t) => t.colour).filter(Boolean))].slice(0, 2)
+          parts.push(
+            `text ${lo === hi ? `${hi}px` : `${lo} to ${hi}px`}, weight ${big.weight}, ${big.family}${big.upper ? ", uppercase" : ""}${colours.length ? `, colour ${colours.join(" and ")}` : ""}`,
+          )
+        }
+        if (box) {
+          const cs = getComputedStyle(box)
+          const pad = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft]
+          const bits = [
+            `padding ${new Set(pad).size === 1 ? pad.at(0) : pad.join(" ")}`,
+            `corners ${cs.borderTopLeftRadius}`,
+          ]
+          if (Number.parseFloat(cs.borderTopWidth) > 0) bits.push(`border ${cs.borderTopWidth} ${hex(cs.borderTopColor) ?? ""}`.trim())
+          bits.push(cs.boxShadow === "none" ? "no shadow" : `shadow ${cs.boxShadow}`)
+          const bg = hex(cs.backgroundColor)
+          if (bg) bits.push(`background ${bg}`)
+          parts.push(`box ${bits.join(", ")}`)
+        }
+        return parts.length ? `Measured: ${parts.join("; ")}.` : null
+      })
+    }, boxes)
+  } finally {
+    await browser.close()
+  }
+}
+
+/** Each take's folder again, with a Measured line under each note's Where line. */
+async function spotsStage() {
+  for (const dn of DESIGNERS)
+    for (let k = 1; k <= 5; k++) {
+      const pk = at(dn, "pinch", `pinch-notes-take-${k}`)
+      if (!existsSync(pk)) continue
+      const take = k === 1 ? path.join(EXP, dn, "take.json") : at(dn, `r${k}`, "take.json")
+      const page = k === 1 ? samplePage(dn) : at(dn, `r${k}`, "M", "index.html")
+      const lines = await spotsOf(
+        page,
+        J(take).notes.map((n) => n.box),
+      )
+      const dest = mine(dn, "pinch-measured", `pinch-notes-take-${k}`)
+      cpSync(pk, dest, { recursive: true })
+      let i = 0
+      const text = readFileSync(path.join(dest, "notes.md"), "utf8")
+        .split("\n")
+        .flatMap((line) => {
+          if (!line.startsWith("  Where:")) return [line]
+          const measured = lines.at(i++)
+          return measured ? [line, `  ${measured}`] : [line]
+        })
+        .join("\n")
+      W(path.join(dest, "notes.md"), text)
+      log("spots", dn, `take ${k}`, lines.filter(Boolean).length, "of", lines.length)
+    }
+}
+
 async function buildFor(dn, r, arm) {
   const dest = at(dn, `r${r}`, arm)
   if (existsSync(path.join(dest, "index.html"))) return
@@ -190,9 +305,10 @@ async function buildFor(dn, r, arm) {
   const d = J(path.join(EXP, dn, "designer.json"))
   const w = work()
   cpSync(path.join(HERE, "render.mjs"), path.join(w, "render.mjs"))
+  const takes = arm.startsWith("N") ? mine(dn, "pinch-measured") : at(dn, "pinch")
   for (let k = 1; k < r; k++)
     cpSync(
-      at(dn, "pinch", `pinch-notes-take-${k}`),
+      path.join(takes, `pinch-notes-take-${k}`),
       path.join(w, "pinch", `pinch-notes-take-${k}`),
       { recursive: true },
     )
@@ -233,7 +349,7 @@ function ask(dn, page) {
   }
 }
 
-const ARMS = ["A", "M", "M2", "K", "K2"]
+const ARMS = ["A", "M", "M2", "K", "K2", "N", "N2"]
 function measureStage() {
   const out = {}
   for (const dn of DESIGNERS)
@@ -269,6 +385,7 @@ function report(scores) {
     A: ["A"],
     "M, M2": ["M", "M2"],
     "K, K2": ["K", "K2"],
+    "N, N2": ["N", "N2"],
   }
   for (const [name, arms] of Object.entries(label)) {
     const xs = by(arms)
@@ -303,6 +420,20 @@ function report(scores) {
       else same++
     }
   rows.push(`Cells where the check had fewer measurable points broken: ${better}, more: ${worse}, same: ${same}.`)
+  let nb = 0
+  let nw = 0
+  let ns = 0
+  for (const dn of DESIGNERS)
+    for (const r of ROUNDS) {
+      const m = by(["M", "M2"], (k) => k.startsWith(`${dn}/r${r}/`))
+      const n = by(["N", "N2"], (k) => k.startsWith(`${dn}/r${r}/`))
+      if (!m.length || !n.length) continue
+      const d = mean(n) - mean(m)
+      if (d < -0.005) nb++
+      else if (d > 0.005) nw++
+      else ns++
+    }
+  rows.push(`Cells where measured notes had fewer measurable points broken: ${nb}, more: ${nw}, same: ${ns}.`)
   console.log(rows.join("\n"))
 }
 
@@ -311,6 +442,13 @@ const stages = {
   oracle: oracleStage,
   checks: checksStage,
   build: buildStage,
+  spots: spotsStage,
+  buildSpots: () =>
+    pool(
+      DESIGNERS.flatMap((dn) =>
+        ROUNDS.flatMap((r) => ["N", "N2"].map((arm) => () => buildFor(dn, r, arm))),
+      ),
+    ),
   measure: measureStage,
 }
 if (stages[stage]) await stages[stage]()
