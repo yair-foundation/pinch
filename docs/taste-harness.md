@@ -190,6 +190,21 @@ People now write a design system for their agent: primitives, tokens named by pu
 - **What it suggests:** Pinch completes a design system rather than competing with it. A design system holds what exists and its numbers; the takes hold how to use it and what still comes out wrong. The package should say so: where the design system gives a value, use it, and read the notes for how. Untested.
 - **Limits:** a design system written from the full hidden taste, which a real team's won't match; three designers, nine cells; the oracle's strictness.
 
+### With a line that defers to the design system, 2026-11-07
+
+The takes pulled measurable values off the tokens, so each take's `notes.md` got one more line, after its first: "Where this project has a design system, use its values, tokens and components as they are; read these notes for how and where to use them, and for what still comes out wrong." Built twice per cell (SPD), and judged blind with the design system alone and with the takes, six screens at a time (`defer-report.py`). One build failed (designer 4, round 4, SPD2); its first run stands.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 6 | Measurable points broken |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| The design system alone | 5.1 | 2.7 | 3.2 | 4.53 | 44% |
+| The design system and the takes | 4.6 | 2.1 | 2.8 | 3.19 | 57% |
+| And the line deferring to it | 4.1 | 1.9 | 2.2 | 2.59 | 50% |
+
+- **The line helps on both counts:** fewer changes than the takes without it (4.1 against 4.6), ranked above them in 10 judgings, below in 3, level in 5, and fewer measurable values off the tokens (50% against 57%).
+- **It keeps the gain over the design system alone:** above it in 13 judgings, below in 1, level in 4, with 20% fewer changes.
+- **It narrows the conflict but doesn't close it:** 50% broken against the design system's own 44%.
+- **Limits:** the same as the design-system test above; this judging ran six screens at a time, so its numbers for S and SP differ a little from the five-screen one.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
