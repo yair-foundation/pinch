@@ -176,3 +176,47 @@ export function SpotMark({
     </>
   );
 }
+
+/**
+ * Where the cat looks: its pupils turn toward the visitor's pointer, as far as its eyes allow, and
+ * rest on the mouse at its feet until the pointer first moves. `look` is the group holding both
+ * pupils, drawn looking straight ahead; `eyes` is what they are measured from.
+ */
+export function useGaze(
+  look: RefObject<SVGGElement | null>,
+  eyes: RefObject<SVGGElement | null>,
+  rest: { x: number; y: number },
+  reach: { x: number; y: number },
+) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the refs stay the same ones, and so do rest and reach
+  useEffect(() => {
+    const g = look.current;
+    if (!g) return;
+    const turn = (x: number, y: number) => {
+      g.style.transform = `translate(${x}px, ${y}px)`;
+    };
+    turn(rest.x, rest.y);
+    let frame = 0;
+    let at: { x: number; y: number } | null = null;
+    const follow = () => {
+      frame = 0;
+      const box = eyes.current?.getBoundingClientRect();
+      if (!at || !box?.width) return;
+      const dx = at.x - (box.left + box.width / 2);
+      const dy = at.y - (box.top + box.height / 2);
+      const far = Math.hypot(dx, dy) || 1;
+      // Close by, the eyes turn only part of the way, so they don't snap past a pointer near them.
+      const pull = Math.min(1, far / 160);
+      turn((dx / far) * reach.x * pull, (dy / far) * reach.y * pull);
+    };
+    const onMove = (e: PointerEvent) => {
+      at = { x: e.clientX, y: e.clientY };
+      if (!frame) frame = requestAnimationFrame(follow);
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+}
