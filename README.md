@@ -2,7 +2,7 @@
 
 Teach your agent your taste by talking. Add screenshots, talk them through while you point, and Export: your words, the screenshots, marked copies and a close-up of each spot, as a package your agent reads (D131, D157). In a blind test on the author's own take, this beat the same words in a plain file and beat a package of rules drawn from them ([docs/hand-vs-pinch.md](docs/hand-vs-pinch.md)).
 
-Pinch is free for now, and needs no account: each take exports its own package, with each mark said in words, and nothing of it leaves the browser (D157, D163, D166). People who saved notes or rules before take them with one item in the menu (D164). Reading notes into rules and the credits that paid for it (D98) are hidden behind `READING_SHOWN` in `src/lib/pin/notes-package.ts`, not deleted: that export and the MCP server still give the rules already kept.
+Pinch is free for now, and needs no account: each take exports its own package, with each mark said in words and a check the agent runs against the notes before showing a screen, and nothing of it leaves the browser (D157, D163, D166, D174). People who saved notes or rules before take them with one item in the menu (D164). Reading notes into rules and the credits that paid for it (D98) are hidden behind `READING_SHOWN` in `src/lib/pin/notes-package.ts`, not deleted: that export and the MCP server still give the rules already kept.
 
 Live at https://get-pinch.io. Desktop only (under 768px wide it shows one message); a session holds as many images as the browser has room for (D103).
 

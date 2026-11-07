@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { type Batch, type BatchNote, type Collection, newCollection } from '../learnings';
 import {
+  CHECK_FILE,
   hasSaved,
   NOTES_FILE,
   notesPackage,
@@ -80,6 +81,7 @@ describe('the notes package', () => {
       'images/01.png',
       'marked/01.jpg',
       'notes.md',
+      'pinch-check.md',
     ]);
     const text = new TextDecoder().decode(made.files[0].data);
     assert.match(text, /Screenshot: `images\/01\.png`/);
@@ -94,6 +96,7 @@ describe('the notes package', () => {
       'batches/01-pinch-a/images/01.png',
       'batches/01-pinch-a/marked/01.jpg',
       'notes.md',
+      'pinch-check.md',
     ]);
     assert.equal(made.notes, 2);
     assert.equal(made.missing, 0);
@@ -107,6 +110,17 @@ describe('the notes package', () => {
       text,
       /## Vimeo Web\.png\n\nScreenshot: `batches\/01-pinch-a\/images\/01\.png`\nMarked copy: `batches\/01-pinch-a\/marked\/01\.jpg`\n\n- 1\. \(`batches\/01-pinch-a\/crops\/01\.1\.jpg`\) Too dense\./,
     );
+  });
+
+  it('asks the agent to check its screen against the notes, with the check beside them', () => {
+    const made = pack([batch('a', [note('01.1')])]);
+    assert.match(made.text, /run the pinch-check agent on the drawing, then fix what it finds/);
+    assert.match(made.text, /copy `pinch-check\.md` from this folder there/);
+    const check = made.files.find((f) => f.name === notesPackageRoot(STAMP) + CHECK_FILE);
+    const agent = new TextDecoder().decode(check?.data);
+    assert.match(agent, /^---\nname: pinch-check\n/);
+    assert.match(agent, /\*\*\/pinch-notes-\*\/notes\.md/);
+    assert.match(agent, /Don't add taste of your own\./);
   });
 
   it('keeps both sides of a note in the words it was said, on one line', () => {
@@ -162,7 +176,10 @@ describe('the notes package', () => {
     const b = batch('a', [note('01.1')]);
     const c = { ...newCollection('My rules', 'c1', STAMP), batches: [b] };
     const made = notesPackage(c, new Map([['a', null]]), STAMP);
-    assert.equal(made.files.length, 1);
+    assert.deepEqual(
+      made.files.map((f) => f.name.slice(notesPackageRoot(STAMP).length)),
+      [NOTES_FILE, CHECK_FILE],
+    );
     assert.equal(made.missing, 1);
     const text = new TextDecoder().decode(made.files[0].data);
     assert.match(text, /## Vimeo Web\.png\n\n- 1\. Great big title\./);
