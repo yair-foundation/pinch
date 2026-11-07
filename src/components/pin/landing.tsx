@@ -145,6 +145,10 @@ const QUESTIONS = [
     a: 'Any coding agent that reads files, like Claude Code, Cursor or Codex. The check is built for Claude Code. The others read the same notes, and whether they run the check is untested.',
   },
   {
+    q: 'Does it work with my design system?',
+    a: 'Yes, and it never sees it. Your design system stays in your project; your notes tell your agent to keep its values and say how and where to use them.',
+  },
+  {
     q: 'What do I do with the folder?',
     a: 'Unzip it into your project, next to the ones from earlier takes: they all count. Its notes.md tells your agent to read everything first, and to run the check before it shows you a screen.',
   },
