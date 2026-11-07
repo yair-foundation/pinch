@@ -30,7 +30,12 @@ const EXP = path.resolve(
 const DESIGNERS = (process.env.ONLY ?? "d2,d4,d5").split(",")
 const AT_ONCE = Number(process.env.AT_ONCE || 8)
 const ROUNDS = [4, 5, 6]
-const ARMS = ["S", "S2", "SP", "SP2"]
+const ARMS = ["S", "S2", "SP", "SP2", "SPD", "SPD2"]
+/** Arms SPD: the takes' notes.md also say to defer to the design system on its values. */
+const DEFER =
+  "Where this project has a design system, use its values, tokens and components as they are; read these notes for how and where to use them, and for what still comes out wrong."
+const OPENING =
+  "When you design for me, read all of this first and open the images: it is everything you know about my taste."
 const JUDGED = ["M", ...ARMS]
 const J = (f) => JSON.parse(readFileSync(f, "utf8"))
 const W = (f, o) => {
@@ -200,10 +205,16 @@ async function buildFor(dn, r, arm) {
   if (takes)
     for (let k = 1; k < r; k++) {
       const pk = at(dn, "pinch", `pinch-notes-take-${k}`)
-      if (existsSync(pk))
-        cpSync(pk, path.join(w, "pinch", `pinch-notes-take-${k}`), {
-          recursive: true,
-        })
+      if (!existsSync(pk)) continue
+      const to = path.join(w, "pinch", `pinch-notes-take-${k}`)
+      cpSync(pk, to, { recursive: true })
+      if (arm.startsWith("SPD")) {
+        const f = path.join(to, "notes.md")
+        writeFileSync(
+          f,
+          readFileSync(f, "utf8").replace(OPENING, `${OPENING}\n\n${DEFER}`),
+        )
+      }
     }
   const run = await claude(w, buildPrompt(d, roundTasks(dn)[r - 1], takes), {
     bash: true,
@@ -229,19 +240,19 @@ const earlier = (dn, r) => {
   return lines.join("\n")
 }
 
-async function judge() {
+async function judge(arms = JUDGED, prefix = "verdict-ds") {
   const jobs = []
   for (const dn of DESIGNERS)
     for (const r of ROUNDS)
       for (const pass of [1, 2])
         jobs.push(async () => {
-          const f = at(dn, `r${r}`, `verdict-ds-${pass}.json`)
+          const f = at(dn, `r${r}`, `${prefix}-${pass}.json`)
           if (existsSync(f)) return
-          const arms = JUDGED.filter((a) =>
+          const present = arms.filter((a) =>
             existsSync(at(dn, `r${r}`, a, "render.png")),
           )
           const d = J(path.join(EXP, dn, "designer.json"))
-          const order = [...arms].sort(() => Math.random() - 0.5)
+          const order = [...present].sort(() => Math.random() - 0.5)
           const w = work()
           W(
             path.join(w, "designer.md"),
@@ -394,7 +405,8 @@ const stages = {
         ROUNDS.flatMap((r) => ARMS.map((arm) => () => buildFor(dn, r, arm))),
       ),
     ),
-  judge,
+  judge: () => judge(),
+  judgeDefer: () => judge(["S", "S2", "SP", "SP2", "SPD", "SPD2"], "verdict-dsd"),
   measure,
   report,
 }
