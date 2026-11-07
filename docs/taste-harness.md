@@ -1,6 +1,6 @@
 # The taste harness
 
-What would make Pinch a must-have, better for design than a coding agent on its own? Trajectory's idea, applied to design: a harness that captures a person's corrections, keeps them, and checks new work against them before the person sees it. This page weighs the ways to get there, tests the open ones on made-up designers, and gives the verdict for v1. It was written on 2026-11-06, while the author was away, so nothing here is decided: the open question is in [decisions.md](decisions.md).
+What would make Pinch a must-have, better for design than a coding agent on its own? Trajectory's idea, applied to design: a harness that captures a person's corrections, keeps them, and checks new work against them before the person sees it. This page weighs the ways to get there, tests the open ones on made-up designers, and gives the verdict for v1. It was written on 2026-11-06, while the author was away. The author's own picks were scored the next day, and the check went into Export (D174).
 
 ## What a coding agent already does on its own
 
@@ -19,7 +19,7 @@ What would make Pinch a must-have, better for design than a coding agent on its 
 | Takes kept as a folder the agent reads every time | Remembers each correction | On the author, corrections came back 0 times against 15 with no notes (a test in another session, not recorded in this repository). Below, 20 of 20 cells | **The core** |
 | A check against the takes before the person sees a screen | Catches what the agent repeats or misses | Below: better where taste is far from the agent's. Asked for in `notes.md`, it ran 1 time in 12; as a sub-agent file, 12 of 12 | **Add, as a sub-agent** |
 | A generic design review before the person sees a screen | What a plain agent can do today | Below: worse than none | Never |
-| A judge's agreement with the person as a score | A promise that can be measured | Untested on the author; `predict.ts` is ready | Run it next |
+| A judge's agreement with the person as a score | A promise that can be measured | On the author's 28 picks, 70% with their notes against 32% without (below) | A test, not a feature |
 | Talking over the agent's own page with no export step | Removes the handoff | One try (D167, from another session, not recorded here) | Later in v1 |
 
 ## The test, on made-up designers
@@ -61,6 +61,20 @@ A fresh session holding the designer's hidden taste and their 8 corrections judg
 - One build in the loud set copied the studio's name from the first screen's text: the `Where` line carries content as well as place.
 - The near designers' cells were few (8), so "nothing there" is a signal, not a finding.
 
+## The author's picks, 2026-11-07
+
+`predict.ts` on the author's 28 blind picks, from all four sittings and both rounds, with the pointing package as the notes. Each pair went to each judge twice, sides swapped, and a pick counts only when both orders agree.
+
+| Judge | Agreed | Unsure | Disagreed | Score, unsure as half |
+| --- | ---: | ---: | ---: | ---: |
+| With the author's notes | 18 | 3 | 7 | 70% |
+| Generic, "which is the better design" | 6 | 6 | 16 | 32% |
+
+- **The notes carry the author's taste to a judge.** Where it decided, it agreed 18 times in 25. Judges learned from one designer's picks alone reach 54% to 60% (DesignPref).
+- **A generic judge leans the other way.** It disagreed twice as often as it agreed, as it did with the made-up designers.
+- **It passes the bar set before it ran** (a gap of about 15 points), at 38.
+- **Limits.** 28 picks: the 70% could plausibly be anywhere from about 55% to 85%. The builds were made from the same notes, so part of what the judge finds is which build followed them, and the author mostly preferred those. On new work it should score lower. Which pairs it missed is in each folder's `predictions.json`, on the author's Mac.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
@@ -73,16 +87,16 @@ A fresh session holding the designer's hidden taste and their 8 corrections judg
 
 **Not in v1:** rules or interpretations of notes, picks between designs, a generic critic, and a score shown to the person. Each lost or is unproven, and the check is the one place a judge belongs: inside the loop, built from the person's own pointed notes.
 
-**What would change this:** if a judge given the author's notes can't predict the author's 28 blind picks better than a generic judge, the check has nothing personal to offer, and v1 is capture and memory alone.
+**What would have changed this:** a judge given the author's notes doing no better on their 28 picks than a generic one. It did better, 70% against 32%, so the check went into Export (D174).
 
 ## Next, in order
 
-1. **The author's picks, no new judging.** On the Mac that holds the sittings:
+1. **Done 2026-11-07: the author's picks.** The command, for a rerun:
 
    ```bash
    node --import tsx scripts/hand-vs-pinch/predict.ts ~/pinch-test-2/pinch/<the pointing zip> ~/pinch-test ~/pinch-test-2 ~/pinch-test-3 ~/pinch-test-4 ~/pinch-test-2/round-1 ~/pinch-test-2/round-2
    ```
 
    It asks 4 judgments of each pair the author didn't call the same, about 110 sessions on the author's plan, and prints both judges' agreement. 28 picks give about ±15 points at 80%. The builds were made from these same notes, so a high score here is easier than on new work.
-2. **The check in the export,** if the judge with notes beats the generic one there: `pinch-check.md` beside the takes, with where to put it, and the line in `notes.md`. Try it on the author's own project before it ships: does it run, and what does it cost in time.
+2. **Done 2026-11-07: the check in the export** (D174). With the file only in the take's folder, as Export gives it, a check ran in 4 builds of 4 (`scripts/taste-harness/print-check.ts` prints what Export writes). Still to try: the author's own project, and what it costs in time.
 3. **The same-feedback test on five people** (D165), with the check in: corrections that come back, per screen, over a week of real work.

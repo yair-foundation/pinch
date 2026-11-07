@@ -358,13 +358,15 @@ export function Landing({
             <pre className="mt-8 mb-0 overflow-hidden rounded-2xl bg-(--ink) px-6 py-5 font-mono text-[14px] leading-[2] text-white">
               <code>
                 <span className="text-(--butter)">pinch-notes/</span>
-                {'\n  notes.md  '}
-                <span className="text-white/60"># every note, numbered</span>
-                {'\n  images/   '}
+                {'\n  notes.md       '}
+                <span className="text-white/60"># every note</span>
+                {'\n  pinch-check.md '}
+                <span className="text-white/60"># checks the work</span>
+                {'\n  images/        '}
                 <span className="text-white/60"># your screenshots</span>
-                {'\n  marked/   '}
+                {'\n  marked/        '}
                 <span className="text-white/60"># with numbers on</span>
-                {'\n  crops/    '}
+                {'\n  crops/         '}
                 <span className="text-white/60"># a close-up each</span>
               </code>
             </pre>

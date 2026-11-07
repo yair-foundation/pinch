@@ -13,9 +13,10 @@ import { assetOf, numberOf } from './library';
 /*
  * The package an agent gets (D157): the author's words, what they pointed at, and nothing else.
  * In the author's trial this beat the same words in a plain file and beat the package of rules
- * (docs/hand-vs-pinch.md). An agent reads whatever is in the folder, so labels, rules, checks and
- * instructions stay out: `rulesPackage` still makes the full backup. Pure: the files come in as
- * bytes.
+ * (docs/hand-vs-pinch.md). An agent reads whatever is in the folder, so labels, rules and checks
+ * stay out: `rulesPackage` still makes the full backup. The one instruction is the check against
+ * these notes (D174), which made screens closer and a generic review made them worse. Pure: the
+ * files come in as bytes.
  *
  * A take's Export holds that take alone (D163): nothing is kept between takes. Someone who saved
  * notes or rules before takes them away with `savedPackage` (D164).
@@ -40,6 +41,31 @@ const toTheMinute = (stamp: string) => stamp.slice(0, 16).replace(/[T:]/g, '-');
 /** The package's folder, to the minute so that takes can sit side by side: "pinch-notes-2026-11-05-14-32/". */
 export const notesPackageRoot = (stamp: string) => `pinch-notes-${toTheMinute(stamp)}/`;
 
+/** The check an agent runs on its own screen before showing it (D174), as a Claude Code sub-agent. */
+export const CHECK_FILE = 'pinch-check.md';
+
+/*
+ * The check is a file, not only a request: asked in notes.md alone, an agent ran it once in 12
+ * builds, and with this file in `.claude/agents/`, 12 times in 12 (docs/taste-harness.md). The first
+ * sentence is the one tested; the rest is how the file gets there, and the way without it.
+ */
+const CHECK_LINE = `Before you show me a screen, draw it and run the pinch-check agent on the drawing, then fix what it finds. If \`.claude/agents/${CHECK_FILE}\` isn't in the project, copy \`${CHECK_FILE}\` from this folder there. Until it runs, have a fresh agent do what that file says, with only my notes and your drawing.`;
+
+/*
+ * What the tested check said, with where the notes are made general: takes sit side by side, each
+ * in its own folder. Only the notes' words count: a generic review made the screens worse.
+ */
+const CHECK_AGENT = `---
+name: pinch-check
+description: Checks a drawn screen against the designer's Pinch notes, in the folders named pinch-notes-…. Use it every time after drawing a screen, before saying it is done. Give it the path of the drawing.
+tools: Read, Glob
+---
+
+You check a screen before the designer sees it. Every folder named pinch-notes-… in this project holds what this designer said about screens while pointing at them: each note is tied to a spot, with a close-up and a marked copy. Find them with Glob (\`**/pinch-notes-*/notes.md\`), and open each notes.md and the images it names.
+
+Look at the drawing you were given. Find where it repeats something the designer corrected before, or goes against what they said they like or don't. Only what their notes support: carry a note across to a different element only where it plainly has the same role. Don't add taste of your own. At most 6, the most important first, or none. For each: the note's folder, number and words, what in the screen, and the change to make.
+`;
+
 /*
  * The first line is what the trial's prompt told its builds, which nobody will say in a real
  * project. Marks drawn before D157 are coloured by a label that was often wrong, hence the last.
@@ -48,6 +74,8 @@ const INTRO = [
   '# My notes on these screenshots',
   '',
   'When you design for me, read all of this first and open the images: it is everything you know about my taste.',
+  '',
+  CHECK_LINE,
   '',
 ];
 /** For notes kept before D166, whose close-ups have the mark drawn on them. */
@@ -131,7 +159,8 @@ export function notesPackage(
     }
   }
   const text = new TextEncoder().encode(`${lines.join('\n')}\n`);
-  return { files: [{ name: root + NOTES_FILE, data: text }, ...images], notes, missing };
+  const check = { name: root + CHECK_FILE, data: new TextEncoder().encode(CHECK_AGENT) };
+  return { files: [{ name: root + NOTES_FILE, data: text }, check, ...images], notes, missing };
 }
 
 /** A take's package (D163): its export, read back, as the only thing in it. */
