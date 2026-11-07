@@ -53,12 +53,14 @@ const CHECK_LINE = `Before you show me a screen, draw it and run the pinch-check
 
 /*
  * What the tested check said, with where the notes are made general: takes sit side by side, each
- * in its own folder. Only the notes' words count: a generic review made the screens worse.
+ * in its own folder. Only the notes' words count: a generic review made the screens worse. It runs
+ * on Haiku (D178): a tenth of the cost of the builder's model for this step, and no worse.
  */
 const CHECK_AGENT = `---
 name: pinch-check
 description: Checks a drawn screen against the designer's Pinch notes, in the folders named pinch-notes-…. Use it every time after drawing a screen, before saying it is done. Give it the path of the drawing.
 tools: Read, Glob
+model: haiku
 ---
 
 You check a screen before the designer sees it. Every folder named pinch-notes-… in this project holds what this designer said about screens while pointing at them: each note is tied to a spot, with a close-up and a marked copy. Find them with Glob (\`**/pinch-notes-*/notes.md\`), and open each notes.md and the images it names.

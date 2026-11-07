@@ -2,7 +2,11 @@
 
 ## Current state (2026-11-07)
 
+Since D177 the landing ends with "Fair questions.": eight questions someone new asks, each answered in one to three sentences, as native `details` cards in the page's HTML. Checked on a production build at 1440 and 1024px in light and dark, opened by mouse and keyboard, with no horizontal scroll.
+
 Since D175 the landing promises "Say it once." and its last section compares with and without Pinch in the tests' figures: 4% of corrections back against 74%, and a review that picks what you'd pick 70% of the time against 32%, and 7 fewer changes to ask for on a screen.
+
+Since D178 the check runs on Haiku, a tenth of its cost on Sonnet and no worse in a blind test; a screen costs about $0.40 at API prices, nearly all of it the agent writing its page.
 
 Since D174 every Export also holds `pinch-check.md`, a Claude Code sub-agent that checks a screen against the person's notes before they see it, and `notes.md` opens with the line that runs it. A judge with the author's notes agreed with 70% of their 28 blind picks, against 32% for a generic one ([taste-harness.md](taste-harness.md)). Checked in headless Claude Code on made-up designers, not yet in the author's own project.
 

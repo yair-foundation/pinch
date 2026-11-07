@@ -119,6 +119,7 @@ describe('the notes package', () => {
     const check = made.files.find((f) => f.name === notesPackageRoot(STAMP) + CHECK_FILE);
     const agent = new TextDecoder().decode(check?.data);
     assert.match(agent, /^---\nname: pinch-check\n/);
+    assert.match(agent, /\nmodel: haiku\n---\n/);
     assert.match(agent, /\*\*\/pinch-notes-\*\/notes\.md/);
     assert.match(agent, /Don't add taste of your own\./);
   });

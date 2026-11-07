@@ -104,6 +104,58 @@ html[data-coming-back] [data-workspace] {
   outline-offset: 3px;
 }
 
+/* The questions (D177): native details, a plus that turns to a cross when one is open. */
+.pinch-landing .faq summary {
+  cursor: pointer;
+  list-style: none;
+}
+.pinch-landing .faq summary::-webkit-details-marker {
+  display: none;
+}
+.pinch-landing .faq summary:focus-visible {
+  outline: none;
+}
+.pinch-landing .faq:has(> summary:focus-visible) {
+  outline: 3px solid var(--violet);
+  outline-offset: 3px;
+}
+.pinch-landing .faq-sign {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  transition:
+    transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1),
+    background-color 0.15s ease;
+}
+.pinch-landing .faq-sign::before,
+.pinch-landing .faq-sign::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 3px;
+  margin: -1.5px 0 0 -7px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.pinch-landing .faq-sign::after {
+  transform: rotate(90deg);
+}
+.pinch-landing .faq[open] .faq-sign {
+  background: var(--butter);
+  transform: rotate(45deg);
+}
+.pinch-landing .faq:not([open]) summary:hover .faq-sign {
+  background: var(--lilac);
+}
+.pinch-landing .faq[open] .faq-answer {
+  animation: landing-notes 0.35s ease;
+}
+
 .pinch-landing .tag::before {
   content: '';
   position: absolute;
@@ -175,6 +227,12 @@ html[data-coming-back] [data-workspace] {
   }
   .pinch-landing .press {
     transition: none;
+  }
+  .pinch-landing .faq-sign {
+    transition: none;
+  }
+  .pinch-landing .faq[open] .faq-answer {
+    animation: none;
   }
 }
 
