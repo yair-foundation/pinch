@@ -2,7 +2,7 @@
 
 Pinch's settled decisions, newest first. They were made and numbered in the GenUI repository, where Pinch began as the `/pin` route, so the numbers run D58–D67; the GenUI decisions (D1–D57, D56 the handbook and D57 its references among them) and the links to `product.md` don't apply here. Where an entry says "the handbook password", read `ADMIN_PASSWORD`; where it says `PIN_HOSTS` or "GenUI's own host", that host switching is gone: this repository serves Pinch at `/` and nothing else. Code links point at [architecture.md](architecture.md).
 
-Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D179.
+Rules themselves live in [design.md](design.md) and [architecture.md](architecture.md); this page only records each choice and its reason. New decisions go at the top, numbered on from D180.
 
 ## Open (need the user)
 
@@ -12,6 +12,7 @@ Rules themselves live in [design.md](design.md) and [architecture.md](architectu
 
 ## Settled
 
+- **2026-11-07 — D180 The questions answer "Does it work with my design system?" (the user: "Mention design systems on the site, maybe a FAQ answer like 'Does it work with my design system?'"). Amends D177.** Teams that write a design system for their agent are the people most likely to ask, and the answer has to say up front that Pinch never needs it: it stays in their project, and Export only tells the agent to keep its values (D179). Nine questions now. The answer carries no figures: the tests behind D179 used made-up designers.
 - **2026-11-07 — D179 Every Export tells the agent to keep a design system's values, and read the notes for how to use them (the user, of Rico's "Build the design system and skills your agent can follow": "what can we learn from this?", then design systems to test on, then "Ship it"). Amends D174.** People now write a design system for their agent, and every earlier test used pages with none ([taste-harness.md](taste-harness.md)).
   - **On made-up design systems** written from each designer's whole taste, the takes still added to them by eye (16% fewer changes), but pulled measurable values off the tokens (57% broken against 43%). One line in `notes.md` deferring to the design system gave the best of both: 4.1 changes against 4.6 without it and 5.1 for the design system alone, and 50% of values off the tokens.
   - **On two real design systems** the author supplied, a marketing one and a product one, kept out of this repository: two takes from a made-up senior designer on top of each cut the changes asked for from 7.2 a page to 3.3, and repeats from about 4 to under 1, ranking above the design system alone in all 12 judgings.
