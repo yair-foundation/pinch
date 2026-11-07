@@ -173,6 +173,23 @@ The code check had little to hold because spoken notes seldom carry numbers. So 
 - **Why, likely:** these takes correct the agent's own screens, so most measured numbers describe what was wrong. "Too tiny" beside "text 13px" gives the agent a number, and it sometimes kept it. On a reference the person likes, the numbers would be the target; that is not what this tested.
 - **Limits:** the oracle's strictness, three designers, two builds a cell.
 
+## On top of a design system, 2026-11-07
+
+People now write a design system for their agent: primitives, tokens named by purpose, components with their markup, and rules with reasons in `CLAUDE.md` (Rico, "Build the design system and skills your agent can follow", 2026-11-01). Every test above used standalone pages with none. Does Pinch still add anything? `scripts/taste-harness/design-system.mjs`: for each of the three designers furthest from the agent's taste, a session playing their design-system lead wrote one from their hidden taste, so it is the best case for a design system: it carried nearly all of the taste, down to the voice of the copy. Rounds 4 to 6 were built twice with the design system alone (S) and twice with it and the takes so far (SP), judged blind with the takes alone (M), and scored by the oracle. One build failed (designer 5, round 4, S); its second run stands.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 5 | Measurable points broken |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Nothing | | | | | 95% |
+| The takes alone | 5.9 | 3.0 | 4.2 | 3.83 | 78% |
+| The design system alone | 5.1 | 2.8 | 3.2 | 3.32 | 43% |
+| The design system and the takes | 4.3 | 2.0 | 2.5 | 2.17 | 57% |
+
+- **A design system made from the whole taste beats the takes alone,** most of all on what can be measured: 43% of measurable points broken against 78%. Numbers belong in tokens, as the measured notes also suggested.
+- **The takes still add to it, by eye.** With them, 16% fewer changes, fewer repeats and fewer taste points broken, and the pair ranked above the design system alone in 12 judgings, below it in 1, level in 5.
+- **But the takes pulled measurable values off the tokens:** 57% broken against 43%. The takes were made on screens built without the design system, and where a note and a token disagree, the agent sometimes followed the note.
+- **What it suggests:** Pinch completes a design system rather than competing with it. A design system holds what exists and its numbers; the takes hold how to use it and what still comes out wrong. The package should say so: where the design system gives a value, use it, and read the notes for how. Untested.
+- **Limits:** a design system written from the full hidden taste, which a real team's won't match; three designers, nine cells; the oracle's strictness.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
