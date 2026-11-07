@@ -110,6 +110,30 @@ The pairs were harder than before: screens for the three designers furthest from
 - **On the author's picks,** the same judge can run with nothing re-asked: `PREDICT_JUDGES=criteria` and the command below asks only its picks.
 - **Limits:** made-up designers whose taste is a list of points, which should favour criteria if anything; one take of 8 notes each.
 
+## The learning curve, 2026-11-07
+
+Does an agent keep improving as a person's takes pile up, or does it flatten? `scripts/taste-harness/rounds.mjs`, on the three made-up designers furthest from the agent's taste. Round 1 is the agent's first screen with nothing, which the designer corrects by pointing and talking. Each take goes into the project as a real Export folder, `pinch-check.md` included, and rounds 2 to 6 build a new screen each, with every take so far. Each round also builds the same task with nothing, since tasks differ in difficulty. A session holding the hidden taste judged both screens blind, twice: the changes it would ask for, the taste points broken, and the earlier corrections repeated.
+
+| Round | Changes, with the takes | Changes, with nothing | Taste points broken, with the takes | With nothing | Earlier corrections in the project | Repeated, with the takes | With nothing |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | | 11.7 | | 11.0 | 0 | | |
+| 2 | 6.7 | 11.3 | 5.3 | 11.2 | 8 | 0.2 | 5.7 |
+| 3 | 4.7 | 11.3 | 3.2 | 11.7 | 15 | 0.7 | 8.3 |
+| 4 | 4.3 | 11.3 | 3.0 | 11.5 | 22 | 1.2 | 10.2 |
+| 5 | 4.3 | 11.0 | 2.5 | 11.2 | 29 | 2.5 | 7.7 |
+| 6 | 4.3 | 12.0 | 2.7 | 11.0 | 35 | 1.7 | 13.2 |
+
+- **Nothing never learns.** About 11.5 changes a screen in every round, as expected.
+- **With the takes it learns fast, then flattens.** Changes fall from 11.7 to 6.7 after one take, 4.7 after two, and 4.3 from the third on, 62% fewer than with nothing. The screen built with the takes ranked first in 30 judgings of 30. The taste points broken follow the same curve, 5.3 down to 2.7, and don't depend on the notes.
+- **It doesn't get worse as takes pile up.** At round 6 the project held 35 corrections and the agent still did as well as at round 3. Repeats rise, 0.2 to 1.7, but out of a pile that grew from 8 to 35.
+- **It doesn't keep compounding either.** One designer flattened at about 5.5 changes, another near 3. Whatever is left from round 3 on is not fixed by more takes of the same kind: it may be what notes can't carry, or the judge's own floor, which this test can't separate.
+- **The cost grows a little.** A screen cost $0.31 at round 2 and $0.43 at round 6, at API prices, the builder reading more files as the takes pile up. About 4.7 to 11 images were opened.
+- **The check ran in 9 of 15 builds,** though its file and line were in every take's folder, and the 6 builds that skipped it did as well, 4.4 changes against 5.2. This test can't show that the check added anything on top of the notes.
+
+**Limits.** Three made-up designers judged by a model of the same family, five takes at most, about 7 remarks a take. The made-up designer never says a screen is done: it made 6.7 remarks a screen even at round 5, so remarks per take can't be read as progress.
+
+**What it means for "living".** Memory learns quickly and stays good up to about 35 notes, but it plateaus. The next thing to build is not more memory of the same kind. It is whatever sits in the remaining 4 changes: the places where a note doesn't carry to a new kind of screen, and any contradiction between old and new notes, which this run never produced.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
