@@ -75,6 +75,24 @@ A fresh session holding the designer's hidden taste and their 8 corrections judg
 - **It passes the bar set before it ran** (a gap of about 15 points), at 38.
 - **Limits.** 28 picks: the 70% could plausibly be anywhere from about 55% to 85%. The builds were made from the same notes, so part of what the judge finds is which build followed them, and the author mostly preferred those. On new work it should score lower. Which pairs it missed is in each folder's `predictions.json`, on the author's Mac.
 
+## What the check costs, 2026-11-07
+
+Three ways to spend less, each built 12 times on the three made-up designers furthest from the agent's taste, against the check as it shipped (F) and the folder with no check (B). The cost of each screen comes from its build's log (`scripts/taste-harness/cost.py`), at API prices; on a subscription it counts toward the plan's limits instead. All five were judged blind together, twice per cell.
+
+| Way | Cost a screen | The check's part | Changes | Repeats | Mean rank of 5 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| B no check | | | 6.9 | 1.75 | 3.1 |
+| F the check, on the builder's model (Sonnet) | $0.41 | $0.042 | 6.6 | 1.54 | 3.2 |
+| G the check on Haiku | $0.39 | $0.004 | 6.0 | 1.04 | 2.4 |
+| H words first: open a close-up only when the screen has the same kind of thing | $0.41 | $0.039 | 6.1 | 1.17 | 2.5 |
+| I words first, the check on Haiku, pictures at half size | $0.28 | $0.004 | 6.5 | 2.00 | 3.8 |
+
+- **The builder is the cost, not Pinch.** Nearly all of a screen is the agent writing and fixing its page, about 20,000 tokens of output. Reading the notes again is mostly cached. The check was a tenth.
+- **Haiku checks as well.** G beat F 10 times in 12 and ranked best, for a tenth of the check's cost. So the shipped check names `model: haiku` (D178).
+- **Words first saved nothing at this size.** Told to open the images, builders already opened one or two of a take's ten, and the check under one. A take of 65 notes on ten screenshots is where it could matter; untested.
+- **Cheapest was worst.** I cost a third less, because its builder wrote less, and brought back the most corrections. Pictures stay full size.
+- **The judging is noisy.** Ranked five at a time, F didn't beat B (3 wins to 6), where the same builds judged three at a time had F winning 8 to 1. The costs are measured; read the quality as a lean.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.

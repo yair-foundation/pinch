@@ -3,10 +3,13 @@
 //   A no memory · B the take as a Pinch folder · C B, then a separate check against the take and a fix
 //   D B, then a generic design review and a fix · E B, with a line in notes.md asking for the check
 //   F B, with the check as a sub-agent file in the project and a line in notes.md to run it
+//   G F on Haiku · H F reading words first · I H on Haiku, with pictures at half size (D178)
 // and judged blind by a session holding the hidden taste. Every step is a `claude -p` session.
 //
 //   OUT=~/taste-harness node scripts/taste-harness/run.mjs all     designers to judging, arms A–D
 //   ONLY=1,3,4 node scripts/taste-harness/run.mjs e|judgeE|f|judgeF   arms E and F, judged against B and C
+//   ONLY=1,3,4 node scripts/taste-harness/run.mjs ghi|judgeCost       arms G to I, judged with B and F
+//   python3 -I scripts/taste-harness/cost.py ~/taste-harness            what each screen cost
 //   python3 -I scripts/taste-harness/report.py ~/taste-harness
 //
 // Stages are designers, seed, take, build, check, judge, report; each skips what exists, so
@@ -122,9 +125,13 @@ const designerPrompt = (
 Write ./designer.json and nothing else: {"designer": "…", "product": "…one line naming and describing the product…", "taste": ["…"], "tasks": ["…","…","…"]}. Don't ask questions.`
 
 const PROJECT = (d) => `You're the coding agent on ${d.product}`
-const buildPrompt = (d, task, memory) => `${PROJECT(d)}.${
+const buildPrompt = (d, task, memory, lean = false) => `${PROJECT(d)}.${
   memory
-    ? `
+    ? lean
+      ? `
+
+The designer's feedback on earlier screens is in ./pinch/: read it first. It is everything you know about their taste.`
+      : `
 
 The designer's feedback on earlier screens is in ./pinch/: read all of it first and open the images. It is everything you know about their taste.`
     : ""
@@ -213,25 +220,64 @@ You check a screen before the designer sees it. ./pinch/ holds everything this d
 
 Look at the drawing you were given. Find where it repeats something the designer corrected before, or goes against what they said they like or don't. Only what their notes support: carry a note across to a different element only where it plainly has the same role. Don't add taste of your own. At most 6, the most important first, or none. For each: the note's number and words, what in the screen, and the change to make.
 `
+/*
+ * Arms G, H and I: the same check, cheaper (docs/taste-harness.md). G runs it on Haiku. H reads
+ * words first: notes.md and the check open a close-up only where the screen has the same kind of
+ * thing. I is H with the Haiku check and the screenshots and marked copies at half size.
+ */
+const MODES = {
+  agent: {},
+  haiku: { model: "haiku" },
+  lean: { lean: true },
+  "lean-all": { lean: true, model: "haiku", half: true },
+}
+const OPEN_ALL =
+  "When you design for me, read all of this first and open the images: it is everything you know about my taste."
+const WORDS_FIRST =
+  "When you design for me, read all of this first: it is everything you know about my taste. Each note says where it is and what's there. Open a note's close-up when the screen you're making has the same kind of thing, and a screenshot only when a note isn't clear without it."
+const checkAgent = ({ model, lean }) => {
+  let text = CHECK_AGENT
+  if (model) text = text.replace("tools: Read, Glob\n", `tools: Read, Glob\nmodel: ${model}\n`)
+  if (lean)
+    text = text.replace(
+      "so open notes.md and the images.",
+      "so read notes.md: every note's words, where it is and what's there. Open a note's close-up only when the drawing has the same kind of element and you need to see what the note meant.",
+    )
+  return text
+}
+function halve(dir) {
+  const r = spawnSync(
+    "python3",
+    [
+      "-I",
+      "-c",
+      "import sys\nfrom PIL import Image\nfor f in sys.argv[1:]:\n  im=Image.open(f); im.resize((im.width//2, im.height//2), Image.LANCZOS).save(f)",
+      ...["screens/1.png", "marked/1.png"].map((f) => path.join(dir, f)),
+    ],
+    { encoding: "utf8" },
+  )
+  if (r.status) throw new Error(r.stderr)
+}
 async function buildInto(dest, d, task, memoryFrom, withCheck = false) {
   if (existsSync(path.join(dest, "index.html"))) return
   const w = work()
   cpSync(path.join(HERE, "render.mjs"), path.join(w, "render.mjs"))
   if (memoryFrom) cpSync(memoryFrom, path.join(w, "pinch"), { recursive: true })
+  const mode = MODES[withCheck]
   if (withCheck) {
-    const f = path.join(w, "pinch", "pinch-notes-take-1", "notes.md")
-    const line = withCheck === "agent" ? AGENT_LINE : CHECK_LINE
-    writeFileSync(
-      f,
-      readFileSync(f, "utf8").replace(
-        "everything you know about my taste.\n",
-        `everything you know about my taste.\n\n${line}\n`,
-      ),
+    const take = path.join(w, "pinch", "pinch-notes-take-1")
+    const f = path.join(take, "notes.md")
+    const line = mode ? AGENT_LINE : CHECK_LINE
+    let text = readFileSync(f, "utf8").replace(
+      "everything you know about my taste.\n",
+      `everything you know about my taste.\n\n${line}\n`,
     )
-    if (withCheck === "agent")
-      W(path.join(w, ".claude", "agents", "pinch-check.md"), CHECK_AGENT)
+    if (mode?.lean) text = text.replace(OPEN_ALL, WORDS_FIRST)
+    writeFileSync(f, text)
+    if (mode) W(path.join(w, ".claude", "agents", "pinch-check.md"), checkAgent(mode))
+    if (mode?.half) halve(take)
   }
-  const r = await claude(w, buildPrompt(d, task, !!memoryFrom), {
+  const r = await claude(w, buildPrompt(d, task, !!memoryFrom, !!mode?.lean), {
     bash: true,
     agent: withCheck,
     minutes: 25,
@@ -533,6 +579,11 @@ const all = {
   judgeE: () => judge(["B", "C", "E"], "verdict-e"),
   f: () => buildE("agent", "F"),
   judgeF: () => judge(["B", "C", "F"], "verdict-f"),
+  g: () => buildE("haiku", "G"),
+  h: () => buildE("lean", "H"),
+  i: () => buildE("lean-all", "I"),
+  ghi: () => Promise.all([buildE("haiku", "G"), buildE("lean", "H"), buildE("lean-all", "I")]),
+  judgeCost: () => judge(["B", "F", "G", "H", "I"], "verdict-cost"),
   designers,
   seed,
   take,

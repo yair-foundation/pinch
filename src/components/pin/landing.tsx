@@ -138,7 +138,7 @@ const QUESTIONS = [
   },
   {
     q: 'Does it cost anything?',
-    a: 'Free for now, with no account and no API key: Pinch runs no paid AI. The check runs on your own coding agent, one extra step a screen, counted like the rest of its work.',
+    a: 'Free for now, with no account and no API key: Pinch runs no paid AI. The check runs on your own coding agent, one extra step a screen on a small, quick model, counted like the rest of its work.',
   },
   {
     q: 'Which agents does it work with?',
