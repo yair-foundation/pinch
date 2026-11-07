@@ -1,10 +1,14 @@
 // Can a judge predict the author's own blind picks? Trajectory's idea, a grader learned from one
 // person's judgments, tested on the picks the hand-vs-Pinch sittings already hold, with no new
-// judging from the author (docs/taste-harness.md). Each judged pair goes to two judges, twice with
+// judging from the author (docs/taste-harness.md). Each judged pair goes to each judge, twice with
 // the sides swapped, in fresh Claude Code sessions:
 //
-//   taste    the author's notes (a Pinch export: words, marks, close-ups) and the two renders
-//   generic  the two renders alone: which is the better design for the task
+//   taste     the author's notes (a Pinch export: words, marks, close-ups) and the two renders
+//   criteria  the same, but it first writes the criteria the notes imply for this task, then judges
+//             by them: Trajectory's graders written for each task, from the person's examples
+//   generic   the two renders alone: which is the better design for the task
+//
+// PREDICT_JUDGES picks some of them (comma-separated); picks already asked for are kept.
 //
 // A judge's pick counts only when both orders agree; otherwise it is unsure, scored as half.
 // Pairs the author called the same are left out. Writes predictions.json beside each folder's
@@ -37,8 +41,11 @@ const AT_ONCE = Number(process.env.AT_ONCE) || 4
 const home = (p: string) =>
   path.resolve(p.replace(/^~(?=$|\/)/, process.env.HOME ?? "~"))
 
-export type Judge = "taste" | "generic"
-const JUDGES: Judge[] = ["taste", "generic"]
+export type Judge = "taste" | "criteria" | "generic"
+const ALL: Judge[] = ["taste", "criteria", "generic"]
+const JUDGES: Judge[] = process.env.PREDICT_JUDGES
+  ? ALL.filter((j) => process.env.PREDICT_JUDGES?.split(",").includes(j))
+  : ALL
 
 const PROMPTS: Record<Judge, string> = {
   taste: `You stand in for one designer, to predict their pick. ./notes/ holds what they said about screenshots while pointing at them: open notes.md first, then every image it names. Two screens were built for the task in ./task.md: ./a.png and ./b.png, rendered 1440 by 2400 (blank space below a page's end means nothing).
@@ -46,6 +53,11 @@ const PROMPTS: Record<Judge, string> = {
 Which would this designer pick as closer to their taste? Go by what their notes say they like and don't, carried to these screens only where an element plainly has the same role; where the notes say nothing, guess as they would. Don't judge by your own taste.
 
 Write ./pick.json and nothing else: {"pick": "a" or "b", "why": "one sentence naming the notes it rests on"}. Don't ask questions.`,
+  criteria: `You stand in for one designer, to predict their pick. ./notes/ holds what they said about screenshots while pointing at them: open notes.md first, then every image it names. Two screens were built for the task in ./task.md: ./a.png and ./b.png, rendered 1440 by 2400 (blank space below a page's end means nothing).
+
+First, before you look at the two screens, write the criteria this designer would judge a screen for this task by: 3 to 7, each one concrete enough to check on a screen, fitted to this task, and each naming the notes it rests on. Only what their notes support; carry a note to this task only where an element plainly has the same role. Then look at both screens, judge each against every criterion, and pick the one that meets them better.
+
+Write ./pick.json and nothing else: {"criteria": ["…"], "pick": "a" or "b", "why": "one sentence naming the criteria it rests on"}. Don't ask questions.`,
   generic: `Two screens were built for the task in ./task.md: ./a.png and ./b.png, rendered 1440 by 2400 (blank space below a page's end means nothing). As a senior product designer, which is the better design for this task?
 
 Write ./pick.json and nothing else: {"pick": "a" or "b", "why": "one sentence"}. Don't ask questions.`,
@@ -101,7 +113,7 @@ async function pickOnce(
     writeFileSync(path.join(work, "task.md"), `${task}\n`)
     cpSync(a, path.join(work, "a.png"))
     cpSync(b, path.join(work, "b.png"))
-    if (judge === "taste")
+    if (judge !== "generic")
       cpSync(notes, path.join(work, "notes"), { recursive: true })
     await new Promise<void>((resolve) => {
       const child = spawn(
@@ -183,7 +195,7 @@ async function main() {
   const table: Record<
     Judge,
     { author: "left" | "right"; judge: "left" | "right" | null }[]
-  > = { taste: [], generic: [] }
+  > = { taste: [], criteria: [], generic: [] }
   for (const dirArg of dirArgs) {
     const dir = home(dirArg)
     const read = <T>(f: string) =>
@@ -206,9 +218,10 @@ async function main() {
         console.log(`${path.basename(dir)}: couldn't draw pair ${p.id}`)
         continue
       }
-      saved[p.id] ??= { taste: {}, generic: {} }
+      saved[p.id] ??= { taste: {}, criteria: {}, generic: {} }
       for (const judge of JUDGES)
         for (const order of ["asShown", "swapped"] as const) {
+          saved[p.id][judge] ??= {}
           if (saved[p.id][judge][order]) continue
           jobs.push(async () => {
             const [a, b] = order === "asShown" ? [left, right] : [right, left]
@@ -236,7 +249,7 @@ async function main() {
       for (const judge of JUDGES)
         table[judge].push({
           author: answers[p.id].pick as "left" | "right",
-          judge: agreed(s[judge]),
+          judge: agreed(s[judge] ?? {}),
         })
     }
   }

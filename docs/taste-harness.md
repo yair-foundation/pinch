@@ -93,6 +93,23 @@ Three ways to spend less, each built 12 times on the three made-up designers fur
 - **Cheapest was worst.** I cost a third less, because its builder wrote less, and brought back the most corrections. Pictures stay full size.
 - **The judging is noisy.** Ranked five at a time, F didn't beat B (3 wins to 6), where the same builds judged three at a time had F winning 8 to 1. The costs are measured; read the quality as a lean.
 
+## Criteria written for each screen, 2026-11-07
+
+Can a system that writes rules keep up with taste if it writes them fresh for each task, as Trajectory's graders do, rather than keeping one rulebook? `predict.ts` now has a third judge, `criteria`: it reads the same notes, first writes 3 to 7 criteria for the task, each naming the notes it rests on, then judges both screens by them. The `taste` judge reads the notes and judges directly, as the check does.
+
+The pairs were harder than before: screens for the three designers furthest from the agent's taste, all built with their take in five ways, kept only where the hidden-taste judge ranked the two the same way in both of its passes (`scripts/taste-harness/close-pairs.mjs`). 93 pairs.
+
+| Judge | Agreed | Unsure | Disagreed | Score, unsure as half |
+| --- | ---: | ---: | ---: | ---: |
+| `taste`: the notes, directly | 60 | 24 | 9 | 77% |
+| `criteria`: criteria for the task first | 56 | 20 | 17 | 71% |
+| `generic`, on one designer's 33 pairs | 8 | 8 | 17 | 36% |
+
+- **Writing criteria first didn't help.** Pair by pair, the direct judge did better on 17 and worse on 8, the rest the same. That leans the same way as the rules (D155, D156), though 17 to 8 could still be chance (p about 0.11).
+- **What it suggests:** the notes beside the screen carry more than criteria drawn from them, even criteria written for that very task. The check stays as it is.
+- **On the author's picks,** the same judge can run with nothing re-asked: `PREDICT_JUDGES=criteria` and the command below asks only its picks.
+- **Limits:** made-up designers whose taste is a list of points, which should favour criteria if anything; one take of 8 notes each.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
