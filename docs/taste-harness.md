@@ -132,7 +132,14 @@ Does an agent keep improving as a person's takes pile up, or does it flatten? `s
 
 **Limits.** Three made-up designers judged by a model of the same family, five takes at most, about 7 remarks a take. The made-up designer never says a screen is done: it made 6.7 remarks a screen even at round 5, so remarks per take can't be read as progress.
 
-**What it means for "living".** Memory learns quickly and stays good up to about 35 notes, but it plateaus. The next thing to build is not more memory of the same kind. It is whatever sits in the remaining 4 changes: the places where a note doesn't carry to a new kind of screen, and any contradiction between old and new notes, which this run never produced.
+**What the plateau is made of,** 2026-11-07. The judge's list of taste points still broken at rounds 4 to 6:
+
+- **Every point had been said.** Each of the three designers' 12 taste points was named in at least some of their remarks, and the ones still broken had been named 4 to 14 times. So the leftovers aren't things nobody told the agent.
+- **They are mostly measurable:** text at least 16px and never grey (designer 2), 32px between sections and 20px of padding, labels as slightly rotated stickers (designer 4), exactly one accent colour (designer 5).
+- **A judge looking at a picture can't measure those,** so I measured one in the code (`font-share.cjs`). Designer 2's builds with the takes had 0 to 9% of their text under 16px, none under 13px. With nothing, 16 to 87% was under 16px. The judge had flagged that point in 5 of 6 late judgings of screens that met it.
+- **So part of the plateau is the judge's floor,** not the agent's. This test can't say how much; only the 4.3 against 11.5 gap and the broken-points drop are solid.
+
+**What it means for "living".** Memory learns quickly and stays good up to about 35 notes, but it plateaus. The next thing to build is not more memory of the same kind. It is a measure that doesn't rest on a model's eye: for what can be measured (text size, spacing, how many accent colours), a check in code on the rendered page, with the judge kept for what only an eye can see. Then contradictions between old and new notes, which this run never produced.
 
 ## Verdict for v1
 
