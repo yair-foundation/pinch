@@ -141,6 +141,23 @@ Does an agent keep improving as a person's takes pile up, or does it flatten? `s
 
 **What it means for "living".** Memory learns quickly and stays good up to about 35 notes, but it plateaus. The next thing to build is not more memory of the same kind. It is a measure that doesn't rest on a model's eye: for what can be measured (text size, spacing, how many accent colours), a check in code on the rendered page, with the judge kept for what only an eye can see. Then contradictions between old and new notes, which this run never produced.
 
+## A check in code, from the notes, 2026-11-07
+
+Can a check in code, written from a person's notes, help an agent keep what can be measured? `scripts/taste-harness/measure.mjs`, on rounds 4 to 6 of the learning-curve test, for the same three designers. A session read each designer's takes so far and wrote `check.mjs`, which loads the page in Chromium and reports what the notes make measurable (sizes, spacing, colours, radius, case), each finding citing its note, with no taste of its own. The builder ran it and fixed what it found. To score the pages without a model's eye, a second script (the oracle) was written from each designer's hidden taste alone: for each of the 12 statements it says met, broken, or not measurable by code. Each round's task was built with nothing (A), with the takes twice (M, M2) and with the takes and the check twice (K, K2).
+
+| Way | Measurable points broken | Pages |
+| --- | ---: | ---: |
+| Nothing | 95% | 9 |
+| The takes | 79% | 18 |
+| The takes and the code check | 78% | 18 |
+
+- **The oracle sees the takes working:** 95% broken with nothing, 79% with the takes, on every designer. The check added nothing: better in 3 cells of 9, worse in 4, the same in 2.
+- **The check ran:** all 18 builds ran it and ended with no findings. It had little to find: on the pages built without it it reported 0 to 12 findings, 3 on average. It checked what the notes say, and the notes seldom carry numbers.
+- **The hidden taste does:** "32px between sections", "text at 16px or more", "exactly one accent colour". The designers never said those figures aloud ("make it huge", "too tiny"), so no check made from what they said can hold them, and the oracle holds the pages to all of it.
+- **Limits.** The oracle is strict, a point broken by any one element, so 79% broken is not comparable with the judge's 2.7 of 12. Only the order is meaningful. The oracle was written by the same family of model from the same taste statements the designers were given.
+
+**What it means.** A check made from what people say can't check what they didn't say, and spoken notes are short on numbers. The numbers are in the screenshots, not in the speech. Export already says, for each spot pointed at, the text there and its main colours. Measuring the marked spot, its text size, spacing, corner radius and weight, would put numbers in the notes the person never spoke. That is the thing to test next, with the same oracle.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
