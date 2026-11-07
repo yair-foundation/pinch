@@ -205,6 +205,20 @@ The takes pulled measurable values off the tokens, so each take's `notes.md` got
 - **It narrows the conflict but doesn't close it:** 50% broken against the design system's own 44%.
 - **Limits:** the same as the design-system test above; this judging ran six screens at a time, so its numbers for S and SP differ a little from the five-screen one.
 
+## On top of a real design system, 2026-11-07
+
+The author supplied real design systems from companies. They stay out of this repository and are named here only by kind. The first is a marketing design system already written for agents: brand guidelines, voice and copy rules, a prompt pack, tokens, licensed fonts, photography and reference pages. `scripts/taste-harness/real-ds.mjs` puts it in each build's project as `./design-system/`. A made-up senior brand designer there, with a taste of their own on top of it (one focal element per section, neighbouring sections never sharing a layout, stats with a source and date, buttons that name a verb and an object, photos cropped tight), corrected two pages built with it, 7 and 8 notes. Three new pages were then built twice with the design system alone and twice with it and the two takes, the takes' `notes.md` carrying the line that defers to the design system, and judged blind, twice each.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 4 |
+| --- | ---: | ---: | ---: | ---: |
+| The design system alone | 7.3 | 4.9 | 5.3 | 3.50 |
+| The design system and the takes | 3.2 | 0.8 | 1.7 | 1.50 |
+
+- **The takes more than halved the changes** on top of a real design system, 56% fewer, and cut repeats from 4.9 to 0.8. In all 6 judgings both builds with the takes ranked above both without.
+- **The design system did its job** in both: the brand's fonts, colours, logo and photography were used throughout. What it left open is where the agent fell back on its defaults, three equal icon cards, a dark slab under the hero, a floating stat, a vague button, and that is what two takes fixed.
+- **Much more than on the made-up design systems** (16 to 20% fewer changes), as expected: those were written from the full taste, and a real one only holds the company's rules, not each designer's judgment within them.
+- **Limits:** one design system, one made-up designer, three pages, six judgings, a judge of the same family of model. The designer's taste was written to sit beyond the system, which is the case Pinch is for, and may make the gap larger than a typical designer's would be.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
