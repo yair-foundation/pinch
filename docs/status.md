@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D175 the landing promises "Say it once." and its last section compares with and without Pinch in the tests' figures: 4% of corrections back against 74%, and a review that picks what you'd pick 70% of the time against 32%.
+
 Since D174 every Export also holds `pinch-check.md`, a Claude Code sub-agent that checks a screen against the person's notes before they see it, and `notes.md` opens with the line that runs it. A judge with the author's notes agreed with 70% of their 28 blind picks, against 32% for a generic one ([taste-harness.md](taste-harness.md)). Checked in headless Claude Code on made-up designers, not yet in the author's own project.
 
 Since D169 the landing is an illustrated page in its own colours, headed in turns by "Point at it. Say why.", "Teach AI your taste." and "Retire “make it pop.”" (D172), in the page's HTML since D173, and the dark gallery is off it. The tool is unchanged.

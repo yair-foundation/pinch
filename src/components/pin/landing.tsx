@@ -28,14 +28,14 @@ const IN_THE_FOLDER = [
   'Your words',
   'Where you pointed',
   'A close-up of each spot',
-  'Ready to hand over',
+  'A check on every screen',
 ];
 
 const STEPS = [
   {
     Art: StepAdd,
     title: 'Add what you like',
-    text: 'Drop in screenshots of designs you wish you had made. Your own work counts too.',
+    text: 'Designs you wish you had made, or the screen your agent just built.',
   },
   {
     Art: StepSay,
@@ -50,7 +50,7 @@ const STEPS = [
   {
     Art: StepHand,
     title: 'Hand it over',
-    text: 'Pinch packs it into one folder. Give it to your design agent and get back to work.',
+    text: 'Drop the folder in your project. Your agent reads it first and checks each screen against it.',
   },
 ];
 
@@ -106,16 +106,22 @@ function slotStyle(slot: number): React.CSSProperties {
       };
 }
 
-/** Notes on the shots, for the toggle: 65 is what ten screenshots came to in the author's first take. */
-const SHOTS = [
-  { label: '1 shot', notes: 6 },
-  { label: '10 shots', notes: 65 },
-];
+/*
+ * From the blind tests in docs/taste-harness.md (D174). Coming back: of a take's 8 notes, how many a
+ * new screen repeated, built with the take and the check against it, or with nothing (0.28 and 5.9,
+ * over 20 screens for five made-up designers). The review: a judge with the author's notes against
+ * a generic one, on the author's own 28 blind picks. Changes: 5.3 against 12.7 a screen.
+ */
+const RESULTS = [
+  ['Corrections that come back', '4%', '74%'],
+  ['A review that picks what you’d pick', '70%', '32%'],
+] as const;
+const FEWER_CHANGES = '58%';
 
 const ROWS = [
   ['Saying where you mean', 'You just point', '“Second card, no, the other one”'],
-  ['What your agent gets', 'Your words, on the exact spot', 'A transcript and good luck'],
-  ['What it costs', '$0, no account', 'Whatever you pay for it'],
+  ['What your agent keeps', 'Every note, in your project', 'What you remember to retype'],
+  ['Before you see a screen', 'Checked against your notes', 'Checked against its own taste'],
 ];
 
 const LINK = 'underline underline-offset-4 hover:text-(--ink)';
@@ -125,7 +131,7 @@ const LINK = 'underline underline-offset-4 hover:text-(--ink)';
 const TITLES = [
   ['Point at it.', 'Say why.'],
   ['Teach AI', 'your taste.'],
-  ['Retire', '“make it pop.”'],
+  ['Say it', 'once.'],
 ] as const;
 
 const SAYS = [
@@ -183,8 +189,6 @@ export function Landing({
   inert: boolean;
   onChoose: () => void;
 }) {
-  const [shots, setShots] = useState(1);
-  const { notes } = SHOTS[shots];
   const hero = useRef<HTMLElement>(null);
   const titleEnds = [
     useRef<HTMLSpanElement>(null),
@@ -249,8 +253,8 @@ export function Landing({
             ))}
           </h1>
           <p className="mx-auto mt-7 mb-0 max-w-[640px] text-[22px] leading-[1.45] text-balance">
-            Add screenshots of designs you like and talk about them while you point. Your design
-            agent gets a package it can read.
+            Talk through screenshots while you point. Your design agent keeps every note, and checks
+            its work against them before you see it.
           </p>
         </div>
         <Wave on={heroTake.talking} className="mt-6 flex justify-center xl:hidden" />
@@ -353,7 +357,8 @@ export function Landing({
               Your agent gets the whole story.
             </h2>
             <p className="mt-6 mb-0 text-[20px] leading-[1.45]">
-              Not a mood board and a shrug. Everything you said, tied to the spot you said it about.
+              Not a mood board and a shrug. Everything you said, tied to the spot you said it about,
+              and a check that holds your agent to it.
             </p>
             <pre className="mt-8 mb-0 overflow-hidden rounded-2xl bg-(--ink) px-6 py-5 font-mono text-[14px] leading-[2] text-white">
               <code>
@@ -429,37 +434,15 @@ export function Landing({
         <div className="mx-auto max-w-[1088px] px-6 pt-[72px] pb-20">
           <div className="flex flex-wrap items-end justify-between gap-8">
             <div>
-              <h2 className="title m-0 text-[clamp(52px,6vw,76px)]">Talk is cheap.</h2>
+              <h2 className="title m-0 text-[clamp(52px,6vw,76px)]">Stop repeating yourself.</h2>
               <p className="mt-4 mb-0 max-w-[520px] text-[20px] leading-[1.45] text-(--soft)">
-                You already talk to your computer. Dictation writes down what you say, but it can’t
-                see what you mean.
+                Your agent forgets every correction. With Pinch it keeps them, and checks each
+                screen against them before you see it.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <fieldset className="m-0 flex rounded-full border-2 border-(--ink) bg-white p-[6px]">
-                <legend className="sr-only">How many screenshots</legend>
-                {SHOTS.map((s, i) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    aria-pressed={i === shots}
-                    onClick={() => setShots(i)}
-                    className={cn(
-                      'cursor-pointer rounded-full px-6 py-[11px] text-[18px] font-medium transition-colors duration-150 motion-reduce:transition-none',
-                      i === shots ? 'bg-(--ink) text-white' : 'bg-transparent text-(--ink)',
-                    )}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </fieldset>
-              <p
-                className="tag relative m-0 rounded-xl border-2 border-(--ink) bg-(--butter) px-4 py-[10px] text-[18px] font-semibold"
-                aria-live="polite"
-              >
-                {notes} fewer “which one?”
-              </p>
-            </div>
+            <p className="tag relative m-0 rounded-xl border-2 border-(--ink) bg-(--butter) px-4 py-[10px] text-[18px] font-semibold">
+              {FEWER_CHANGES} fewer changes to ask for
+            </p>
           </div>
           <div className="mt-10 rounded-[32px] border border-(--line) bg-white px-5 py-9 sm:px-10">
             <table className="w-full border-collapse text-left text-[18px]">
@@ -467,37 +450,43 @@ export function Landing({
                 <tr>
                   <td className="w-[36%]" />
                   <th scope="col" className="w-[32%] pb-4 font-semibold">
-                    Pinch
+                    With Pinch
                   </th>
                   <th scope="col" className="w-[32%] pb-4 font-semibold">
-                    Dictating it
+                    Without
                   </th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <th scope="row" className="py-3 font-normal text-(--soft)">
-                    Notes tied to a spot
-                  </th>
-                  <td className="figure py-3 text-[clamp(30px,5vw,68px)] tabular-nums">
-                    {notes} of {notes}
-                  </td>
-                  <td className="figure py-3 text-[clamp(30px,5vw,68px)] text-(--soft) tabular-nums">
-                    0 of {notes}
-                  </td>
-                </tr>
-                {ROWS.map(([row, pinch, dictating]) => (
+                {RESULTS.map(([row, pinch, without]) => (
+                  <tr key={row}>
+                    <th scope="row" className="py-3 font-normal text-(--soft)">
+                      {row}
+                    </th>
+                    <td className="figure py-3 text-[clamp(30px,5vw,68px)] tabular-nums">
+                      {pinch}
+                    </td>
+                    <td className="figure py-3 text-[clamp(30px,5vw,68px)] text-(--soft) tabular-nums">
+                      {without}
+                    </td>
+                  </tr>
+                ))}
+                {ROWS.map(([row, pinch, without]) => (
                   <tr key={row}>
                     <th scope="row" className="py-4 font-normal text-(--soft)">
                       {row}
                     </th>
                     <td className="py-4">{pinch}</td>
-                    <td className="py-4 text-(--soft)">{dictating}</td>
+                    <td className="py-4 text-(--soft)">{without}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="mt-5 mb-0 px-2 text-[15px] text-(--soft)">
+            From blind tests: 20 screens built for five made-up designers, and one designer’s own 28
+            picks for the review.
+          </p>
         </div>
       </section>
 
