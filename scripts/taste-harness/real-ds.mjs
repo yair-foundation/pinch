@@ -34,6 +34,12 @@ const ROOT = path.join(EXP, "real", NAME)
 const AT_ONCE = Number(process.env.AT_ONCE || 6)
 const ARMS = ["S", "S2", "SPD", "SPD2"]
 const EVAL = [2, 3, 4]
+/** What the pages are: "web pages" for a marketing system, "product screens" for a product one. */
+const SURFACE = process.env.SURFACE ?? "web pages"
+/** What a build may load from outside, when the design system's own pages load more than Tailwind. */
+const OUTSIDE =
+  process.env.OUTSIDE ??
+  'Load Tailwind with <script src="https://cdn.tailwindcss.com"></script> if you want it, and nothing else from outside: images and fonts come from ./design-system/ only.'
 const J = (f) => JSON.parse(readFileSync(f, "utf8"))
 const W = (f, o) => {
   mkdirSync(path.dirname(f), { recursive: true })
@@ -139,14 +145,14 @@ function lenient(text) {
   return null
 }
 
-const DESIGNER = `./design-system/ is the design system of the company you work at. Read its README.md, then guidelines/00-index.md and the guidelines it says to read first for web pages, and look at a few of its components and references.
+const DESIGNER = `./design-system/ is the design system of the company you work at. Read its README.md, then guidelines/00-index.md where there is one and the guidelines it says to read first for ${SURFACE}, and look at a few of its components and references.
 
 You play a senior designer there who uses this system every day and has a strong taste of their own on top of it: what the system leaves open, where agents and newer designers misuse it, and their own preferences within its rules. Invent them.
 
 Write ./designer.json and nothing else:
 {"designer": "who they are, one paragraph", "product": "what the company's pages are for, one line", "taste": [12 statements], "tasks": [5 tasks]}
 - taste: 12 statements, each concrete enough to check on a rendered page, consistent with the design system's laws but beyond what it states: none simply restates one of its rules. Cover hierarchy, layout and spacing, type in use, colour in use, imagery, components in use and the words.
-- tasks: 5 web pages or long page sections they would ask the coding agent to build, one or two sentences each, saying only what each holds and does, never how it looks; each a different kind of page.
+- tasks: 5 ${SURFACE} they would ask the coding agent to build, one or two sentences each, saying only what each holds and does, never how it looks; each a different kind.
 Don't ask questions.`
 
 const PROJECT = (d) => `You're the coding agent on ${d.product}`
@@ -164,7 +170,7 @@ Build this, as one HTML file, ./index.html, for a desktop window 1440px wide:
 
 ${task}
 
-- Load Tailwind with <script src="https://cdn.tailwindcss.com"></script> if you want it, and nothing else from outside: images and fonts come from ./design-system/ only.
+- ${OUTSIDE}
 - Write realistic text.
 - Where you have no guidance, use your own judgment.
 
