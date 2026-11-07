@@ -158,6 +158,21 @@ Can a check in code, written from a person's notes, help an agent keep what can 
 
 **What it means.** A check made from what people say can't check what they didn't say, and spoken notes are short on numbers. The numbers are in the screenshots, not in the speech. Export already says, for each spot pointed at, the text there and its main colours. Measuring the marked spot, its text size, spacing, corner radius and weight, would put numbers in the notes the person never spoke. That is the thing to test next, with the same oracle.
 
+## Measuring the spot pointed at, 2026-11-07
+
+The code check had little to hold because spoken notes seldom carry numbers. So each note got a line of what was measured at its spot on the page, under its `Where` line: `Measured: text 13px, weight 400, Inter, colour #6b7280; box padding 16px, corners 12px, no shadow, background #ffffff.` Measured in Chromium on the page the take was made on (`measure.mjs spots`), which is the best case: on a screenshot of someone else's site, Pinch would have to estimate them from pixels. Rounds 4 to 6 were built again from these notes, twice (N, N2), and scored by the same oracle.
+
+| Way | Measurable points broken |
+| --- | ---: |
+| Nothing | 95% |
+| The takes | 79% |
+| The takes and the code check | 78% |
+| The takes, each note with its measurements | 82% |
+
+- **The numbers didn't help.** Measured notes did better in 2 cells of 9, worse in 6, the same in 1. Designer 5 went from 73% to 81%.
+- **Why, likely:** these takes correct the agent's own screens, so most measured numbers describe what was wrong. "Too tiny" beside "text 13px" gives the agent a number, and it sometimes kept it. On a reference the person likes, the numbers would be the target; that is not what this tested.
+- **Limits:** the oracle's strictness, three designers, two builds a cell.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
