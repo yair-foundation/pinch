@@ -232,6 +232,25 @@ The second, also supplied by the author and kept out of this repository, is a pr
 - **The takes carried across screens:** corrections made on a runs list (numbers left-aligned, "$" on every cell, IDs in dark ink) held on an analytics screen and a detail page the designer never saw.
 - **Across the two real design systems,** marketing and product: 7.2 changes a page with the design system alone, 3.3 with it and two takes, in all 12 judgings. The limits are the same as above.
 
+## When taste changes: a dream pass, 2026-11-08
+
+Anthropic's "The components of agent memory" (2026-11-06) warns that memory goes stale as things change, that an incorrect note gets carried into every session, and recommends "dreaming": an offline pass that checks notes against the raw record and keeps a small index on top. `scripts/taste-harness/dream.mjs` tests it. For each of the three designers furthest from the agent's taste, after their first two takes 4 of their 12 taste points changed (designer 2, for one: a chunky grotesque became a display serif, saturated colours earthy ones, asymmetric layouts centred posters). They corrected two more screens with the new taste, so the later takes contradicted the earlier ones. Two new screens each were then built twice, three ways, and judged blind by a session holding the new taste and the four points given up:
+
+- **Raw:** the four takes as Export gives them.
+- **Later holds:** the same, with a line in each `notes.md` that where two notes disagree, the later take holds.
+- **Dream:** the raw takes and an `INDEX.md` from a dream pass: each take in a line, every earlier note a later one replaces, quoting both, and words that look misheard. It rewrote nothing. The three passes found the real contradictions ("that serif is a no" in take 1 against "I want a heavy, chunky serif" in take 3).
+
+| Way | Changes | Taste points broken | Given-up points still followed, of 4 | Mean rank of 6 |
+| --- | ---: | ---: | ---: | ---: |
+| Raw | 4.1 | 3.0 | 0.83 | 3.38 |
+| Later holds | 4.0 | 2.7 | 0.83 | 3.17 |
+| Dream | 4.5 | 3.2 | 0.75 | 3.96 |
+
+- **The stale notes barely held the agent back.** With the raw takes it still followed fewer than one of the four given-up points a screen. With four takes, the agent sorted out the contradictions itself, most likely by the order of the folders.
+- **Neither fix helped.** The line was level with raw (above it in 7 judgings, below in 5). The dream pass was a little worse (above raw in 4, below in 6): an extra file to read, and nothing left to fix.
+- **What it means:** at this size Pinch doesn't need consolidation. The article's case was hundreds of files and long-running agents; a person's takes reach that only after months. Worth testing again when someone real has dozens of takes, not before.
+- **Limits:** three designers, two screens each, twelve judgings; four takes; a taste change made all at once.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
