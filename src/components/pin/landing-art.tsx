@@ -716,6 +716,41 @@ export function MarkedPage({
   );
 }
 
+/** Beside the questions (D177): one asked, pointed at, and taken well. */
+export function Asking({ className }: ArtProps) {
+  return (
+    <svg className={className} width="300" height="222" viewBox="0 0 300 222" aria-hidden="true">
+      <path
+        className="o"
+        fill="#ffc93c"
+        d="M32 8H144C157 8 168 19 168 32V94C168 107 157 118 144 118H64L40 140L44 118H32C19 118 8 107 8 94V32C8 19 19 8 32 8Z"
+      />
+      <path
+        className="t"
+        style={{ strokeWidth: 8 }}
+        d="M70 46C70 24 106 24 106 46C106 60 88 60 88 76"
+      />
+      <circle cx="88" cy="96" r="6" fill="#17131f" />
+      <path
+        className="o"
+        fill="#fff"
+        transform="translate(154 28) scale(.75)"
+        style={{ strokeWidth: 5.3 }}
+        d={CURSOR_PATH}
+      />
+      <path className="t" d="M222 32l8-8M226 48h9" />
+      <path
+        className="o"
+        fill="#fff"
+        d="M148 124H268C281 124 292 135 292 148V176C292 189 281 200 268 200H256L266 216L236 200H148C135 200 124 189 124 176V148C124 135 135 124 148 124Z"
+      />
+      <text x="208" y="168" textAnchor="middle" fontSize="18">
+        GOOD ONE.
+      </text>
+    </svg>
+  );
+}
+
 /** A phone's excuse (D170): a poster for the missing mouse, a sorry phone, and the cat that checked. */
 export function MissingMouse({ className }: ArtProps) {
   return (

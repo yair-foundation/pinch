@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
+  Asking,
   Bubble,
   MarkedPage,
   MOCK_SPOTS,
@@ -124,6 +125,45 @@ const ROWS = [
   ['Saying where you mean', 'You just point', '“Second card, no, the other one”'],
   ['What your agent keeps', 'Every note, in your project', 'What you remember to retype'],
   ['Before you see a screen', 'Checked against your notes', 'Checked against its own taste'],
+];
+
+/*
+ * What someone new asks before trying it (D177), answered from the code: the models in
+ * `browser-voice.ts` and `voice-models.ts` (English only), the package in `notes-package.ts`.
+ */
+const QUESTIONS = [
+  {
+    q: 'Where do my screenshots go?',
+    a: 'Nowhere. They stay in your browser, and so does your voice: a model downloaded once (up to 570 MB) turns it into words right there, and a small one reads the text on your screenshots.',
+  },
+  {
+    q: 'Does it cost anything?',
+    a: 'Free for now, with no account and no API key: Pinch runs no paid AI. The check runs on your own coding agent, one extra step a screen, counted like the rest of its work.',
+  },
+  {
+    q: 'Which agents does it work with?',
+    a: 'Any coding agent that reads files, like Claude Code, Cursor or Codex. The check is built for Claude Code. The others read the same notes, and whether they run the check is untested.',
+  },
+  {
+    q: 'What do I do with the folder?',
+    a: 'Unzip it into your project, next to the ones from earlier takes: they all count. Its notes.md tells your agent to read everything first, and to run the check before it shows you a screen.',
+  },
+  {
+    q: 'What does the check do?',
+    a: 'Once your agent draws a screen, a second agent compares it with your notes and lists what goes against them, by your words, not its own taste. Your agent fixes those before you see it.',
+  },
+  {
+    q: 'Why talk instead of type?',
+    a: 'Talking leaves your hand free to point, so each sentence lands on the spot you meant. It’s quicker, too. It understands English only.',
+  },
+  {
+    q: 'Does it work on my phone?',
+    a: 'No. Pinch needs a mouse to point with, so it’s for computers. Your phone gets a missing-mouse poster instead.',
+  },
+  {
+    q: 'I saved notes here before. Where are they?',
+    a: 'Still yours. Open the menu at the top right and choose Export my saved notes. If you kept them in an account, sign in there first.',
+  },
 ];
 
 const LINK = 'underline underline-offset-4 hover:text-(--ink)';
@@ -520,6 +560,34 @@ export function Landing({
             From blind tests: 20 screens built for five made-up designers, and one designer’s own 28
             picks for the review.
           </p>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="faq-title"
+        id="faq"
+        className="mx-4 mt-4 rounded-[40px] bg-(--lilac)"
+      >
+        <div className="mx-auto grid max-w-[1208px] grid-cols-1 gap-12 px-6 py-16 lg:grid-cols-[360px_1fr] lg:gap-16">
+          <div>
+            <h2 id="faq-title" className="title m-0 text-[clamp(44px,5vw,64px)]">
+              Fair questions.
+            </h2>
+            <Asking className="mt-12 hidden lg:block" />
+          </div>
+          <div className="min-w-0 space-y-3">
+            {QUESTIONS.map(({ q, a }) => (
+              <details key={q} className="faq rounded-[20px] border-2 border-(--ink) bg-white">
+                <summary className="flex items-center justify-between gap-6 px-6 py-[18px] text-[19px] leading-snug font-semibold">
+                  {q}
+                  <span className="faq-sign" aria-hidden="true" />
+                </summary>
+                <p className="faq-answer m-0 max-w-[620px] px-6 pb-6 text-[18px] leading-[1.5] text-(--soft)">
+                  {a}
+                </p>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
 
