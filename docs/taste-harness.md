@@ -219,6 +219,19 @@ The author supplied real design systems from companies. They stay out of this re
 - **Much more than on the made-up design systems** (16 to 20% fewer changes), as expected: those were written from the full taste, and a real one only holds the company's rules, not each designer's judgment within them.
 - **Limits:** one design system, one made-up designer, three pages, six judgings, a judge of the same family of model. The designer's taste was written to sit beyond the system, which is the case Pinch is for, and may make the gap larger than a typical designer's would be.
 
+### A real product design system, 2026-11-07
+
+The second, also supplied by the author and kept out of this repository, is a product design system for dense operations consoles: 105 React components, each with an HTML card and a usage guide written for agents, tokens, an Inter webfont and an example console. Builds load what its own example loads. A made-up senior product designer on that console, with a taste on top of it (one solid primary button per screen, three gap sizes only, numbers right-aligned with the unit in the header, IDs in quiet mono, no card inside a card), corrected two screens, 7 and 8 notes, and three new screens were built and judged as with the first.
+
+| Way | Changes | Repeats | Taste points broken | Mean rank of 4 |
+| --- | ---: | ---: | ---: | ---: |
+| The design system alone | 7.1 | 3.1 | 4.7 | 3.50 |
+| The design system and the takes | 3.3 | 0.4 | 1.8 | 1.50 |
+
+- **The same as the first:** 54% fewer changes, repeats from 3.1 to 0.4, and both builds with the takes above both without in all 6 judgings.
+- **The takes carried across screens:** corrections made on a runs list (numbers left-aligned, "$" on every cell, IDs in dark ink) held on an analytics screen and a detail page the designer never saw.
+- **Across the two real design systems,** marketing and product: 7.2 changes a page with the design system alone, 3.3 with it and two takes, in all 12 judgings. The limits are the same as above.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
