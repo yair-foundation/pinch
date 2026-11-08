@@ -40,8 +40,17 @@ async function samplesOf(audio: Blob): Promise<Float32Array> {
 let worker: Worker | null = null;
 let next = 0;
 
-const workerHere = () =>
-  (worker ??= new Worker(new URL('./whisper.worker.ts', import.meta.url), { type: 'module' }));
+/** The worker, made again after one that wouldn't load or died, so the next try starts afresh. */
+function workerHere(): Worker {
+  if (worker) return worker;
+  const w = new Worker(new URL('./whisper.worker.ts', import.meta.url), { type: 'module' });
+  w.addEventListener('error', () => {
+    if (worker === w) worker = null;
+    w.terminate();
+  });
+  worker = w;
+  return w;
+}
 
 /**
  * Fetches the voice model ahead of a take (D161), so that Finish doesn't wait for it, unless the
@@ -53,13 +62,20 @@ export function prepareBrowserVoice(onModel: (progress: number) => void): () => 
     ?.saveData;
   if (saving) return () => undefined;
   const w = workerHere();
-  const onMessage = (e: MessageEvent<{ type: string; progress?: number }>) => {
+  // Ready, or given up on (an error with no take, or the worker gone): nothing more comes in.
+  const settle = () => onModel(100);
+  const onMessage = (e: MessageEvent<{ type: string; progress?: number; id?: number }>) => {
     if (e.data.type === 'progress') onModel(e.data.progress ?? 0);
-    if (e.data.type === 'prepared') onModel(100);
+    if (e.data.type === 'prepared' || (e.data.type === 'error' && e.data.id === undefined))
+      settle();
   };
   w.addEventListener('message', onMessage);
+  w.addEventListener('error', settle);
   w.postMessage({});
-  return () => w.removeEventListener('message', onMessage);
+  return () => {
+    w.removeEventListener('message', onMessage);
+    w.removeEventListener('error', settle);
+  };
 }
 
 /**
@@ -85,11 +101,21 @@ export async function transcribeInBrowser(
       const m = e.data;
       if (m.type === 'progress') return onModel?.(m.progress);
       if (m.type === 'prepared' || m.id !== id) return;
-      w.removeEventListener('message', onMessage);
+      done();
       if (m.type === 'words') resolve(wordsFromChunks(m.chunks));
       else reject(new Error(m.message));
     };
+    // A worker that won't load or dies answers nothing: the take's reading fails, to try again.
+    const onError = () => {
+      done();
+      reject(new Error('The voice worker stopped.'));
+    };
+    const done = () => {
+      w.removeEventListener('message', onMessage);
+      w.removeEventListener('error', onError);
+    };
     w.addEventListener('message', onMessage);
+    w.addEventListener('error', onError);
     w.postMessage({ id, audio: samples }, [samples.buffer]);
   });
 }

@@ -127,7 +127,11 @@ function VoiceMarks({ marks }: { marks: Mark[] }) {
   );
 }
 
-type Phase = 'paused' | 'counting' | 'live' | 'saved';
+/**
+ * Where the take is: paused (or not begun), asking for the microphone, counting in, recording,
+ * keeping it in this browser, or kept.
+ */
+type Phase = 'paused' | 'opening' | 'counting' | 'live' | 'saving' | 'saved';
 
 /** A card on the reel, by its slot: the middle, the edges, and hidden beyond them. */
 const SLOT: Record<number, CSSProperties> = {
@@ -246,6 +250,12 @@ export function Reel({
   const [atEnd, setAtEnd] = useState(false);
   const at = atEnd ? assets.length : Math.min(index, assets.length - 1);
   const [phase, setPhase] = useState<Phase>('paused');
+  // The phase as of now, for keys and awaits that land before the next render.
+  const phaseNow = useRef<Phase>('paused');
+  const go = (p: Phase) => {
+    phaseNow.current = p;
+    setPhase(p);
+  };
   const [count, setCount] = useState(COUNTDOWN);
   const [micError, setMicError] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -278,6 +288,10 @@ export function Reel({
     pointer: PointerSample[];
     off: boolean;
   } | null>(null);
+  // A stopped take the browser couldn't keep yet: Finish tries again, and nothing records over it.
+  const unsaved = useRef<{ take: Take; audio: Blob } | null>(null);
+  // The take the end card is about, so a reading of an earlier one doesn't land on it.
+  const shownTake = useRef<string | null>(null);
   const countTimer = useRef(0);
   const wheel = useRef<Wheel>({ built: 0, at: -Infinity });
   const atRef = useRef(at);
@@ -311,7 +325,12 @@ export function Reel({
         audio: { echoCancellation: true, noiseSuppression: true },
       });
     } catch {
-      setMicError(true);
+      if (mounted.current) setMicError(true);
+      return false;
+    }
+    // The reel closed while the browser asked: let the microphone go.
+    if (!mounted.current) {
+      for (const track of stream.getTracks()) track.stop();
       return false;
     }
     setMicError(false);
@@ -359,16 +378,30 @@ export function Reel({
     t.clock.start();
     if (t.recorder.state === 'inactive') t.recorder.start(1000);
     else t.recorder.resume();
-    setPhase('live');
+    go('live');
+  };
+
+  /** What the end card shows: a kept take, or none. */
+  const show = (done: { take: Take; audio: Blob } | null) => {
+    shownTake.current = done?.take.id ?? null;
+    setSaved(done);
   };
 
   const record = async () => {
-    if (phase !== 'paused' && phase !== 'saved') return;
-    if (phase === 'saved') setSaved(null);
-    if (!(await open())) return;
+    const from = phaseNow.current;
+    if ((from !== 'paused' && from !== 'saved') || unsaved.current) return;
+    go('opening');
+    if (!(await open())) {
+      if (mounted.current) go(from);
+      return;
+    }
+    if (from === 'saved') {
+      show(null);
+      setReading('idle');
+    }
     // Only the first recording of a visit waits for the count (D143): a resume starts at once.
     if (counted()) return goLive();
-    setPhase('counting');
+    go('counting');
     setCount(COUNTDOWN);
     let n = COUNTDOWN;
     countTimer.current = window.setInterval(() => {
@@ -381,13 +414,13 @@ export function Reel({
   };
 
   const pause = () => {
-    if (phase === 'counting') {
+    if (phaseNow.current === 'counting') {
       clearInterval(countTimer.current);
-      setPhase('paused');
+      go('paused');
       return;
     }
     const t = take.current;
-    if (phase !== 'live' || !t) return;
+    if (phaseNow.current !== 'live' || !t) return;
     t.clock.pause();
     t.recorder.pause();
     t.shown.push({
@@ -395,11 +428,11 @@ export function Reel({
       screen: atRef.current < assets.length ? atRef.current : null,
       paused: true,
     });
-    setPhase('paused');
+    go('paused');
   };
 
-  /** Stop the take and keep it: from Finish, or when the reel closes mid-take. */
-  const keep = useCallback(async () => {
+  /** Stop the take in progress, let the microphone go, and put together what it kept. */
+  const stop = useCallback(async () => {
     const t = take.current;
     if (!t) return null;
     take.current = null;
@@ -426,9 +459,21 @@ export function Reel({
       shown: t.shown,
       pointer: t.pointer,
     };
-    await onSave(kept, audio);
     return { take: kept, audio };
-  }, [assets, onSave]);
+  }, [assets]);
+
+  /**
+   * Stop the take and keep it: from Finish, or when the reel closes mid-take. One the browser
+   * couldn't keep stays in `unsaved` until a later try does.
+   */
+  const keep = useCallback(async () => {
+    const done = unsaved.current ?? (await stop());
+    if (!done) return null;
+    unsaved.current = done;
+    await onSave(done.take, done.audio);
+    if (unsaved.current === done) unsaved.current = null;
+    return done;
+  }, [stop, onSave]);
 
   /** The words in a take: on Pinch's server where it has speech-to-text, else in this browser. */
   const wordsOf = async (audio: Blob): Promise<TimedWord[]> => {
@@ -447,6 +492,8 @@ export function Reel({
 
   /** Read a kept take's words, and keep them with it. */
   const read = async (done: { take: Take; audio: Blob }) => {
+    // A new take since: its notes are still made, but the end card is the new one's.
+    const onShow = () => mounted.current && shownTake.current === done.take.id;
     setReading('working');
     try {
       const words = await wordsOf(done.audio);
@@ -454,14 +501,12 @@ export function Reel({
       const take = { ...done.take, words };
       await onSave(take, done.audio);
       onTake(take);
-      if (!mounted.current) return;
-      setSaved({ take, audio: done.audio });
+      if (!onShow()) return;
+      show({ take, audio: done.audio });
       setReading('idle');
     } catch {
-      if (mounted.current) {
-        setModel(null);
-        setReading('failed');
-      }
+      if (mounted.current) setModel(null);
+      if (onShow()) setReading('failed');
     }
   };
 
@@ -472,18 +517,19 @@ export function Reel({
   };
 
   const finish = async () => {
-    if (!recorded()) return;
+    if (phaseNow.current === 'saving' || (!recorded() && !unsaved.current)) return;
     setSaveError(false);
+    go('saving');
     try {
       const done = await keep();
       if (!mounted.current) return;
-      setSaved(done);
-      setPhase('saved');
+      show(done);
+      go('saved');
       if (done && voiceOn) void read(done);
     } catch {
       if (mounted.current) {
         setSaveError(true);
-        setPhase('paused');
+        go('paused');
       }
     }
   };
@@ -612,9 +658,11 @@ export function Reel({
   };
 
   const state = {
-    paused: recorded() ? 'Paused' : 'Ready',
+    paused: recorded() || unsaved.current ? 'Paused' : 'Ready',
+    opening: 'Starting',
     counting: 'Starting',
     live: 'Recording',
+    saving: 'Saving',
     saved: 'Saved',
   }[phase];
 
@@ -838,8 +886,13 @@ export function Reel({
               <p className="m-0 text-[15px] font-medium text-foreground">
                 That was the last screen
               </p>
-              {recorded() ? (
-                <button type="button" onClick={finish} className={PRIMARY}>
+              {recorded() || unsaved.current || phase === 'saving' ? (
+                <button
+                  type="button"
+                  onClick={finish}
+                  disabled={phase === 'saving'}
+                  className={cn(PRIMARY, 'disabled:opacity-50')}
+                >
                   Finish
                 </button>
               ) : (
@@ -873,7 +926,7 @@ export function Reel({
           </div>
         </div>
       ) : (
-        (phase === 'paused' || micError) && (
+        ((phase === 'paused' && !unsaved.current) || micError) && (
           <p
             aria-live="polite"
             className="pointer-events-none absolute inset-x-0 bottom-12 z-10 m-0 text-center text-sm text-muted-foreground"
