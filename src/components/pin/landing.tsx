@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
   Asking,
@@ -128,10 +129,40 @@ const ROWS = [
 ];
 
 /*
- * What someone new asks before trying it (D177), answered from the code: the models in
- * `browser-voice.ts` and `voice-models.ts` (English only), the package in `notes-package.ts`.
+ * What someone new asks before trying it (D177), and how it goes in practice (D181), the why and
+ * the flow first (D182), answered from the code: the models in `browser-voice.ts` and `voice-models.ts`
+ * (English only), the take in `reel.tsx` and the phrases in `voice-tags.ts`, the package and the
+ * check in `notes-package.ts`. Pinch keeps nothing between takes (D163): the folders are the memory.
  */
 const QUESTIONS = [
+  {
+    q: 'Why not just tell my coding agent?',
+    a: 'You can, for one fix in one chat. Pinch is quicker for the rest: you talk through a whole pile of screens in one go, pointing instead of describing where, rather than typing a message for each. Every note stays in your project, and each new screen is checked against your notes rather than the agent’s own taste.',
+  },
+  {
+    q: 'What does a take look like?',
+    a: 'Drop in your screenshots and press R. Talk through each one while you point, turn to the next with the arrow keys, and press F to finish. Your words come back as numbered notes on the spots you meant, and Export gives you the folder.',
+  },
+  {
+    q: 'How does it know what I’m pointing at?',
+    a: 'It records your voice and your pointer on the same clock. Each sentence lands where the pointer was as you said it: rest on a spot, circle an area, or point off the screenshot to mean the whole screen.',
+  },
+  {
+    q: 'What do I do with the folder?',
+    a: 'Unzip it into your project, next to the ones from earlier takes: they all count. Its notes.md tells your agent to read everything first, and to run the check before it shows you a screen.',
+  },
+  {
+    q: 'What does the check do?',
+    a: 'Once your agent draws a screen, a second agent compares it with your notes and lists what goes against them, by your words, not its own taste. Your agent fixes those before you see it.',
+  },
+  {
+    q: 'How do I use it over time?',
+    a: 'Screenshot what your agent builds and talk that through too: say “This is ours” and point at what it got wrong. Each Export is a new folder, named to the minute. Drop it beside the others, and the check reads them all.',
+  },
+  {
+    q: 'Does my agent remember notes from other sessions?',
+    a: 'Your agent forgets; the folders don’t. They stay in your project, and the check reads every one each time it runs. For a new session to read them before it starts too, add a line to your CLAUDE.md or AGENTS.md saying to read the pinch-notes folders first.',
+  },
   {
     q: 'Where do my screenshots go?',
     a: 'Nowhere. They stay in your browser, and so does your voice: a model downloaded once (up to 570 MB) turns it into words right there, and a small one reads the text on your screenshots.',
@@ -149,12 +180,12 @@ const QUESTIONS = [
     a: 'Yes, and it never sees it. Your design system stays in your project; your notes tell your agent to keep its values and say how and where to use them.',
   },
   {
-    q: 'What do I do with the folder?',
-    a: 'Unzip it into your project, next to the ones from earlier takes: they all count. Its notes.md tells your agent to read everything first, and to run the check before it shows you a screen.',
+    q: 'What if I get something wrong?',
+    a: 'Say so. “Drop that” removes a note, “Not that, this” points again, and “Redo this screen” starts it over. Space pauses whenever you need to think.',
   },
   {
-    q: 'What does the check do?',
-    a: 'Once your agent draws a screen, a second agent compares it with your notes and lists what goes against them, by your words, not its own taste. Your agent fixes those before you see it.',
+    q: 'What if I change my mind?',
+    a: 'Each notes.md is plain text, so edit the note or delete it. Delete a whole folder and that take stops counting.',
   },
   {
     q: 'Why talk instead of type?',
@@ -169,6 +200,8 @@ const QUESTIONS = [
     a: 'Still yours. Open the menu at the top right and choose Export my saved notes. If you kept them in an account, sign in there first.',
   },
 ];
+/** The questions shown before Show more: why Pinch, then how it goes in practice (D182). */
+const FIRST_QUESTIONS = 8;
 
 const LINK = 'underline underline-offset-4 hover:text-(--ink)';
 
@@ -239,6 +272,13 @@ export function Landing({
   onChoose: () => void;
 }) {
   const [screens, setScreens] = useState(1);
+  const [allQuestions, setAllQuestions] = useState(false);
+  const questions = useRef<HTMLDivElement>(null);
+  /** Shows the rest, and moves the focus to the first of them, since the button goes. */
+  const showAllQuestions = () => {
+    flushSync(() => setAllQuestions(true));
+    questions.current?.querySelectorAll('summary')[FIRST_QUESTIONS]?.focus();
+  };
   const fewer = Math.round(FEWER_A_SCREEN * SCREENS_SHOWN[screens]);
   const hero = useRef<HTMLElement>(null);
   const catEyes = useRef<SVGGElement>(null);
@@ -573,15 +613,20 @@ export function Landing({
         className="mx-4 mt-4 rounded-[40px] bg-(--lilac)"
       >
         <div className="mx-auto grid max-w-[1208px] grid-cols-1 gap-12 px-6 py-16 lg:grid-cols-[360px_1fr] lg:gap-16">
-          <div>
+          <div className="lg:sticky lg:top-8 lg:self-start">
             <h2 id="faq-title" className="title m-0 text-[clamp(44px,5vw,64px)]">
               Fair questions.
             </h2>
             <Asking className="mt-12 hidden lg:block" />
           </div>
-          <div className="min-w-0 space-y-3">
-            {QUESTIONS.map(({ q, a }) => (
-              <details key={q} className="faq rounded-[20px] border-2 border-(--ink) bg-white">
+          <div ref={questions} className="min-w-0 space-y-3">
+            {QUESTIONS.map(({ q, a }, i) => (
+              <details
+                key={q}
+                // Hidden, not left out, so every answer stays in the page's HTML (D173).
+                hidden={!allQuestions && i >= FIRST_QUESTIONS}
+                className="faq rounded-[20px] border-2 border-(--ink) bg-white"
+              >
                 <summary className="flex items-center justify-between gap-6 px-6 py-[18px] text-[19px] leading-snug font-semibold">
                   {q}
                   <span className="faq-sign" aria-hidden="true" />
@@ -591,6 +636,15 @@ export function Landing({
                 </p>
               </details>
             ))}
+            {!allQuestions && (
+              <button
+                type="button"
+                onClick={showAllQuestions}
+                className="press mt-6 cursor-pointer rounded-2xl border-2 border-b-[6px] border-(--ink) bg-white px-7 py-[13px] text-[18px] font-semibold text-(--ink)"
+              >
+                Show more
+              </button>
+            )}
           </div>
         </div>
       </section>

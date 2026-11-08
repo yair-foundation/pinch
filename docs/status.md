@@ -2,7 +2,7 @@
 
 ## Current state (2026-11-07)
 
-Since D177 the landing ends with "Fair questions.": eight questions someone new asks, each answered in one to three sentences, as native `details` cards in the page's HTML. Checked on a production build at 1440 and 1024px in light and dark, opened by mouse and keyboard, with no horizontal scroll.
+Since D181 the landing ends with "Fair questions.": sixteen questions, eight shown and the rest behind Show more (D182), from where screenshots go to what a take looks like, how notes carry across sessions and why not just tell the agent, each answered in one to three sentences, as native `details` cards in the page's HTML (D177).
 
 Since D175 the landing promises "Say it once." and its last section compares with and without Pinch in the tests' figures: 4% of corrections back against 74%, and a review that picks what you'd pick 70% of the time against 32%, and 7 fewer changes to ask for on a screen.
 
