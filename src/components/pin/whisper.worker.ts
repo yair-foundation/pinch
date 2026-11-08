@@ -86,6 +86,7 @@ self.onmessage = async (e: MessageEvent<{ id?: number; audio?: Float32Array }>) 
   } catch (error) {
     ready = null;
     tiers = null;
-    if (audio) post({ type: 'error', id, message: (error as Error).message });
+    // With no take, the page stops showing the model coming in.
+    post({ type: 'error', id, message: (error as Error).message });
   }
 };

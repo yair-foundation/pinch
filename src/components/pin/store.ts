@@ -128,19 +128,28 @@ export const loadTakes = async () =>
     (m) => m.takes,
   )) as Take[] | undefined) ?? [];
 
+// The list of takes is read and written whole, so two saves at once (a new take while an
+// earlier one's words are kept) go one after the other, or one could drop the other.
+let takesSaved: Promise<void> = Promise.resolve();
+
 /** Keep a take and its audio: the audio first, so a take is never listed without it. */
-export async function saveTake(take: Take, audio: Blob) {
-  await putImage(`take-${take.id}`, audio);
-  const takes = [...(await loadTakes()).filter((t) => t.id !== take.id), take];
-  await run(
-    STATE,
-    'readwrite',
-    (s) => s.put(takes, 'takes'),
-    (m) => {
-      m.takes = takes;
-      return 'takes' as IDBValidKey;
-    },
-  );
+export function saveTake(take: Take, audio: Blob) {
+  const save = async () => {
+    await putImage(`take-${take.id}`, audio);
+    const takes = [...(await loadTakes()).filter((t) => t.id !== take.id), take];
+    await run(
+      STATE,
+      'readwrite',
+      (s) => s.put(takes, 'takes'),
+      (m) => {
+        m.takes = takes;
+        return 'takes' as IDBValidKey;
+      },
+    );
+  };
+  const saved = takesSaved.then(save, save);
+  takesSaved = saved.catch(() => undefined);
+  return saved;
 }
 
 export const putImage = (id: string, blob: Blob) =>
