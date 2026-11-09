@@ -18,13 +18,14 @@ import {
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import { unzip } from '@/lib/pin/unzip';
-import { applyTake, flipVerdict, removedScreens } from '@/lib/pin/voice-notes';
+import { applyTake, flipVerdict, removedScreens, takesApplied } from '@/lib/pin/voice-notes';
 import { isPdf } from '@/lib/pin/pdf-pages';
 import {
   NOTE_TEXT_SAVED,
   NOTES_FILE,
   notesPackageRoot,
   READING_SHOWN,
+  takeFile,
   takePackage,
 } from '@/lib/pin/notes-package';
 import { zip } from '@/lib/pin/zip';
@@ -849,8 +850,10 @@ function Workspace() {
       const found = await unzip(await made.blob.arrayBuffer());
       const stamp = new Date().toISOString();
       const pack = takePackage(readExport(found), found, stamp);
+      // The take itself goes beside the folder (D183), for the placing of notes to be tuned on.
+      const takes = takesApplied(assetsRef.current, await store.loadTakes()).map(takeFile);
       download(
-        new Blob(zip(pack.files) as BlobPart[], { type: 'application/zip' }),
+        new Blob(zip([...pack.files, ...takes]) as BlobPart[], { type: 'application/zip' }),
         `${notesPackageRoot(stamp).slice(0, -1)}.zip`,
       );
       setStatus({

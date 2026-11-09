@@ -673,6 +673,13 @@ function under(shape: Shape, p: { x: number; y: number }, size: Size) {
 /** The notes said on a screen, in the order they were said: the ones a take numbers. */
 export const voiceNotes = (a: Pick<Asset, 'marks'>) => a.marks.filter((m) => m.origin === 'voice');
 
+/** The takes whose notes are on the batch (D183), oldest first: the ones its export carries. */
+export const takesApplied = (assets: readonly Pick<Asset, 'marks'>[], takes: readonly Take[]) =>
+  takes.filter((t) => {
+    const prefix = voicePrefix(t.id);
+    return assets.some((a) => voiceNotes(a).some((m) => m.id.startsWith(prefix)));
+  });
+
 /** A note's verdict turned round: what works becomes what to avoid, and back. */
 export const flipVerdict = (m: Mark): Mark => {
   const { best: _best, ...rest } = m;

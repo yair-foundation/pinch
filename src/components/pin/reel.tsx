@@ -639,16 +639,57 @@ export function Reel({
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // The pointer over the middle screenshot, while recording.
-  const onPointerMove = (e: React.PointerEvent) => {
-    const t = take.current;
-    const img = middle();
-    if (phase !== 'live' || !t || !img) return;
-    const p = pointOn(img.getBoundingClientRect(), e.clientX, e.clientY);
-    if (!p && t.off) return;
-    t.off = !p;
-    t.pointer.push([t.clock.time(), atRef.current, p?.[0] ?? null, p?.[1] ?? null]);
-  };
+  // The ring under the pointer on the screenshot while recording (D184), moved without a render.
+  const ring = useRef<HTMLSpanElement>(null);
+  /*
+   * The pointer over the middle screenshot, while recording, heard on the window (D184): the
+   * author's first gesture take lost the pointer for 26 to 42 seconds on three screens while
+   * they moved over the slide, with the reel's own handler. On the window nothing drawn over the
+   * reel can keep a move from the take, and the ring shows the author what the take sees. In
+   * development a line a second says what the recorder saw, to chase a pointer that goes missing.
+   */
+  useEffect(() => {
+    if (phase !== 'live') {
+      if (ring.current) ring.current.style.opacity = '0';
+      return;
+    }
+    let moves = 0;
+    let on = false;
+    const onMove = (e: PointerEvent) => {
+      const t = take.current;
+      const img = imgs.current[atRef.current];
+      if (!t || !img) return;
+      moves++;
+      const p = pointOn(img.getBoundingClientRect(), e.clientX, e.clientY);
+      on = p !== null;
+      if (ring.current) {
+        ring.current.style.opacity = p ? '1' : '0';
+        if (p) {
+          ring.current.style.left = `${p[0] * 100}%`;
+          ring.current.style.top = `${p[1] * 100}%`;
+        }
+      }
+      if (!p && t.off) return;
+      t.off = !p;
+      t.pointer.push([t.clock.time(), atRef.current, p?.[0] ?? null, p?.[1] ?? null]);
+    };
+    window.addEventListener('pointermove', onMove);
+    const log =
+      process.env.NODE_ENV === 'development'
+        ? window.setInterval(() => {
+            const r = imgs.current[atRef.current]?.getBoundingClientRect();
+            const box = r ? [r.left, r.top, r.width, r.height].map(Math.round).join(' ') : 'none';
+            console.log(
+              `[pinch pointer] ${moves} moves, screen ${atRef.current}, box ${box}, ${on ? 'on' : 'off'} the slide`,
+            );
+            moves = 0;
+          }, 1000)
+        : 0;
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.clearInterval(log);
+    };
+  }, [phase]);
   const onPointerDown = (e: React.PointerEvent) => {
     const t = take.current;
     const img = middle();
@@ -671,7 +712,6 @@ export function Reel({
       ref={reel}
       aria-label="Walkthrough"
       inert={inert}
-      onPointerMove={onPointerMove}
       onPointerDown={onPointerDown}
       className="relative min-h-0 flex-1 overflow-hidden select-none"
       style={
@@ -729,6 +769,13 @@ export function Reel({
                   className="block h-auto max-h-[calc(var(--w)*0.75)] w-auto max-w-(--w) rounded-[14px] bg-muted"
                 />
                 {slot === 0 && <VoiceMarks marks={voiceNotes(a)} />}
+                {slot === 0 && (
+                  <span
+                    ref={ring}
+                    aria-hidden
+                    className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white opacity-0 ring-1 ring-black/50"
+                  />
+                )}
               </span>
             ) : (
               <span className="block size-full rounded-[14px] bg-muted" />

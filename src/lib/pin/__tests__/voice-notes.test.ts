@@ -14,6 +14,7 @@ import {
   placeClaim,
   removedScreens,
   sidesOf,
+  takesApplied,
   topicsOfClaim,
   verdictOfClaim,
   voiceNotes,
@@ -284,6 +285,16 @@ describe('voice notes: a take applied', () => {
     assert.equal(one.marks[0].quote, 'The button is too heavy.');
     assert.ok(one.marks[0].id.startsWith(voicePrefix('aaaa-bbbb')));
     assert.equal(two.marks[0].good, 'The list reads well.');
+  });
+
+  it('names the takes whose notes are on the batch, for the export to carry (D183)', () => {
+    const made = applyTake([asset('one'), asset('two')], take(say('The button is too heavy.')));
+    const other: Take = { ...take([]), id: 'cccc-dddd' };
+    assert.deepEqual(
+      takesApplied(made, [other, take([])]).map((t) => t.id),
+      ['aaaa-bbbb'],
+    );
+    assert.deepEqual(takesApplied([asset('one')], [other, take([])]), []);
   });
 
   it('makes one note of all that was said about one thing (D147)', () => {

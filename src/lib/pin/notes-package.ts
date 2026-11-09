@@ -9,6 +9,7 @@ import {
 } from './learnings';
 import { batchNotes, type PinchExport } from './import';
 import { assetOf, numberOf } from './library';
+import type { Take } from './narration';
 
 /*
  * The package an agent gets (D157): the author's words, what they pointed at, and nothing else.
@@ -200,6 +201,19 @@ export function takePackage(
   };
   return notesPackage(take, new Map([[batch.id, files]]), stamp, true);
 }
+
+const toTheSecond = (stamp: string) => stamp.slice(0, 19).replace(/[T:]/g, '-');
+
+/**
+ * A take beside the notes folder (D183): the pointer's path, when each screen was shown and the
+ * timed words, as the browser kept them, with no audio. It sits beside the folder, as the rules
+ * file does (D164), so an agent reading the folder never meets it. It is what the placing of
+ * notes is checked and tuned against: `scripts/replay-take.ts` runs it through `applyTake` again.
+ */
+export const takeFile = (take: Take): PackageFile => ({
+  name: `pinch-take-${toTheSecond(take.recordedAt)}.json`,
+  data: new TextEncoder().encode(JSON.stringify(take)),
+});
 
 /** Whether a collection holds anything `savedPackage` would give. */
 export const hasSaved = (c: Collection) =>
