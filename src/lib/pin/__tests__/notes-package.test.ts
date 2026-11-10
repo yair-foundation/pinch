@@ -128,6 +128,9 @@ describe('the notes package', () => {
     assert.match(agent, /\nmodel: haiku\n---\n/);
     assert.match(agent, /\*\*\/pinch-notes-\*\/notes\.md/);
     assert.match(agent, /Don't add taste of your own\./);
+    // How far a note carries (D186): the same job on the same kind of screen, and no further.
+    assert.match(agent, /plainly does the same job on the same kind of screen/);
+    assert.match(agent, /A note that only approves a screen \("this is okay"\) asks for nothing/);
   });
 
   it('keeps both sides of a note in the words it was said, on one line', () => {

@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D186 a sentence that never got to its point ("This is.") is not a note, one still being said as the reel turns stays on its screen, and an unfinished one runs on past Whisper's full stop; and the check carries a note only to an element doing the same job on the same kind of screen. On six slides of the author's deck the reworded check gave 4 findings where it had given 18, keeping the direct ones and losing two sound ones. The taste harness was not run again.
+
 Since D185 the pointer is read as strokes before the words: a circle must close and be quick, a scrub turns back on itself, travel and wander place nothing, and a hand parked since before a sentence says nothing. Scored on the author's two gesture takes with `scripts/take-strokes.ts`: 17 of 25 circles and 7 of 13 scrubs read as themselves, points as rests. Not yet checked on a real review take.
 
 Since D184 the reel hears the pointer on the window while recording and draws a ring on the screenshot where the take sees it, after the author's gesture take lost the pointer on three screens; in development the console says each second what the recorder sees. Checked in the browser pane with a stand-in microphone and on a production build in light and dark.

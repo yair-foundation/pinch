@@ -5,7 +5,7 @@
  */
 
 import type { Shown } from './narration';
-import type { TimedWord, VoiceOp } from './voice-tags';
+import { SENTENCE_PAUSE, type TimedWord, type VoiceOp } from './voice-tags';
 
 /** One segment of whisper.cpp's JSON (`-oj`); with `-ml 1 -sow` each is one word. */
 type WhisperSegment = { offsets?: { from?: number; to?: number }; text?: string };
@@ -107,7 +107,9 @@ export function wordsLookWrong(words: readonly TimedWord[]): boolean {
 }
 
 /**
- * The words said over each screen: a word belongs to the screen on show when it began. Words
+ * The words said over each screen: a word belongs to the screen on show when it began, and a
+ * sentence still being said as the reel turns stays on the screen it began on (D186: "This is",
+ * a turn, "okay" lost its verdict to the next screen, where "okay" alone was dropped). Words
  * said on the end card (`screen: null`) go to the last screen, as they're about the batch so far.
  */
 export function wordsByScreen(
@@ -120,9 +122,17 @@ export function wordsByScreen(
   const marks = [...shown].sort((a, b) => a.t - b.t);
   let i = 0;
   let screen: number | null = marks[0]?.screen ?? 0;
+  let prev: { word: TimedWord; at: number } | null = null;
   for (const word of [...words].sort((a, b) => a.start - b.start)) {
     while (i < marks.length && marks[i].t <= word.start) screen = marks[i++].screen;
-    out[Math.min(screen ?? screens - 1, screens - 1)].push(word);
+    const midSentence =
+      prev !== null &&
+      word.start - prev.word.end < SENTENCE_PAUSE &&
+      !/[.?!]["'”’)]*$/.test(prev.word.text);
+    const at: number =
+      midSentence && prev ? prev.at : Math.min(screen ?? screens - 1, screens - 1);
+    out[at].push(word);
+    prev = { word, at };
   }
   return out;
 }

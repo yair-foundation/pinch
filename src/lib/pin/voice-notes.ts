@@ -73,6 +73,43 @@ const FILLER = new Set([
 const LOST_THREAD = 6000;
 
 /**
+ * Words with no thought of their own (D186): a sentence made only of them has said nothing yet.
+ * "Okay", "like", "right" and "well" are left out, as they can be the whole verdict.
+ */
+const EMPTY = new Set([
+  ...['this', 'that', 'these', 'those', 'it', 'its', "it's", "that's", 'here', 'there', 'one'],
+  ...['is', 'are', 'was', 'were', 'be', 'been', 'am', "i'm", 'do', 'does', 'did', 'to'],
+  ...['i', 'you', 'we', 'they', 'me', 'us', 'them', 'my', 'your', 'our', 'their'],
+  ...['the', 'a', 'an', 'of', 'in', 'on', 'at', 'for', 'with', 'by', 'from', 'as', 'about'],
+  ...['would', 'could', 'should', 'can', 'will', 'have', 'has', 'had', 'just', 'also', 'then'],
+  ...['now', 'or', 'but', 'if', 'what', 'which', 'thing', 'things'],
+  ...['um', 'uh', 'erm', 'oh', 'ah', 'so', 'and', 'wait', 'hmm', 'hm', 'mm'],
+]);
+/** Words no sentence ends on: whatever full stop or pause follows one, the sentence goes on. */
+const DANGLING = new Set([
+  ...['the', 'a', 'an', 'my', 'your', 'our', 'their', 'of', 'and', 'or', 'because'],
+  ...['would', 'could', 'should', 'very'],
+]);
+/** Words that begin a thought without being one, so a sentence of only these is still open. */
+const OPENS = new Set(['is', 'are', 'was', 'were', 'be', "i'm", "it's", "that's", 'would']);
+
+const saidOf = (words: readonly TimedWord[]) => words.map((w) => norm(w.text)).filter(Boolean);
+/** Whether what was said says nothing: only words with no thought of their own. */
+const saysNothing = (said: readonly string[]) => said.every((w) => EMPTY.has(w));
+
+/**
+ * Whether a sentence so far is unfinished (D186): it ends on a word no sentence ends on ("I would
+ * make the"), or it has opened a thought and said nothing yet ("This is"). Whisper puts a full
+ * stop at a pause, and starts the next word with a capital, wherever the speaker stopped to look.
+ */
+function unfinished(sentence: readonly TimedWord[]): boolean {
+  const said = saidOf(sentence);
+  const last = said[said.length - 1];
+  if (!last) return false;
+  return DANGLING.has(last) || (saysNothing(said) && OPENS.has(last));
+}
+
+/**
  * Whether a pause before this word ends the sentence (D162). Whisper starts a sentence with a
  * capital, so a word in lower case after a pause goes on with the same thought, as people stop to
  * look or think in the middle of one: "a nice atmosphere … and vibes".
@@ -83,17 +120,26 @@ const pauseEnds = (word: TimedWord, gap: number) =>
 /** What was said, as claims: a sentence each, split at a contrast. */
 export function claimsOf(words: readonly TimedWord[]): Claim[] {
   const sentences: TimedWord[][] = [];
+  // The words an unfinished sentence went on past, whatever stop or pause came after them.
+  const joined = new Set<TimedWord>();
   let current: TimedWord[] = [];
   words.forEach((word, i) => {
     const prev = words[i - 1];
     if (current.length && prev && pauseEnds(word, word.start - prev.end)) {
-      sentences.push(current);
-      current = [];
+      if (word.start - prev.end < LOST_THREAD && unfinished(current)) joined.add(prev);
+      else {
+        sentences.push(current);
+        current = [];
+      }
     }
     current.push(word);
     if (endsSentence(word.text)) {
-      sentences.push(current);
-      current = [];
+      const next = words[i + 1];
+      if (next && next.start - word.end < LOST_THREAD && unfinished(current)) joined.add(word);
+      else {
+        sentences.push(current);
+        current = [];
+      }
     }
   });
   if (current.length) sentences.push(current);
@@ -102,10 +148,12 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
   for (const sentence of sentences) {
     let part: TimedWord[] = [];
     const flush = () => {
-      const said = part.map((w) => norm(w.text)).filter(Boolean);
-      // One word can be a whole note, "Nice" over what the pointer is on, but not a stray "a".
+      const said = saidOf(part);
+      // One word can be a whole note, "Nice" over what the pointer is on, but not a stray "a",
+      // and not a sentence that never got to its point: "This is." (D186).
       const enough = said.length >= 2 || (said[0]?.length ?? 0) >= 3;
-      if (enough && said.some((w) => !FILLER.has(w))) claims.push(claimOf(part));
+      if (enough && said.some((w) => !FILLER.has(w)) && !saysNothing(said))
+        claims.push(claimOf(part, joined));
       part = [];
     };
     for (const word of sentence) {
@@ -120,9 +168,20 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
   return claims;
 }
 
-function claimOf(words: TimedWord[]): Claim {
+/** A proper name's or an acronym's capital stays; a sentence's first word, joined on, loses it. */
+const lowered = (text: string) =>
+  /^\p{Lu}\p{Ll}/u.test(text) && !/^I(['’]|$)/.test(text)
+    ? text.charAt(0).toLowerCase() + text.slice(1)
+    : text;
+
+function claimOf(words: TimedWord[], joined: ReadonlySet<TimedWord> = new Set()): Claim {
   let text = words
-    .map((w) => w.text)
+    .map((w, i) => {
+      // Where an unfinished sentence went on, the stop Whisper put there goes, and so does the
+      // capital it gave the next word: "I would make the. UI bigger." is one sentence.
+      const said = joined.has(w) ? w.text.replace(/[.?!]+(["'”’)]*)$/, '$1') : w.text;
+      return i > 0 && joined.has(words[i - 1]) ? lowered(said) : said;
+    })
     .join(' ')
     .replace(/[,;:]+$/, '');
   text = text.charAt(0).toUpperCase() + text.slice(1);

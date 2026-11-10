@@ -117,6 +117,32 @@ describe('voice notes: pauses', () => {
       ['Great title.', 'The icons.'],
     );
   });
+  it('runs an unfinished sentence on past the stop and the capital a pause gave it (D186)', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(['I', 0], ['would', 300], ['make', 600], ['the.', 900], ['UI', 2400], ['bigger.', 2700]),
+      ).map((c) => c.text),
+      ['I would make the UI bigger.'],
+    );
+    assert.deepEqual(
+      claimsOf(timed(['This', 0], ['is.', 300], ['Okay.', 1800])).map((c) => c.text),
+      ['This is okay.'],
+    );
+  });
+  it('drops a sentence that never got to its point, and keeps a verdict of one word (D186)', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(['This', 0], ['is.', 300], ['Oh,', 9000], ['wait.', 9300], ['This.', 18000], ['To', 27000], ['do.', 27300]),
+      ).map((c) => c.text),
+      [],
+    );
+    assert.deepEqual(
+      claimsOf(timed(['This', 0], ['is', 300], ['okay.', 600], ['I', 9000], ['like', 9300], ['it.', 9600])).map(
+        (c) => c.text,
+      ),
+      ['This is okay.', 'I like it.'],
+    );
+  });
   it('keeps a word said alone, but not a stray one', () => {
     assert.deepEqual(
       claimsOf(timed(['Nice.', 0], ['Um.', 2000], ['A.', 4000])).map((c) => c.text),

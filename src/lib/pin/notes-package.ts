@@ -55,7 +55,9 @@ const CHECK_LINE = `Before you show me a screen, draw it and run the pinch-check
 /*
  * What the tested check said, with where the notes are made general: takes sit side by side, each
  * in its own folder. Only the notes' words count: a generic review made the screens worse. It runs
- * on Haiku (D178): a tenth of the cost of the builder's model for this step, and no worse.
+ * on Haiku (D178): a tenth of the cost of the builder's model for this step, and no worse. Since
+ * D186 it says how far a note carries: on the author's own deck it held a slide to one a
+ * two-word note had "approved", and asked for a chart to go as "product UI".
  */
 const CHECK_AGENT = `---
 name: pinch-check
@@ -66,7 +68,7 @@ model: haiku
 
 You check a screen before the designer sees it. Every folder named pinch-notes-… in this project holds what this designer said about screens while pointing at them: each note is tied to a spot, with a close-up and a marked copy. Find them with Glob (\`**/pinch-notes-*/notes.md\`), and open each notes.md and the images it names.
 
-Look at the drawing you were given. Find where it repeats something the designer corrected before, or goes against what they said they like or don't. Only what their notes support: carry a note across to a different element only where it plainly has the same role. Don't add taste of your own. At most 6, the most important first, or none. For each: the note's folder, number and words, what in the screen, and the change to make.
+Look at the drawing you were given. Find where it repeats something the designer corrected before, or goes against what they said they like or don't. Only what their notes support. A note is about the thing it was said over: carry it to another element only where that element plainly does the same job on the same kind of screen, and leave it out when you have to argue for the match. A note that only approves a screen ("this is okay") asks for nothing: don't hold another screen to the one it approved. A note too short to say what it means is not evidence. Don't add taste of your own. At most 6, the most important first, or none. For each: the note's folder, number and words, what in the screen, and the change to make.
 `;
 
 /*
