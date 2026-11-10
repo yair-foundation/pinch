@@ -14,6 +14,7 @@ import {
   placeClaim,
   removedScreens,
   sidesOf,
+  takesApplied,
   topicsOfClaim,
   verdictOfClaim,
   voiceNotes,
@@ -116,6 +117,32 @@ describe('voice notes: pauses', () => {
       ['Great title.', 'The icons.'],
     );
   });
+  it('runs an unfinished sentence on past the stop and the capital a pause gave it (D186)', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(['I', 0], ['would', 300], ['make', 600], ['the.', 900], ['UI', 2400], ['bigger.', 2700]),
+      ).map((c) => c.text),
+      ['I would make the UI bigger.'],
+    );
+    assert.deepEqual(
+      claimsOf(timed(['This', 0], ['is.', 300], ['Okay.', 1800])).map((c) => c.text),
+      ['This is okay.'],
+    );
+  });
+  it('drops a sentence that never got to its point, and keeps a verdict of one word (D186)', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(['This', 0], ['is.', 300], ['Oh,', 9000], ['wait.', 9300], ['This.', 18000], ['To', 27000], ['do.', 27300]),
+      ).map((c) => c.text),
+      [],
+    );
+    assert.deepEqual(
+      claimsOf(timed(['This', 0], ['is', 300], ['okay.', 600], ['I', 9000], ['like', 9300], ['it.', 9600])).map(
+        (c) => c.text,
+      ),
+      ['This is okay.', 'I like it.'],
+    );
+  });
   it('keeps a word said alone, but not a stray one', () => {
     assert.deepEqual(
       claimsOf(timed(['Nice.', 0], ['Um.', 2000], ['A.', 4000])).map((c) => c.text),
@@ -197,7 +224,7 @@ describe('voice notes: where the pointer was', () => {
       { kind: 'dot', x: 0.2, y: 0.8 },
     );
   });
-  it('puts a dot where the pointer is at "this", even moving', () => {
+  it('puts a dot where the pointer comes to rest just after "this", as pointing lags (D185)', () => {
     const moving: PointerSample[] = [
       [0, 0, 0.1, 0.1],
       [250, 0, 0.12, 0.13],
@@ -206,9 +233,57 @@ describe('voice notes: where the pointer was', () => {
     ];
     assert.deepEqual(placeClaim(claim('I like this a lot'), moving, 0, size), {
       kind: 'dot',
+      x: 0.7,
+      y: 0.4,
+    });
+  });
+  it('puts a dot where the pointer is at "this" when it never rests', () => {
+    const moving: PointerSample[] = [
+      [0, 0, 0.1, 0.1],
+      [250, 0, 0.12, 0.13],
+      [650, 0, 0.6, 0.3],
+      [700, 0, null, null],
+    ];
+    assert.deepEqual(placeClaim(claim('I like this a lot'), moving, 0, size), {
+      kind: 'dot',
       x: 0.12,
       y: 0.13,
     });
+  });
+  it('reads a sweep that turns but never closes as nothing drawn (D185)', () => {
+    // A slow arc round most of the slide over six seconds, ending far from where it began.
+    const sweep: PointerSample[] = [];
+    for (let i = 0; i <= 60; i++) {
+      const a = (i / 60) * 1.9 * Math.PI;
+      sweep.push([i * 100, 0, 0.5 + 0.4 * Math.cos(a), 0.5 + 0.35 * Math.sin(a)]);
+    }
+    const shape = placeClaim(claim('Remove this slide design, we have no such thing', 1000), sweep, 0, size);
+    assert.notEqual(shape.kind, 'area');
+  });
+  it('reads a closed loop that takes seconds as wandering, not a circle (D185)', () => {
+    const slow: PointerSample[] = [];
+    for (let i = 0; i <= 80; i++) {
+      const a = (i / 80) * 2 * Math.PI;
+      slow.push([i * 100, 0, 0.5 + 0.4 * Math.cos(a), 0.5 + 0.4 * Math.sin(a)]);
+    }
+    const shape = placeClaim(claim('The whole layout feels busy to me here', 2000), slow, 0, size);
+    assert.notEqual(shape.kind, 'area');
+  });
+  it('puts a scrub as the small area it went back and forth over (D185)', () => {
+    const scrub: PointerSample[] = [];
+    for (let i = 0; i <= 40; i++) {
+      const x = 0.3 + 0.1 * (i % 10 < 5 ? (i % 10) / 5 : (10 - (i % 10)) / 5);
+      scrub.push([i * 25, 0, x, 0.6 + 0.004 * Math.sin(i)]);
+    }
+    const shape = placeClaim(claim('The number here is too big'), scrub, 0, size);
+    assert.equal(shape.kind, 'area');
+    if (shape.kind !== 'area') return;
+    assert.ok(shape.w < 0.2 && shape.h < 0.1, `small: ${JSON.stringify(shape)}`);
+    assert.ok(Math.abs(shape.x + shape.w / 2 - 0.35) < 0.03);
+  });
+  it('ignores a hand parked since long before the sentence (D185)', () => {
+    const parked = rest(0.9, 0.95, 0, 20_000);
+    assert.ok(isWhole(placeClaim(claim('Please find alternatives', 8000), parked, 0, size)));
   });
   it('puts an arrow between two rests for a move', () => {
     const path = [...rest(0.2, 0.2, 0, 700), ...rest(0.7, 0.6, 900, 1600)];
@@ -284,6 +359,16 @@ describe('voice notes: a take applied', () => {
     assert.equal(one.marks[0].quote, 'The button is too heavy.');
     assert.ok(one.marks[0].id.startsWith(voicePrefix('aaaa-bbbb')));
     assert.equal(two.marks[0].good, 'The list reads well.');
+  });
+
+  it('names the takes whose notes are on the batch, for the export to carry (D183)', () => {
+    const made = applyTake([asset('one'), asset('two')], take(say('The button is too heavy.')));
+    const other: Take = { ...take([]), id: 'cccc-dddd' };
+    assert.deepEqual(
+      takesApplied(made, [other, take([])]).map((t) => t.id),
+      ['aaaa-bbbb'],
+    );
+    assert.deepEqual(takesApplied([asset('one')], [other, take([])]), []);
   });
 
   it('makes one note of all that was said about one thing (D147)', () => {

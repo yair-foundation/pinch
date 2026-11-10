@@ -73,6 +73,43 @@ const FILLER = new Set([
 const LOST_THREAD = 6000;
 
 /**
+ * Words with no thought of their own (D186): a sentence made only of them has said nothing yet.
+ * "Okay", "like", "right" and "well" are left out, as they can be the whole verdict.
+ */
+const EMPTY = new Set([
+  ...['this', 'that', 'these', 'those', 'it', 'its', "it's", "that's", 'here', 'there', 'one'],
+  ...['is', 'are', 'was', 'were', 'be', 'been', 'am', "i'm", 'do', 'does', 'did', 'to'],
+  ...['i', 'you', 'we', 'they', 'me', 'us', 'them', 'my', 'your', 'our', 'their'],
+  ...['the', 'a', 'an', 'of', 'in', 'on', 'at', 'for', 'with', 'by', 'from', 'as', 'about'],
+  ...['would', 'could', 'should', 'can', 'will', 'have', 'has', 'had', 'just', 'also', 'then'],
+  ...['now', 'or', 'but', 'if', 'what', 'which', 'thing', 'things'],
+  ...['um', 'uh', 'erm', 'oh', 'ah', 'so', 'and', 'wait', 'hmm', 'hm', 'mm'],
+]);
+/** Words no sentence ends on: whatever full stop or pause follows one, the sentence goes on. */
+const DANGLING = new Set([
+  ...['the', 'a', 'an', 'my', 'your', 'our', 'their', 'of', 'and', 'or', 'because'],
+  ...['would', 'could', 'should', 'very'],
+]);
+/** Words that begin a thought without being one, so a sentence of only these is still open. */
+const OPENS = new Set(['is', 'are', 'was', 'were', 'be', "i'm", "it's", "that's", 'would']);
+
+const saidOf = (words: readonly TimedWord[]) => words.map((w) => norm(w.text)).filter(Boolean);
+/** Whether what was said says nothing: only words with no thought of their own. */
+const saysNothing = (said: readonly string[]) => said.every((w) => EMPTY.has(w));
+
+/**
+ * Whether a sentence so far is unfinished (D186): it ends on a word no sentence ends on ("I would
+ * make the"), or it has opened a thought and said nothing yet ("This is"). Whisper puts a full
+ * stop at a pause, and starts the next word with a capital, wherever the speaker stopped to look.
+ */
+function unfinished(sentence: readonly TimedWord[]): boolean {
+  const said = saidOf(sentence);
+  const last = said[said.length - 1];
+  if (!last) return false;
+  return DANGLING.has(last) || (saysNothing(said) && OPENS.has(last));
+}
+
+/**
  * Whether a pause before this word ends the sentence (D162). Whisper starts a sentence with a
  * capital, so a word in lower case after a pause goes on with the same thought, as people stop to
  * look or think in the middle of one: "a nice atmosphere … and vibes".
@@ -83,17 +120,26 @@ const pauseEnds = (word: TimedWord, gap: number) =>
 /** What was said, as claims: a sentence each, split at a contrast. */
 export function claimsOf(words: readonly TimedWord[]): Claim[] {
   const sentences: TimedWord[][] = [];
+  // The words an unfinished sentence went on past, whatever stop or pause came after them.
+  const joined = new Set<TimedWord>();
   let current: TimedWord[] = [];
   words.forEach((word, i) => {
     const prev = words[i - 1];
     if (current.length && prev && pauseEnds(word, word.start - prev.end)) {
-      sentences.push(current);
-      current = [];
+      if (word.start - prev.end < LOST_THREAD && unfinished(current)) joined.add(prev);
+      else {
+        sentences.push(current);
+        current = [];
+      }
     }
     current.push(word);
     if (endsSentence(word.text)) {
-      sentences.push(current);
-      current = [];
+      const next = words[i + 1];
+      if (next && next.start - word.end < LOST_THREAD && unfinished(current)) joined.add(word);
+      else {
+        sentences.push(current);
+        current = [];
+      }
     }
   });
   if (current.length) sentences.push(current);
@@ -102,10 +148,12 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
   for (const sentence of sentences) {
     let part: TimedWord[] = [];
     const flush = () => {
-      const said = part.map((w) => norm(w.text)).filter(Boolean);
-      // One word can be a whole note, "Nice" over what the pointer is on, but not a stray "a".
+      const said = saidOf(part);
+      // One word can be a whole note, "Nice" over what the pointer is on, but not a stray "a",
+      // and not a sentence that never got to its point: "This is." (D186).
       const enough = said.length >= 2 || (said[0]?.length ?? 0) >= 3;
-      if (enough && said.some((w) => !FILLER.has(w))) claims.push(claimOf(part));
+      if (enough && said.some((w) => !FILLER.has(w)) && !saysNothing(said))
+        claims.push(claimOf(part, joined));
       part = [];
     };
     for (const word of sentence) {
@@ -120,9 +168,20 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
   return claims;
 }
 
-function claimOf(words: TimedWord[]): Claim {
+/** A proper name's or an acronym's capital stays; a sentence's first word, joined on, loses it. */
+const lowered = (text: string) =>
+  /^\p{Lu}\p{Ll}/u.test(text) && !/^I(['’]|$)/.test(text)
+    ? text.charAt(0).toLowerCase() + text.slice(1)
+    : text;
+
+function claimOf(words: TimedWord[], joined: ReadonlySet<TimedWord> = new Set()): Claim {
   let text = words
-    .map((w) => w.text)
+    .map((w, i) => {
+      // Where an unfinished sentence went on, the stop Whisper put there goes, and so does the
+      // capital it gave the next word: "I would make the. UI bigger." is one sentence.
+      const said = joined.has(w) ? w.text.replace(/[.?!]+(["'”’)]*)$/, '$1') : w.text;
+      return i > 0 && joined.has(words[i - 1]) ? lowered(said) : said;
+    })
     .join(' ')
     .replace(/[,;:]+$/, '');
   text = text.charAt(0).toUpperCase() + text.slice(1);
@@ -468,13 +527,51 @@ type Point = { t: number; x: number; y: number };
 type Size = { width: number; height: number };
 
 /** A pointer at rest: where, and from when to when. */
-type Rest = { x: number; y: number; from: number; to: number };
+export type Rest = { x: number; y: number; from: number; to: number };
+
+/**
+ * A stroke (D185): the pointer's motion between two rests, read on its own before any words. A
+ * circle goes round something and closes; a scrub goes back and forth over one spot; a travel is
+ * straight and long, the hand going somewhere; the rest is wander, a hand moving while its owner
+ * thinks. Only a circle or a scrub says what the person meant, as `area`.
+ */
+export type Stroke = {
+  kind: 'circle' | 'scrub' | 'travel' | 'wander';
+  from: number;
+  to: number;
+  area: Area | null;
+};
 
 /** How far a resting pointer may drift, and how long it must stay, to count as a rest. */
 const REST_DRIFT = 0.015;
 const REST_MIN = 450;
 /** A word's pointer is read this long either side of it, as pointing leads and lags speech. */
 const LEAD = 400;
+/** A rest may begin this long after a word and still be where it pointed. */
+const LAG = 800;
+/** A hand that moved for a sentence came to rest no earlier than this before it (D185). */
+const ARRIVED = 1500;
+/** A slip off the screenshot shorter than this, straight back on, is one stroke still (D185). */
+const BRIDGE = 400;
+/** Steps under this share of the diagonal have no direction, so a trembling hand doesn't turn. */
+const STEP = 0.006;
+/**
+ * A circle has turned this far, one way, closes within this share of its size, and takes no
+ * longer than this a loop.
+ */
+const CIRCLE_TURN = 1.67 * Math.PI;
+const CIRCLE_CLOSES = 0.35;
+const CIRCLE_LOOP_MS = 2500;
+/** A scrub crosses back over itself at least this often, within this share of the width. */
+const SCRUB_TURNS = 3;
+const SCRUB_ACROSS = 0.35;
+/** A travel is at least this straight (chord over path) and this long (of the diagonal). */
+const TRAVEL_STRAIGHT = 0.8;
+const TRAVEL_LENGTH = 0.1;
+/** An area's short side is at least this share of the diagonal, or it was too small to mean. */
+const SMALLEST = 0.012;
+/** A circle covering this much of the screen is about the screen. */
+const HUGE = 0.6;
 
 /**
  * The pointer's path over one screen between two times, broken where it left the screenshot,
@@ -485,6 +582,13 @@ function pathsOn(pointer: readonly PointerSample[], screen: number, from: number
   const paths: { points: Point[]; until: number }[] = [];
   let path: Point[] = [];
   let before: Point | null = null;
+  // When the pointer slipped off the screenshot, to come straight back (D185) or not.
+  let left: number | null = null;
+  const close = () => {
+    if (path.length) paths.push({ points: path, until: left ?? to });
+    path = [];
+    left = null;
+  };
   for (const [t, s, x, y] of pointer) {
     if (t < from) {
       before = s === screen && x !== null && y !== null ? { t: from, x, y } : null;
@@ -495,15 +599,20 @@ function pathsOn(pointer: readonly PointerSample[], screen: number, from: number
       path.push(before);
       before = null;
     }
-    if (s !== screen || x === null || y === null) {
-      if (path.length) paths.push({ points: path, until: t });
-      path = [];
+    if (s !== screen) {
+      close();
       continue;
     }
+    if (x === null || y === null) {
+      left ??= t;
+      continue;
+    }
+    if (left !== null && t - left > BRIDGE) close();
+    left = null;
     path.push({ t, x, y });
   }
   if (before) path.push(before);
-  if (path.length) paths.push({ points: path, until: to });
+  close();
   return paths;
 }
 
@@ -511,57 +620,158 @@ const dist = (a: { x: number; y: number }, b: { x: number; y: number }, size: Si
   Math.hypot((a.x - b.x) * size.width, (a.y - b.y) * size.height) /
   Math.hypot(size.width, size.height);
 
-/** Where the pointer rested on a path: it stays put between samples, so a gap is a rest too. */
-function restsOf(path: Point[], until: number, size: Size): Rest[] {
+const restAt = (run: Point[], from: number, to: number): Rest => ({
+  x: run.reduce((s, p) => s + p.x, 0) / run.length,
+  y: run.reduce((s, p) => s + p.y, 0) / run.length,
+  from,
+  to,
+});
+
+/** The signed turn between the steps a to b and b to c, in radians. */
+function turnAt(a: Point, b: Point, c: Point, size: Size): number {
+  const ax = (b.x - a.x) * size.width;
+  const ay = (b.y - a.y) * size.height;
+  const bx = (c.x - b.x) * size.width;
+  const by = (c.y - b.y) * size.height;
+  return Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
+}
+
+function boxOf(pts: readonly Point[], pad: number): Area {
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  return areaFrom(
+    Math.min(...xs) - pad,
+    Math.min(...ys) - pad,
+    Math.max(...xs) + pad,
+    Math.max(...ys) + pad,
+  );
+}
+
+/** An area widened to `SMALLEST` on a side too thin to have been meant, kept on the screen. */
+function atLeast(a: Area, size: Size): Area {
+  const d = Math.hypot(size.width, size.height);
+  const w = Math.max(a.w, (SMALLEST * d) / size.width);
+  const h = Math.max(a.h, (SMALLEST * d) / size.height);
+  const cx = a.x + a.w / 2;
+  const cy = a.y + a.h / 2;
+  return areaFrom(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
+}
+
+/**
+ * A circle on a stroke: a run that turns through `CIRCLE_TURN` one way, ends near where it began
+ * and takes no longer than a hand drawing takes, then goes on round the same spot as long as the
+ * pointer stays by it; the box round all of it, or null. A sweep turns as far but doesn't close,
+ * and a hand wandering round the slide turns but takes seconds a loop: neither counts (D185: on
+ * the author's deck, six such sweeps became slide-sized areas on one slide).
+ */
+function circleOf(pts: readonly Point[], size: Size): Area | null {
+  for (let i = 0; i + 3 < pts.length; i++) {
+    let turned = 0;
+    for (let k = i + 1; k + 1 < pts.length; k++) {
+      turned += turnAt(pts[k - 1], pts[k], pts[k + 1], size);
+      if (Math.abs(turned) < CIRCLE_TURN) continue;
+      const run = pts.slice(i, k + 2);
+      const box = boxOf(run, 0);
+      const across =
+        Math.max(box.w * size.width, box.h * size.height) / Math.hypot(size.width, size.height);
+      const closes = dist(run[0], run[run.length - 1], size) <= CIRCLE_CLOSES * across;
+      const quick =
+        run[run.length - 1].t - run[0].t <= (CIRCLE_LOOP_MS * Math.abs(turned)) / (2 * Math.PI);
+      if (!quick) break;
+      // Turned enough but not back round yet: a little further may close it; past a turn and a
+      // fifth without closing, it never will.
+      if (!closes) {
+        if (Math.abs(turned) >= 2.4 * Math.PI) break;
+        continue;
+      }
+      // On round the same spot: every later point within a third of the circle's size of its box.
+      const near = (p: Point) =>
+        p.x >= box.x - across / 3 &&
+        p.x <= box.x + box.w + across / 3 &&
+        p.y >= box.y - across / 3 &&
+        p.y <= box.y + box.h + across / 3;
+      let end = k + 2;
+      while (end < pts.length && near(pts[end])) end++;
+      const area = boxOf(pts.slice(i, end), 0.01);
+      const short = Math.min(area.w * size.width, area.h * size.height);
+      if (short / Math.hypot(size.width, size.height) < SMALLEST) break;
+      return area;
+    }
+  }
+  return null;
+}
+
+/** What a stroke is, from its shape alone. */
+function classify(points: Point[], size: Size): Stroke {
+  const from = points[0].t;
+  const to = points[points.length - 1].t;
+  const pts: Point[] = [];
+  for (const p of points)
+    if (!pts.length || dist(pts[pts.length - 1], p, size) >= STEP) pts.push(p);
+  // Sharp turns back first: a hand scrubbing makes narrow loops that would pass for circles.
+  let turns = 0;
+  for (let k = 1; k + 1 < pts.length; k++)
+    if (Math.abs(turnAt(pts[k - 1], pts[k], pts[k + 1], size)) > 2.5) turns++;
+  const box = boxOf(pts, 0);
+  if (turns >= SCRUB_TURNS) {
+    if (box.w <= SCRUB_ACROSS && box.h <= SCRUB_ACROSS)
+      return { kind: 'scrub', from, to, area: atLeast(boxOf(pts, 0.01), size) };
+    return { kind: 'wander', from, to, area: null };
+  }
+  const circle = pts.length >= 4 ? circleOf(pts, size) : null;
+  if (circle) return { kind: 'circle', from, to, area: circle };
+  let length = 0;
+  for (let k = 1; k < pts.length; k++) length += dist(pts[k - 1], pts[k], size);
+  const chord = pts.length > 1 ? dist(pts[0], pts[pts.length - 1], size) : 0;
+  if (length >= TRAVEL_LENGTH && chord / length >= TRAVEL_STRAIGHT)
+    return { kind: 'travel', from, to, area: null };
+  return { kind: 'wander', from, to, area: null };
+}
+
+/**
+ * A path cut into rests and the strokes between them (D185). The pointer stays put between
+ * samples, so a gap is a rest too; a stroke needs three samples to have a shape.
+ */
+export function strokesOf(
+  path: readonly Point[],
+  until: number,
+  size: Size,
+): { rests: Rest[]; strokes: Stroke[] } {
   const rests: Rest[] = [];
+  const strokes: Stroke[] = [];
+  let moving: Point[] = [];
   let i = 0;
   while (i < path.length) {
     let j = i;
     while (j + 1 < path.length && dist(path[i], path[j + 1], size) <= REST_DRIFT) j++;
     const to = j + 1 < path.length ? path[j + 1].t : until;
     if (to - path[i].t >= REST_MIN) {
-      const run = path.slice(i, j + 1);
-      rests.push({
-        x: run.reduce((s, p) => s + p.x, 0) / run.length,
-        y: run.reduce((s, p) => s + p.y, 0) / run.length,
-        from: path[i].t,
-        to,
-      });
-    }
+      if (moving.length >= 3) strokes.push(classify(moving, size));
+      moving = [];
+      rests.push(restAt(path.slice(i, j + 1), path[i].t, to));
+    } else moving.push(...path.slice(i, j + 1));
     i = j + 1;
   }
-  return rests;
+  if (moving.length >= 3) strokes.push(classify(moving, size));
+  return { rests, strokes };
 }
 
-/** A circle drawn on a path, as the area it goes round, or null. */
-function loopOf(path: Point[], size: Size): Area | null {
-  // Steps too small to have a direction are dropped, so a trembling hand doesn't turn.
-  const pts: Point[] = [];
-  for (const p of path) if (!pts.length || dist(pts[pts.length - 1], p, size) >= 0.006) pts.push(p);
-  for (let i = 0; i + 3 < pts.length; i++) {
-    let turned = 0;
-    for (let k = i + 1; k + 1 < pts.length; k++) {
-      const ax = (pts[k].x - pts[k - 1].x) * size.width;
-      const ay = (pts[k].y - pts[k - 1].y) * size.height;
-      const bx = (pts[k + 1].x - pts[k].x) * size.width;
-      const by = (pts[k + 1].y - pts[k].y) * size.height;
-      turned += Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
-      if (Math.abs(turned) < 1.75 * Math.PI) continue;
-      const run = pts.slice(i, k + 2);
-      const xs = run.map((p) => p.x);
-      const ys = run.map((p) => p.y);
-      const area = areaFrom(
-        Math.min(...xs) - 0.01,
-        Math.min(...ys) - 0.01,
-        Math.max(...xs) + 0.01,
-        Math.max(...ys) + 0.01,
-      );
-      const small = Math.min(area.w * size.width, area.h * size.height);
-      if (small / Math.hypot(size.width, size.height) >= 0.02) return area;
-      break;
-    }
+/** The rests and strokes of the pointer on a screen between two times. */
+export function pointerOn(
+  pointer: readonly PointerSample[],
+  screen: number,
+  from: number,
+  to: number,
+  size: Size,
+): { rests: Rest[]; strokes: Stroke[] } {
+  const rests: Rest[] = [];
+  const strokes: Stroke[] = [];
+  for (const path of pathsOn(pointer, screen, from, to)) {
+    const cut = strokesOf(path.points, path.until, size);
+    rests.push(...cut.rests);
+    strokes.push(...cut.strokes);
   }
-  return null;
+  return { rests, strokes };
 }
 
 const DEICTIC = new Set(['this', 'here', 'these', 'that', 'those', 'there']);
@@ -578,7 +788,17 @@ function pointerAt(pointer: readonly PointerSample[], screen: number, t: number)
   return at && at[1] === screen && at[2] !== null && at[3] !== null ? { x: at[2], y: at[3] } : null;
 }
 
-/** Where a claim lands on its screen, from the pointer while it was said. */
+const isHuge = (a: Area) => a.w * a.h >= HUGE;
+const dotAt = (p: { x: number; y: number }): Shape => ({ kind: 'dot', x: p.x, y: p.y });
+
+/**
+ * Where a claim lands on its screen, from the pointer while it was said (D185). The strokes
+ * come first: a circle or a scrub made while it was said is the thing, a huge one the screen. A
+ * "move" with the pointer resting on two spots is an arrow from the first to the last. At "this",
+ * the rest the pointer was in, or the one it came to just before or after the word, as pointing
+ * leads and lags speech, else wherever it was. Without any of those, the rest the hand moved to
+ * for this sentence; a rest begun long before it is a parked hand, and says nothing.
+ */
 export function placeClaim(
   claim: Pick<Claim, 'words' | 'start' | 'end' | 'text'>,
   pointer: readonly PointerSample[],
@@ -587,28 +807,48 @@ export function placeClaim(
 ): Shape {
   const from = claim.start - LEAD;
   const to = claim.end + LEAD / 2;
-  const paths = pathsOn(pointer, screen, from, to);
-  for (const path of paths) {
-    const loop = loopOf(path.points, size);
-    if (loop) return loop;
-  }
-  const rests = paths.flatMap((p) => restsOf(p.points, p.until, size));
+  const seen = pointerOn(pointer, screen, from - ARRIVED, to + LAG, size);
+  const during = (x: { from: number; to: number }) => x.to >= from && x.from <= to;
+  const overlap = (x: { from: number; to: number }) => Math.min(x.to, to) - Math.max(x.from, from);
+
+  const drawn = seen.strokes
+    .filter((s) => s.area && during(s))
+    .sort((a, b) => overlap(b) - overlap(a));
+  const area = drawn[0]?.area;
+  if (area) return isHuge(area) ? WHOLE : area;
+
+  const rests = seen.rests.filter(during);
   if (MOVES.test(claim.text) && rests.length >= 2) {
     const [a, b] = [rests[0], rests[rests.length - 1]];
     if (dist(a, b, size) >= 0.05) return arrowFrom(a.x, a.y, b.x, b.y);
   }
-  // At "this", the rest it was said in, else wherever the pointer was, else a rest close by.
   for (const word of claim.words) {
     if (!DEICTIC.has(norm(word.text))) continue;
-    const p =
-      rests.find((r) => r.from <= word.start && r.to >= word.start) ??
-      pointerAt(pointer, screen, word.start) ??
-      rests.find((r) => r.from <= word.end + LEAD && r.to >= word.start - LEAD);
-    if (p) return { kind: 'dot', x: p.x, y: p.y };
+    const at =
+      seen.rests.find((r) => r.from <= word.start && r.to >= word.start) ??
+      seen.rests.find((r) => r.from >= word.start - LEAD && r.from <= word.end + LAG) ??
+      pointerAt(pointer, screen, word.start);
+    if (at) return dotAt(at);
   }
-  const longest = rests.sort((a, b) => b.to - b.from - (a.to - a.from))[0];
-  if (longest) return { kind: 'dot', x: longest.x, y: longest.y };
+  const arrived = rests
+    .filter((r) => r.from >= claim.start - ARRIVED)
+    .sort((a, b) => b.to - b.from - (a.to - a.from))[0];
+  if (arrived) return dotAt(arrived);
   return WHOLE;
+}
+
+/** Whether the pointer stayed on a note's place through a claim: the hand still on the thing. */
+export function stayedOn(
+  shape: Shape,
+  pointer: readonly PointerSample[],
+  screen: number,
+  claim: Pick<Claim, 'start' | 'end'>,
+  size: Size,
+): boolean {
+  if (isWhole(shape)) return false;
+  const a = pointerAt(pointer, screen, claim.start);
+  const b = pointerAt(pointer, screen, (claim.start + claim.end) / 2);
+  return !!a && !!b && under(shape, a, size) && under(shape, b, size);
 }
 
 /** How long a pause may be inside one note: a longer one starts the next, whatever is said. */
@@ -655,9 +895,16 @@ export function sameThing(last: Shape, next: Shape, text: string, size: Size): b
   return last.kind === 'area' && next.kind === 'area' && overlapOf(last, next) >= 0.5;
 }
 
-/** A note's place as more is said about it: the circle over a dot, a place over the whole screen. */
+/**
+ * A note's place as more is said about it: the circle over a dot, a place over the whole screen,
+ * and a claim with nothing pointed at (D185) leaves the place as it was.
+ */
 const placeAgain = (last: Shape, next: Shape): Shape =>
-  isWhole(last) || (last.kind === 'dot' && next.kind === 'area') ? next : last;
+  isWhole(next)
+    ? last
+    : isWhole(last) || (last.kind === 'dot' && next.kind === 'area')
+      ? next
+      : last;
 
 /** Whether a point is on a note's place, as "star this" or "drop that" means it. */
 function under(shape: Shape, p: { x: number; y: number }, size: Size) {
@@ -672,6 +919,13 @@ function under(shape: Shape, p: { x: number; y: number }, size: Size) {
 
 /** The notes said on a screen, in the order they were said: the ones a take numbers. */
 export const voiceNotes = (a: Pick<Asset, 'marks'>) => a.marks.filter((m) => m.origin === 'voice');
+
+/** The takes whose notes are on the batch (D183), oldest first: the ones its export carries. */
+export const takesApplied = (assets: readonly Pick<Asset, 'marks'>[], takes: readonly Take[]) =>
+  takes.filter((t) => {
+    const prefix = voicePrefix(t.id);
+    return assets.some((a) => voiceNotes(a).some((m) => m.id.startsWith(prefix)));
+  });
 
 /** A note's verdict turned round: what works becomes what to avoid, and back. */
 export const flipVerdict = (m: Mark): Mark => {
@@ -755,7 +1009,8 @@ export function applyTake(
           !!before &&
           !!prev &&
           claim.start - before.end <= CONTINUE_GAP &&
-          sameThing(prev.shape, shape, claim.text, size);
+          (sameThing(prev.shape, shape, claim.text, size) ||
+            (isWhole(shape) && stayedOn(prev.shape, take.pointer, k, claim, size)));
         const parts: string[] = joins && before ? [...before.parts, claim.text] : [claim.text];
         const sides = sidesOf(parts);
         const topics = sortTopics([

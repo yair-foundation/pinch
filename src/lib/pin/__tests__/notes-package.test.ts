@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { type Batch, type BatchNote, type Collection, newCollection } from '../learnings';
+import type { Take } from '../narration';
 import {
   CHECK_FILE,
   hasSaved,
@@ -9,6 +10,7 @@ import {
   notesPackage,
   notesPackageRoot,
   savedPackage,
+  takeFile,
 } from '../notes-package';
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -126,6 +128,9 @@ describe('the notes package', () => {
     assert.match(agent, /\nmodel: haiku\n---\n/);
     assert.match(agent, /\*\*\/pinch-notes-\*\/notes\.md/);
     assert.match(agent, /Don't add taste of your own\./);
+    // How far a note carries (D186): the same job on the same kind of screen, and no further.
+    assert.match(agent, /plainly does the same job on the same kind of screen/);
+    assert.match(agent, /A note that only approves a screen \("this is okay"\) asks for nothing/);
   });
 
   it('keeps both sides of a note in the words it was said, on one line', () => {
@@ -240,5 +245,27 @@ describe('what someone who saved notes takes away', () => {
     assert.equal(hasSaved(saved([batch('a', [])])), false);
     assert.equal(hasSaved(saved([batch('a', [note('01.1')])])), true);
     assert.equal(hasSaved(rule(saved([]))), true);
+  });
+});
+
+describe('the take beside the package', () => {
+  it('is the take as the browser kept it, named by when it was recorded (D183)', () => {
+    const take: Take = {
+      id: 'aaaa-bbbb',
+      version: 1,
+      recordedAt: '2026-11-08T11:57:03.250Z',
+      durationMs: 1200,
+      mimeType: 'audio/webm',
+      screens: [{ id: 'one', name: 'one.png', width: 1000, height: 800 }],
+      shown: [{ t: 0, screen: 0 }],
+      pointer: [
+        [100, 0, 0.5, 0.5],
+        [900, 0, null, null],
+      ],
+      words: [{ text: 'Nice.', start: 200, end: 600 }],
+    };
+    const file = takeFile(take);
+    assert.equal(file.name, 'pinch-take-2026-11-08-11-57-03.json');
+    assert.deepEqual(JSON.parse(new TextDecoder().decode(file.data)), take);
   });
 });

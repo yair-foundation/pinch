@@ -2,6 +2,14 @@
 
 ## Current state (2026-11-07)
 
+Since D186 a sentence that never got to its point ("This is.") is not a note, one still being said as the reel turns stays on its screen, and an unfinished one runs on past Whisper's full stop; and the check carries a note only to an element doing the same job on the same kind of screen. On six slides of the author's deck the reworded check gave 4 findings where it had given 18, keeping the direct ones and losing two sound ones. The taste harness was not run again.
+
+Since D185 the pointer is read as strokes before the words: a circle must close and be quick, a scrub turns back on itself, travel and wander place nothing, and a hand parked since before a sentence says nothing. Scored on the author's two gesture takes with `scripts/take-strokes.ts`: 17 of 25 circles and 7 of 13 scrubs read as themselves, points as rests. Not yet checked on a real review take.
+
+Since D184 the reel hears the pointer on the window while recording and draws a ring on the screenshot where the take sees it, after the author's gesture take lost the pointer on three screens; in development the console says each second what the recorder sees. Checked in the browser pane with a stand-in microphone and on a production build in light and dark.
+
+Since D183 every Export also carries the take beside the notes folder, `pinch-take-<time>.json`: the pointer's path, the screens and the timed words, no audio, for the placing of notes to be tuned on; `scripts/replay-take.ts` shows where a take's notes land. The author's first real deck review had shown the placing reading sweeps as circles and putting half its notes on the whole screen. Checked with the tests and on a production build with a seeded session; not yet with a take recorded on the live site.
+
 Since D181 the landing ends with "Fair questions.": sixteen questions, eight shown and the rest behind Show more (D182), from where screenshots go to what a take looks like, how notes carry across sessions and why not just tell the agent, each answered in one to three sentences, as native `details` cards in the page's HTML (D177).
 
 Since D175 the landing promises "Say it once." and its last section compares with and without Pinch in the tests' figures: 4% of corrections back against 74%, and a review that picks what you'd pick 70% of the time against 32%, and 7 fewer changes to ask for on a screen.

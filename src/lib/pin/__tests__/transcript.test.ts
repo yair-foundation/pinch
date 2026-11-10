@@ -184,10 +184,17 @@ describe('transcript: by screen', () => {
     { t: 3000, screen: null },
   ];
   it('gives each word to the screen on show when it began', () => {
-    const words = [word('one', 100), word('two', 999), word('three', 1000), word('four', 2500)];
+    const words = [word('one', 100), word('two.', 999), word('three', 1000), word('four', 2500)];
     assert.deepEqual(
       wordsByScreen(shown, words, 2).map((s) => spoken(s)),
-      ['one two', 'three four'],
+      ['one two.', 'three four'],
+    );
+  });
+  it('keeps a sentence still being said as the reel turns on the screen it began on (D186)', () => {
+    const words = [word('This', 600), word('is', 850), word('okay.', 1100), word('Next', 2500)];
+    assert.deepEqual(
+      wordsByScreen(shown, words, 2).map((s) => spoken(s)),
+      ['This is okay.', 'Next'],
     );
   });
   it('gives words on the end card to the last screen', () => {
