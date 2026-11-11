@@ -19,6 +19,7 @@ import {
   verdictOf,
 } from '@/lib/pin/model';
 import {
+  colourOf,
   isWholeScreen,
   mainColours,
   type Spot,
@@ -27,6 +28,7 @@ import {
   textIn,
   whereLine,
 } from '@/lib/pin/mark-words';
+import { isWhole } from '@/lib/pin/voice-notes';
 import { REVIEW, type ReviewCell, reviewPages } from '@/lib/pin/review-sheets';
 import { layoutSheet } from '@/lib/pin/sheet';
 import { zip, type ZipEntry } from '@/lib/pin/zip';
@@ -485,7 +487,10 @@ function drawAll(
 ) {
   const placed: { x: number; y: number }[] = [];
   for (const [i, m] of marks.entries()) {
-    const others = marks.filter((o) => o !== m).map((o) => o.shape);
+    // A note on the whole screen points at nothing, so nothing is drawn for it (D188); the
+    // others keep their numbers.
+    if (isWhole(m.shape)) continue;
+    const others = marks.filter((o) => o !== m && !isWhole(o.shape)).map((o) => o.shape);
     const room = withOthers(busy, others, px, unit, placed);
     placed.push(drawMark(ctx, m, i + 1, px, unit, undefined, room));
   }
@@ -957,9 +962,21 @@ export async function buildExport(
       const rect = settledCrop(bitmap, mark, grid);
       const spot = spotOf(mark.shape, bitmap.width, bitmap.height);
       crops.set(`${asset.id}/${mark.id}`, rect);
+      // For a point, the colour right under it (D188), ahead of the colours around it.
+      const at =
+        mark.shape.kind === 'dot'
+          ? colourOf(
+              spotPixels(bitmap, {
+                x: mark.shape.x,
+                y: mark.shape.y,
+                w: 1 / bitmap.width,
+                h: 1 / bitmap.height,
+              }),
+            )
+          : undefined;
       wheres.set(
         `${asset.id}/${mark.id}`,
-        whereLine(spot, textIn(text, spot), mainColours(spotPixels(bitmap, spot))),
+        whereLine(spot, textIn(text, spot), mainColours(spotPixels(bitmap, spot)), at),
       );
       files.push({
         name: root + names.crop(j),

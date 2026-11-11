@@ -340,6 +340,13 @@ describe('export names and text', () => {
   it('names files by place in the batch and a safe slug', () => {
     assert.equal(slug('Pricing page (v2).png'), 'pricing-page-v2');
     assert.equal(slug('דף.png'), 'image');
+    // A long name loses its middle, never its end (D188): the end tells two slides apart.
+    const six = slug('slide_chart-bars__gallery-investor-final-6.png');
+    const seven = slug('slide_chart-bars__gallery-investor-final-7.png');
+    assert.equal(six, 'slide-chart-bars-ga-ery-investor-final-6');
+    assert.notEqual(six, seven);
+    assert.ok(six.length <= 40 && seven.endsWith('-7'));
+    assert.equal(slug('a'.repeat(40)), 'a'.repeat(40));
     const f = assetFiles(asset(), 2, 30);
     assert.deepEqual(
       [f.image, f.marked, f.crop(0)],

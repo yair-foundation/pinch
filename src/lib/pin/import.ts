@@ -154,5 +154,8 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       ...(n.origin === 'voice' ? { said: true as const } : {}),
       ...(n.where ? { where: n.where } : {}),
       ...(n.spoken ? { spoken: n.spoken } : {}),
+      ...(n.shape.kind === 'area' && n.shape.w >= 0.999 && n.shape.h >= 0.999
+        ? { whole: true as const }
+        : {}),
     })),
   );

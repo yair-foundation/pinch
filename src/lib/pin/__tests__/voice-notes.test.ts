@@ -6,9 +6,11 @@ import { type Asset, manifest } from '../model';
 import type { PointerSample, Take } from '../narration';
 import { takePackage } from '../notes-package';
 import {
+  aboutTheScreen,
   applyTake,
   claimsOf,
   flipVerdict,
+  heard,
   isWhole,
   leanOfClaim,
   placeClaim,
@@ -19,6 +21,7 @@ import {
   verdictOfClaim,
   voiceNotes,
   voicePrefix,
+  wordsIn,
 } from '../voice-notes';
 import type { TimedWord } from '../voice-tags';
 
@@ -258,7 +261,8 @@ describe('voice notes: where the pointer was', () => {
       sweep.push([i * 100, 0, 0.5 + 0.4 * Math.cos(a), 0.5 + 0.35 * Math.sin(a)]);
     }
     const shape = placeClaim(claim('Remove this slide design, we have no such thing', 1000), sweep, 0, size);
-    assert.notEqual(shape.kind, 'area');
+    // Nothing drawn: no area but the whole screen, which "this slide" is (D188).
+    assert.ok(shape.kind !== 'area' || isWhole(shape));
   });
   it('reads a closed loop that takes seconds as wandering, not a circle (D185)', () => {
     const slow: PointerSample[] = [];
@@ -553,5 +557,138 @@ describe('voice notes: a take applied', () => {
     );
     assert.equal(out.length, 1);
     assert.equal(out[0].marks.length, 1);
+  });
+});
+
+describe('voice notes: about the screen (D188)', () => {
+  it('knows a remark that points at nothing but the screen', () => {
+    assert.ok(aboutTheScreen(say('Delete this slide.')));
+    assert.ok(aboutTheScreen(say('I like this page a lot')));
+    assert.ok(aboutTheScreen(say('Keep that screen, and this slide too')));
+    assert.ok(!aboutTheScreen(say('Delete this.')));
+    assert.ok(!aboutTheScreen(say('On this slide this title is too big')));
+    assert.ok(!aboutTheScreen(say('The slide is too busy')));
+  });
+  it('puts it on the whole screen, wherever the hand came to rest after the scroll', () => {
+    // The author's review: the hand settles just before the words, and "this" is said in a rest.
+    const settled = rest(0.46, 0.54, 800, 4000);
+    assert.ok(isWhole(placeClaim(claim('Delete this slide.', 1000), settled, 0, size)));
+    assert.ok(isWhole(placeClaim(claim('Delete this slide.', 200), circle(0.7, 0.7, 0.04, 0), 0, size)));
+    // What is pointed at still lands where it was pointed.
+    assert.equal(placeClaim(claim('Delete this.', 1000), settled, 0, size).kind, 'dot');
+  });
+});
+
+describe('voice notes: nothing said is lost (D188)', () => {
+  const asset = (id: string, marks: Asset['marks'] = []): Asset => ({
+    id,
+    name: `${id}.png`,
+    type: 'image/png',
+    width: 1000,
+    height: 1000,
+    note: '',
+    marks,
+  });
+  const take = (words: TimedWord[], durationMs = 20_000): Take => ({
+    id: 'aaaa-bbbb',
+    version: 1,
+    recordedAt: '2026-11-11T10:00:00.000Z',
+    durationMs,
+    mimeType: 'audio/webm',
+    screens: [
+      { id: 'one', name: 'one.png', width: 1000, height: 1000 },
+      { id: 'two', name: 'two.png', width: 1000, height: 1000 },
+    ],
+    shown: [
+      { t: 0, screen: 0 },
+      { t: 10_000, screen: 1 },
+    ],
+    pointer: [],
+    words,
+  });
+
+  it('keeps "Delete this" as a note when the screen has no note to drop', () => {
+    const { claims, ops } = heard(say('Delete this'));
+    assert.deepEqual(
+      claims.map((c) => c.text),
+      ['Delete this.'],
+    );
+    assert.deepEqual(ops, []);
+    const [one] = applyTake([asset('one'), asset('two')], take(say('Delete this')));
+    assert.deepEqual(
+      one.marks.map((m) => m.quote),
+      ['Delete this.'],
+    );
+  });
+  it('still drops the last note with it, said after one', () => {
+    const { claims, ops } = heard(say('The header is loud. … Delete that.'));
+    assert.equal(claims.length, 1);
+    assert.deepEqual(
+      ops.map((o) => o.kind),
+      ['drop'],
+    );
+    const [one] = applyTake(
+      [asset('one'), asset('two')],
+      take(say('The header is loud. … Delete that.')),
+    );
+    assert.equal(one.marks.length, 0);
+    // A note from an earlier take is one to drop, too.
+    assert.deepEqual(
+      heard(say('Delete this'), [], true).ops.map((o) => o.kind),
+      ['drop'],
+    );
+  });
+  it('says what it left out of the notes', () => {
+    const { claims, left } = heard(say('Oh, wait. … The header is loud.'));
+    assert.equal(claims.length, 1);
+    assert.deepEqual(
+      left.map((w) => w.text),
+      ['Oh,', 'wait.'],
+    );
+  });
+  it('takes a remark about the screen to the package with no close-up to miss', () => {
+    const t = take(say('Delete this slide.'));
+    const [one] = applyTake([asset('one'), asset('two')], t);
+    assert.ok(isWhole(one.marks[0].shape));
+    const data = manifest([one], '2026-11-11T10:00:00.000Z');
+    const encode = (x: string) => new TextEncoder().encode(x);
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const files = new Map<string, Uint8Array>([
+      ['pinch-x/notes.json', encode(JSON.stringify(data))],
+      [`pinch-x/${data.assets[0].image}`, PNG],
+    ]);
+    const exp = readExport(files);
+    assert.equal(batchNotes(exp)[0].whole, true);
+    const pack = takePackage(exp, files, '2026-11-11T10:00:00.000Z', [t]);
+    assert.equal(pack.missing, 0);
+    const names = pack.files.map((f) => f.name.split('/').slice(1).join('/'));
+    assert.ok(names.includes('transcript.md'));
+    assert.ok(!names.some((n) => n.startsWith('crops/') || n.startsWith('marked/')));
+  });
+
+  it('leaves out a word timed after the recording ended', () => {
+    const t = take([...say('The header is loud.'), ...say('Thank you.', 25_000)]);
+    assert.equal(wordsIn(t).length, 4);
+    const [one, two] = applyTake([asset('one'), asset('two')], t);
+    assert.equal(one.marks.length, 1);
+    assert.equal(two.marks.length, 0);
+  });
+  it('keeps a sentence that goes on about "it" in the same breath in the note before', () => {
+    // Read piece by piece (D187), Whisper writes three sentences where it wrote one, and the
+    // hand has left for somewhere else by the second.
+    const words = say("This color should be changed. It's not good. It's clashing with the background.");
+    const pointer: PointerSample[] = [
+      ...circle(0.5, 0.75, 0.08, 0),
+      [900, 0, 0.5, 0.83],
+      [1500, 0, 0.06, 0.32],
+      [4000, 0, null, null],
+    ];
+    const [one] = applyTake([asset('one'), asset('two')], { ...take(words), pointer });
+    assert.equal(one.marks.length, 1);
+    assert.equal(
+      one.marks[0].quote,
+      "This color should be changed. It's not good. It's clashing with the background.",
+    );
+    assert.equal(one.marks[0].shape.kind, 'area');
   });
 });

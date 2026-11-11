@@ -10,6 +10,7 @@ import {
 import { batchNotes, type PinchExport } from './import';
 import { assetOf, numberOf } from './library';
 import type { Take } from './narration';
+import { TRANSCRIPT_FILE, transcriptText, unsureLines } from './take-transcript';
 
 /*
  * The package an agent gets (D157): the author's words, what they pointed at, and nothing else.
@@ -96,7 +97,19 @@ const INTRO = [
 const MARKS_DRAWN =
   "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes, and each close-up shows one spot. A mark's colour means nothing.";
 const MARKS_IN_WORDS =
-  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours. A mark's colour means nothing.";
+  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark and no close-up. A mark's colour means nothing.";
+
+/*
+ * The remarks that may not have been taken as they were meant (D188), ahead of the notes, so an
+ * agent asks about them instead of guessing: a voice tag that took something away, a note too
+ * short to mean anything, a sentence said as the reel turned.
+ */
+const UNSURE = [
+  '## Not sure',
+  '',
+  `These may not have been taken as I meant. If one matters to what you're doing, ask me. Everything I said is in \`${TRANSCRIPT_FILE}\`.`,
+  '',
+];
 
 /** A note's words, as they were said (D168). Notes kept before that are only known sorted. */
 const wordsOf = (n: BatchNote) =>
@@ -127,11 +140,15 @@ export function notesPackage(
   stamp: string,
   /** One batch's files at the top of the package, with no folder for the batch. */
   flat = false,
+  /** The takes the notes were said in (D188), for their words to go beside the notes. */
+  takes: readonly Take[] = [],
 ): { files: PackageFile[]; notes: number; missing: number } {
   const root = notesPackageRoot(stamp);
   const images: PackageFile[] = [];
   const inWords = c.batches.some((b) => b.notes.some((n) => n.where));
   const lines = [...INTRO, inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
+  const unsure = unsureLines(takes);
+  if (unsure.length) lines.push('', ...UNSURE, ...unsure);
   let notes = 0;
   let missing = 0;
   for (const [i, b] of c.batches.entries()) {
@@ -153,7 +170,8 @@ export function notesPackage(
     for (const [number, list] of screens) {
       const asset = assetOf(manifest, number);
       const image = place(asset?.image);
-      const marked = place(asset?.marked);
+      // With every note about the whole screen, the marked copy is the screenshot again (D188).
+      const marked = list.every((n) => n.whole) ? null : place(asset?.marked);
       const about = [
         list[0].source === 'ours' ? 'My own work.' : '',
         list[0].screenTag ? `Tag: ${list[0].screenTag}` : '',
@@ -162,8 +180,8 @@ export function notesPackage(
       ].filter(Boolean);
       lines.push('', `## ${list[0].image}`, '', ...about, ...(about.length ? [''] : []));
       for (const n of list) {
-        const crop = place(n.crop);
-        if (!crop) missing++;
+        const crop = n.whole ? null : place(n.crop);
+        if (!crop && !n.whole) missing++;
         notes++;
         lines.push(
           `- ${n.ref.split('.')[1]}. ${crop ? `(\`${crop}\`) ` : ''}${n.best ? 'My best example: ' : ''}${wordsOf(n)}`,
@@ -174,7 +192,15 @@ export function notesPackage(
   }
   const text = new TextEncoder().encode(`${lines.join('\n')}\n`);
   const check = { name: root + CHECK_FILE, data: new TextEncoder().encode(CHECK_AGENT) };
-  return { files: [{ name: root + NOTES_FILE, data: text }, check, ...images], notes, missing };
+  const said = transcriptText(takes);
+  const transcript = said
+    ? [{ name: root + TRANSCRIPT_FILE, data: new TextEncoder().encode(said) }]
+    : [];
+  return {
+    files: [{ name: root + NOTES_FILE, data: text }, check, ...transcript, ...images],
+    notes,
+    missing,
+  };
 }
 
 /** A take's package (D163): its export, read back, as the only thing in it. */
@@ -182,6 +208,7 @@ export function takePackage(
   exp: PinchExport,
   files: ReadonlyMap<string, Uint8Array>,
   stamp: string,
+  takes: readonly Take[] = [],
 ): { files: PackageFile[]; notes: number; missing: number } {
   const batch: Batch = {
     id: 'take',
@@ -201,7 +228,7 @@ export function takePackage(
     rules: [],
     read: [],
   };
-  return notesPackage(take, new Map([[batch.id, files]]), stamp, true);
+  return notesPackage(take, new Map([[batch.id, files]]), stamp, true, takes);
 }
 
 const toTheSecond = (stamp: string) => stamp.slice(0, 19).replace(/[T:]/g, '-');

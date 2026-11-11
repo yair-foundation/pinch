@@ -101,4 +101,12 @@ export type Take = {
   pointer: PointerSample[];
   /** What was said, once speech-to-text has read it (D136). */
   words?: TimedWord[];
+  /** How the words were read (D188), for a take to say which reader its words came from. */
+  readBy?: ReadBy;
 };
+
+/**
+ * Where a take's words were read, with which voice model, and whether the take was cut at its
+ * pauses first (D187) or read whole.
+ */
+export type ReadBy = { engine: 'browser' | 'server'; model: string; cut: boolean };

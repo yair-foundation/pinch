@@ -269,3 +269,96 @@ describe('the take beside the package', () => {
     assert.deepEqual(JSON.parse(new TextDecoder().decode(file.data)), take);
   });
 });
+
+describe('a note about the whole screen, and what was said (D188)', () => {
+  const root = notesPackageRoot(STAMP);
+  const take = (words: Take['words']): Take => ({
+    id: 'aaaa-bbbb',
+    version: 1,
+    recordedAt: '2026-11-11T07:35:48.000Z',
+    durationMs: 30_000,
+    mimeType: 'audio/webm',
+    screens: [
+      { id: 'one', name: 'one.png', width: 1000, height: 1000 },
+      { id: 'two', name: 'two.png', width: 1000, height: 1000 },
+    ],
+    shown: [
+      { t: 0, screen: 0 },
+      { t: 10_000, screen: 1 },
+    ],
+    pointer: [],
+    words,
+  });
+  const packed = (notes: BatchNote[], takes: Take[] = []) => {
+    const b = batch('a', notes);
+    const c = { ...newCollection('take', 'c1', STAMP), batches: [b] };
+    const made = notesPackage(c, new Map([['a', exportOf(b)]]), STAMP, true, takes);
+    const file = (name: string) => made.files.find((f) => f.name === root + name);
+    return {
+      ...made,
+      names: made.files.map((f) => f.name.slice(root.length)).sort(),
+      text: new TextDecoder().decode(file(NOTES_FILE)?.data),
+      transcript: file('transcript.md') && new TextDecoder().decode(file('transcript.md')?.data),
+    };
+  };
+
+  it('gives it no close-up, and no marked copy when every note on the screen is one', () => {
+    const made = packed([
+      note('01.1', { whole: true, where: 'Where: the whole screen. Colours: #f7f5f2.' }),
+    ]);
+    assert.deepEqual(made.names, ['images/01.png', 'notes.md', 'pinch-check.md']);
+    assert.equal(made.missing, 0);
+    assert.equal(made.notes, 1);
+    assert.match(made.text, /\n- 1\. Great big title\.\n {2}Where: the whole screen\./);
+    assert.doesNotMatch(made.text, /Marked copy/);
+    assert.match(made.text, /A note about the whole screen has no mark and no close-up\./);
+  });
+
+  it('keeps the marked copy and the close-up of a note that points, beside one that does not', () => {
+    const made = packed([
+      note('01.1', { whole: true, where: 'Where: the whole screen. Colours: #f7f5f2.' }),
+      note('01.2', { where: 'Where: top left. Colours: #ffffff.' }),
+    ]);
+    assert.deepEqual(made.names, [
+      'crops/01.2.jpg',
+      'images/01.png',
+      'marked/01.jpg',
+      'notes.md',
+      'pinch-check.md',
+    ]);
+    assert.match(made.text, /\n- 1\. Great big title\.\n/);
+    assert.match(made.text, /\n- 2\. \(`crops\/01\.2\.jpg`\) Great big title\.\n/);
+  });
+
+  it('puts what was said beside the notes, and what to ask about ahead of them', () => {
+    const words = [
+      { text: 'Remove', start: 1000, end: 1250 },
+      { text: 'this.', start: 1300, end: 1550 },
+      { text: 'Great', start: 11_000, end: 11_250 },
+      { text: 'big', start: 11_300, end: 11_550 },
+      { text: 'title.', start: 11_600, end: 11_850 },
+    ];
+    const made = packed([note('01.1')], [take(words)]);
+    assert.ok(made.names.includes('transcript.md'));
+    assert.match(made.transcript ?? '', /\n## two\.png\n\n- 0:11 Great big title\.\n/);
+    const unsure = made.text.indexOf('## Not sure');
+    assert.ok(unsure > 0 && unsure < made.text.indexOf('## Vimeo Web.png'));
+    assert.match(
+      made.text,
+      /\n- `one\.png` at 0:01: "Remove this\." Taken as a command: this screenshot left the batch, so it has no notes\.\n/,
+    );
+    assert.match(made.text, /Everything I said is in `transcript\.md`\./);
+  });
+
+  it('has no list to ask about when every remark was taken as a note, and no transcript without a take', () => {
+    const words = [
+      { text: 'Great', start: 1000, end: 1250 },
+      { text: 'big', start: 1300, end: 1550 },
+      { text: 'title.', start: 1600, end: 1850 },
+    ];
+    const made = packed([note('01.1')], [take(words)]);
+    assert.doesNotMatch(made.text, /Not sure/);
+    assert.ok(made.names.includes('transcript.md'));
+    assert.ok(!packed([note('01.1')]).names.includes('transcript.md'));
+  });
+});

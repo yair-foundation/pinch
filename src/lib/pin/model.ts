@@ -490,7 +490,14 @@ export function shapePixels(shape: Shape, width: number, height: number) {
   };
 }
 
-/** A file-safe name from what the user called the image: "Pricing page (v2).png" → "pricing-page-v2". */
+/** The longest a file-safe name gets. */
+const SLUG_LENGTH = 40;
+
+/**
+ * A file-safe name from what the user called the image: "Pricing page (v2).png" → "pricing-page-v2".
+ * A long name loses its middle, never its end (D188): the end is what tells "…-investor-final-6"
+ * from "…-investor-final-7".
+ */
 export function slug(name: string): string {
   const base = name
     .replace(/\.[a-z0-9]{2,5}$/i, '')
@@ -498,9 +505,11 @@ export function slug(name: string): string {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-  return base || 'image';
+    .replace(/^-+|-+$/g, '');
+  if (base.length <= SLUG_LENGTH) return base || 'image';
+  const tail = Math.floor(SLUG_LENGTH / 2);
+  const head = base.slice(0, SLUG_LENGTH - tail - 1).replace(/-+$/, '');
+  return `${head}-${base.slice(-tail).replace(/^-+/, '')}`;
 }
 
 export const extensionOf = (type: string) =>

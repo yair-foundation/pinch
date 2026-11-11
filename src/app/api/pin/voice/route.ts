@@ -3,7 +3,7 @@ import { transcribe, transcriber } from '@/lib/transcribe';
 
 /*
  * The walkthrough's words (D131, D136): POST a take's audio as the body, get back
- * { words: [{ text, start, end }] } in milliseconds. Nothing is stored or logged. On only where
+ * { words: [{ text, start, end }], readBy } in milliseconds, with how they were read (D188). Nothing is stored or logged. On only where
  * speech-to-text runs on this machine (`transcriber`), so it costs nothing and needs no sign-in;
  * GET says whether it is on.
  */
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   if (!audio.length || audio.length > MAX_AUDIO)
     return fail(413, 'The recording is empty or too long.');
   try {
-    return Response.json({ words: await transcribe(audio) }, { headers });
+    return Response.json(await transcribe(audio), { headers });
   } catch {
     return fail(500, 'The words couldn’t be read from the recording.');
   }

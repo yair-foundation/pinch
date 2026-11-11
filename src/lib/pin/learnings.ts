@@ -78,6 +78,8 @@ export type BatchNote = {
   where?: string;
   /** Its words in the order they were said (D168): works and doesNotWork are sorted. */
   spoken?: string;
+  /** It is about the whole screen (D188): it points at nothing, so it has no close-up to show. */
+  whole?: true;
 };
 
 export type Batch = {

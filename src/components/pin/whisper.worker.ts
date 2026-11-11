@@ -126,7 +126,7 @@ async function load(): Promise<{ asr: Asr; tier: VoiceTier }> {
 
 async function transcribe(
   audio: Float32Array,
-): Promise<{ chunks: Chunk[] } | { pieces: PieceRead[] }> {
+): Promise<{ model: string } & ({ chunks: Chunk[] } | { pieces: PieceRead[] })> {
   const pieces = await piecesIn(audio);
   const duration = (audio.length * 1000) / SPEECH_RATE;
   const at = (ms: number) => Math.round((ms * SPEECH_RATE) / 1000);
@@ -135,7 +135,8 @@ async function transcribe(
     const { asr, tier } = await ready;
     const options = { ...OPTIONS, ...tier.options };
     try {
-      if (!pieces) return { chunks: (await asr(audio, options)).chunks ?? [] };
+      const model = tier.model;
+      if (!pieces) return { model, chunks: (await asr(audio, options)).chunks ?? [] };
       const read: PieceRead[] = [];
       for (const piece of pieces) {
         const sound = soundOf(piece, duration);
@@ -143,7 +144,7 @@ async function transcribe(
         const heard = await asr(audio.slice(at(sound.from), at(sound.to)), options);
         read.push({ piece, from: sound.from, chunks: heard.chunks ?? [] });
       }
-      return { pieces: read };
+      return { model, pieces: read };
     } catch (error) {
       // A model that can't run here: once more on the next one, which every browser has in the end.
       if (!tiers || tiers.length === 1) throw error;
