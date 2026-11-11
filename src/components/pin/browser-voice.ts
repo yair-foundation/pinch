@@ -1,11 +1,14 @@
+import { wordsOfPieces } from '@/lib/pin/speech-pieces';
 import { wordsFromChunks } from '@/lib/pin/transcript';
 import type { TimedWord } from '@/lib/pin/voice-tags';
+import type { PieceRead } from './whisper.worker';
 
 /*
  * Speech-to-text in the browser (D140), for wherever Pinch's server has none (the live site): the
  * take's audio is decoded here to 16 kHz mono and read by Whisper in a worker
  * (`whisper.worker.ts`). Nothing is sent anywhere; the voice model comes from Hugging Face once and
- * the browser keeps it.
+ * the browser keeps it. The worker cuts the take at its pauses and reads each stretch of speech on
+ * its own (D187); the words of each are put back at their times in the take here.
  */
 
 /** The most the voice model weighs the first time, in MB (less where it can't run), for the page to say. */
@@ -94,7 +97,12 @@ export async function transcribeInBrowser(
       e: MessageEvent<
         | { type: 'progress'; progress: number }
         | { type: 'prepared' }
-        | { type: 'words'; id: number; chunks: Parameters<typeof wordsFromChunks>[0] }
+        | {
+            type: 'words';
+            id: number;
+            chunks?: Parameters<typeof wordsFromChunks>[0];
+            pieces?: PieceRead[];
+          }
         | { type: 'error'; id: number; message: string }
       >,
     ) => {
@@ -102,7 +110,18 @@ export async function transcribeInBrowser(
       if (m.type === 'progress') return onModel?.(m.progress);
       if (m.type === 'prepared' || m.id !== id) return;
       done();
-      if (m.type === 'words') resolve(wordsFromChunks(m.chunks));
+      if (m.type === 'words')
+        resolve(
+          m.pieces
+            ? wordsOfPieces(
+                m.pieces.map((p) => ({
+                  piece: p.piece,
+                  soundFrom: p.from,
+                  words: wordsFromChunks(p.chunks),
+                })),
+              )
+            : wordsFromChunks(m.chunks),
+        );
       else reject(new Error(m.message));
     };
     // A worker that won't load or dies answers nothing: the take's reading fails, to try again.

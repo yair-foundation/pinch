@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D187 a take is cut at its pauses before it is read, and each stretch of speech is read on its own, in the browser and on the dev server. On the author's review of 336 slides, read again from its audio, both readers gave 43 whole deletes where the take had 27 whole, with fragments, inventions and three deletes missing. A short piece is read without the words around it, which cost "keep this slide". "Remove this." and "Delete this" are still voice tags and still take their words out of the notes. Not yet run on the live site, the smaller voice models, Safari or Firefox.
+
 Since D186 a sentence that never got to its point ("This is.") is not a note, one still being said as the reel turns stays on its screen, and an unfinished one runs on past Whisper's full stop; and the check carries a note only to an element doing the same job on the same kind of screen. On six slides of the author's deck the reworded check gave 4 findings where it had given 18, keeping the direct ones and losing two sound ones. The taste harness was not run again.
 
 Since D185 the pointer is read as strokes before the words: a circle must close and be quick, a scrub turns back on itself, travel and wander place nothing, and a hand parked since before a sentence says nothing. Scored on the author's two gesture takes with `scripts/take-strokes.ts`: 17 of 25 circles and 7 of 13 scrubs read as themselves, points as rests. Not yet checked on a real review take.
