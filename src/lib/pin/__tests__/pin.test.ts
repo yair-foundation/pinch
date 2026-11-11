@@ -347,6 +347,10 @@ describe('export names and text', () => {
     assert.notEqual(six, seven);
     assert.ok(six.length <= 40 && seven.endsWith('-7'));
     assert.equal(slug('a'.repeat(40)), 'a'.repeat(40));
+    // A note's other spots have close-ups of their own (D190), named after its first.
+    const several = assetFiles(asset(), 2, 30);
+    assert.equal(several.crop(0, 0), several.crop(0));
+    assert.equal(several.crop(0, 1), several.crop(0).replace(/\.jpg$/, '-2.jpg'));
     const f = assetFiles(asset(), 2, 30);
     assert.deepEqual(
       [f.image, f.marked, f.crop(0)],

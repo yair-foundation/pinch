@@ -51,7 +51,9 @@ for (const file of files) {
     console.log(`\n## ${a.name}`)
     list.forEach((m, i) => {
       const words = m.quote ?? [m.good, m.bad].filter(Boolean).join(" ")
-      console.log(`- ${i + 1}. ${placeOf(m.shape)}: ${words}`)
+      // Every spot the note points at, in the order pointed at (D190).
+      const places = [m.shape, ...(m.also ?? [])].map(placeOf).join("; ")
+      console.log(`- ${i + 1}. ${places}: ${words}`)
     })
   }
   console.log()

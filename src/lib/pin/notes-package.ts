@@ -108,7 +108,7 @@ const INTRO = [
 const MARKS_DRAWN =
   "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes, and each close-up shows one spot. A mark's colour means nothing.";
 const MARKS_IN_WORDS =
-  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark and no close-up. A mark's colour means nothing.";
+  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark and no close-up. A note that points at several spots has its number on each of them, and a close-up and a line for each, in the order I pointed. A mark's colour means nothing.";
 
 /*
  * The remarks that may not have been taken as they were meant (D188), ahead of the notes, so an
@@ -193,13 +193,17 @@ export function notesPackage(
       ].filter(Boolean);
       lines.push('', `## ${list[0].image}`, '', ...about, ...(about.length ? [''] : []));
       for (const n of list) {
-        const crop = n.whole ? null : place(n.crop);
-        if (!crop && !n.whole) missing++;
+        // A close-up for each spot the note points at (D190), none for the whole screen (D188).
+        const crops = n.whole ? [] : [n.crop, ...(n.also ?? []).map((p) => p.crop)].map(place);
+        missing += crops.filter((c) => !c).length;
+        const shown = crops.flatMap((c) => (c ? [`\`${c}\``] : []));
         notes++;
         lines.push(
-          `- ${n.ref.split('.')[1]}. ${crop ? `(\`${crop}\`) ` : ''}${n.best ? 'My best example: ' : ''}${wordsOf(n)}`,
+          `- ${n.ref.split('.')[1]}. ${shown.length ? `(${shown.join(', ')}) ` : ''}${n.best ? 'My best example: ' : ''}${wordsOf(n)}`,
         );
         if (n.where) lines.push(`  ${n.where}`);
+        for (const p of n.also ?? [])
+          if (p.where) lines.push(`  ${p.where.replace(/^Where:/, 'Also:')}`);
       }
     }
   }

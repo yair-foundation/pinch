@@ -83,6 +83,11 @@ export type Suggestion = {
 export type Mark = {
   id: string;
   shape: Shape;
+  /**
+   * The other spots it points at, in the order they were pointed at (D190): "the stroke here and
+   * here" is one note on two things. `shape` is the first.
+   */
+  also?: Shape[];
   /** A short name for the spot: "one number, huge". Optional. */
   label: string;
   /** What works here, and why. */
@@ -529,6 +534,9 @@ export function exportName(asset: Pick<Asset, 'name' | 'type'>): string {
   return have === want ? asset.name : `${asset.name.slice(0, -match[0].length)}.${want}`;
 }
 
+/** Every spot a note points at, the first first (D190). */
+export const placesOf = (m: Pick<Mark, 'shape' | 'also'>): Shape[] => [m.shape, ...(m.also ?? [])];
+
 /** The files one asset contributes to the export, named by its place in the batch. */
 export function assetFiles(asset: Asset, index: number, total: number) {
   const n = String(index + 1).padStart(total > 99 ? 3 : 2, '0');
@@ -537,7 +545,9 @@ export function assetFiles(asset: Asset, index: number, total: number) {
     number: n,
     image: `images/${stem}.${extensionOf(asset.type)}`,
     marked: `marked/${stem}.jpg`,
-    crop: (markIndex: number) => `crops/${stem}-note-${markIndex + 1}.jpg`,
+    /** A note's close-up: of its first spot, or of another one it points at (D190). */
+    crop: (markIndex: number, place = 0) =>
+      `crops/${stem}-note-${markIndex + 1}${place ? `-${place + 1}` : ''}.jpg`,
   };
 }
 
@@ -548,9 +558,12 @@ export const GUIDE_FILE = 'AGENTS.md';
 /** The assets an export carries: those with something written on them. */
 export const exportable = (assets: Asset[]) => assets.filter(hasNotes);
 
-/** The crop an image's note ended up with, in pixels of the original image. */
-export type CropOf = (asset: Asset, mark: Mark) => Rect;
-const plainCrop: CropOf = (a, m) => cropRect(m.shape, a.width, a.height);
+/**
+ * The crop an image's note ended up with, in pixels of the original image: of its first spot, or
+ * of another one it points at (D190).
+ */
+export type CropOf = (asset: Asset, mark: Mark, place?: number) => Rect;
+const plainCrop: CropOf = (a, m, place = 0) => cropRect(placesOf(m)[place], a.width, a.height);
 
 /** How an agent should read the export: the same words in the README and in AGENTS.md. */
 const HOW_TO_USE = [
@@ -655,7 +668,7 @@ export function manifest(
   exportedAt: string,
   cropOf: CropOf = plainCrop,
   /** Each note's mark in words (D166), when the export has worked it out. */
-  whereOf?: (a: Asset, m: Mark) => string | undefined,
+  whereOf?: (a: Asset, m: Mark, place?: number) => string | undefined,
 ) {
   const list = exportable(assets);
   return {
@@ -694,6 +707,18 @@ export function manifest(
             crop: files.crop(j),
             cropPixels: cropOf(a, m),
             ...(whereOf?.(a, m) ? { where: whereOf(a, m) } : {}),
+            // The other spots it points at (D190), each with its own close-up and words.
+            ...(m.also?.length
+              ? {
+                  also: m.also.map((shape, p) => ({
+                    shape: roundShape(shape),
+                    pixels: shapePixels(shape, a.width, a.height),
+                    crop: files.crop(j, p + 1),
+                    cropPixels: cropOf(a, m, p + 1),
+                    ...(whereOf?.(a, m, p + 1) ? { where: whereOf(a, m, p + 1) } : {}),
+                  })),
+                }
+              : {}),
             ...(m.origin === 'ai'
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : m.origin === 'voice'
@@ -755,6 +780,10 @@ export function readme(assets: Asset[], exportedAt: string): string {
         '',
         `Where: ${describeShape(m.shape, a.width, a.height)}${originText(m)}`,
         `Crop: \`${files.crop(j)}\``,
+        ...(m.also ?? []).map(
+          (shape, p) =>
+            `Also: ${describeShape(shape, a.width, a.height)} · Crop: \`${files.crop(j, p + 1)}\``,
+        ),
       );
       if (topicsOf(m).length) lines.push(`About: ${topicsOf(m).map(topicLabel).join(', ')}`);
       if (m.good.trim()) lines.push(`What works${suggestedText(m, 'good')}: ${itemsLine(m.good)}`);
