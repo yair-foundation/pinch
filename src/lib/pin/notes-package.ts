@@ -10,7 +10,7 @@ import {
 import { batchNotes, type PinchExport } from './import';
 import { assetOf, numberOf } from './library';
 import type { Take } from './narration';
-import { TRANSCRIPT_FILE, transcriptText, unsureLines } from './take-transcript';
+import { quietLine, TRANSCRIPT_FILE, transcriptText, unsureLines } from './take-transcript';
 
 /*
  * The package an agent gets (D157): the author's words, what they pointed at, and nothing else.
@@ -83,10 +83,21 @@ Look at the drawing you were given. Find where it repeats something the designer
 const DEFER_LINE =
   'Where this project has a design system, use its values, tokens and components as they are; read these notes for how and where to use them, and for what still comes out wrong.';
 
+/*
+ * A take can be a work order as well as taste (D189): the author's review of 336 slides was "delete
+ * this slide" over some, a change over a few and nothing over the rest, with the rule for reading
+ * it said aloud in the first half minute, and the intro spoke only of taste. The lines tested
+ * before it stay as they were.
+ */
+const WORK_LINE =
+  'A note that asks for something to be changed or removed is about the screen it is on: where that screen is yours to change, do it there. If my first notes say how to read the rest, such as what I will say for a screen to go, or what it means when I say nothing over one, follow that for every screen.';
+
 const INTRO = [
   '# My notes on these screenshots',
   '',
   'When you design for me, read all of this first and open the images: it is everything you know about my taste.',
+  '',
+  WORK_LINE,
   '',
   DEFER_LINE,
   '',
@@ -147,6 +158,8 @@ export function notesPackage(
   const images: PackageFile[] = [];
   const inWords = c.batches.some((b) => b.notes.some((n) => n.where));
   const lines = [...INTRO, inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
+  const quiet = quietLine(takes);
+  if (quiet) lines.push('', quiet);
   const unsure = unsureLines(takes);
   if (unsure.length) lines.push('', ...UNSURE, ...unsure);
   let notes = 0;

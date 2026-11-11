@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D189 `transcript.md` ends with the screens nothing was said over, the ones on show for under half a second marked and the ones never shown apart, `notes.md` says how many there are, and the intro says how to read a take that is a work order. The new paragraph was not run through the taste harness.
+
 Since D188 the package carries everything said in a take as `transcript.md`, and `notes.md` opens with the remarks it is not sure of; "Delete this" with no note to drop is a note; a remark about "this slide" is on the whole screen, with no mark and no close-up; a point's line names the colour under it; long file names keep their end; and a take records how it was read. "Remove this." still takes the screen out of the batch, and the package says so. Not yet: several places in one sentence, traced lines, the intro for a review that is a work order. Not run on the live site.
 
 Since D187 a take is cut at its pauses before it is read, and each stretch of speech is read on its own, in the browser and on the dev server. On the author's review of 336 slides, read again from its audio, both readers gave 43 whole deletes where the take had 27 whole, with fragments, inventions and three deletes missing. A short piece is read without the words around it, which cost "keep this slide". "Remove this." and "Delete this" are still voice tags and still take their words out of the notes. Not yet run on the live site, the smaller voice models, Safari or Firefox.

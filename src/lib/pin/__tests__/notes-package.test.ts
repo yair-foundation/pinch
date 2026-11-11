@@ -350,6 +350,30 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     assert.match(made.text, /Everything I said is in `transcript\.md`\./);
   });
 
+  it('says how to read a take that is a work order, after the line about taste (D189)', () => {
+    const { text } = packed([note('01.1')]);
+    const taste = text.indexOf('it is everything you know about my taste.');
+    const work = text.indexOf('A note that asks for something to be changed or removed');
+    const system = text.indexOf('Where this project has a design system');
+    assert.ok(taste > 0 && taste < work && work < system);
+    assert.match(text, /If my first notes say how to read the rest, .* follow that for every screen\./);
+  });
+
+  it('says how many screens nothing was said over, ahead of the notes (D189)', () => {
+    const words = [
+      { text: 'Great', start: 11_000, end: 11_250 },
+      { text: 'big', start: 11_300, end: 11_550 },
+      { text: 'title.', start: 11_600, end: 11_850 },
+    ];
+    const made = packed([note('01.1')], [take(words)]);
+    const line =
+      'I said nothing over 1 of the 2 screens I was shown. They are listed at the end of `transcript.md`.';
+    assert.ok(made.text.includes(`\n\n${line}\n`));
+    assert.ok(made.text.indexOf(line) < made.text.indexOf('## Vimeo Web.png'));
+    assert.match(made.transcript ?? '', /\n## Nothing said\n\nI said nothing over this screen\.\n\n- one\.png\n/);
+    assert.doesNotMatch(packed([note('01.1')]).text, /I said nothing over/);
+  });
+
   it('has no list to ask about when every remark was taken as a note, and no transcript without a take', () => {
     const words = [
       { text: 'Great', start: 1000, end: 1250 },
