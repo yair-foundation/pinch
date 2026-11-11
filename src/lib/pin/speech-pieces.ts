@@ -169,6 +169,14 @@ export const soundOf = (piece: Span, durationMs: number): Span => ({
   to: Math.min(durationMs, piece.to + PIECE_PAD),
 });
 
+/**
+ * Whisper times a piece's first word late by up to about this much, and no more (D191): a word
+ * timed later than that after the sound began was said then, behind a noise that began the piece.
+ * On the author's second review a robot vacuum spoke for fifteen seconds before "Move this", and
+ * "Move" was brought back to where the vacuum began, onto the slide before.
+ */
+const FIRST_WORD_LATE = 1500;
+
 /** One piece as it was read: its words, timed from the start of the sound Whisper was handed. */
 export type PieceWords = { piece: Piece; soundFrom: number; words: readonly TimedWord[] };
 
@@ -188,7 +196,9 @@ export function wordsOfPiece({ piece, soundFrom, words }: PieceWords): TimedWord
     const said = word.start + soundFrom;
     const start = out.length
       ? Math.min(Math.max(said, out[out.length - 1].start), piece.to)
-      : Math.max(piece.from, Math.min(said, piece.onset));
+      : said - piece.onset > FIRST_WORD_LATE
+        ? Math.min(said, piece.to)
+        : Math.max(piece.from, Math.min(said, piece.onset));
     const end = Math.max(start + 1, Math.min(word.end + soundFrom, piece.to + TAIL));
     out.push({ text: word.text, start, end });
   }

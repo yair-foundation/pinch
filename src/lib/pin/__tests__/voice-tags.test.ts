@@ -96,15 +96,35 @@ describe('voice tags: edits and moving', () => {
     assert.deepEqual(ops('Drop that.'), [{ kind: 'drop', note: 'last' }]);
     assert.deepEqual(ops('Scratch that.'), [{ kind: 'drop', note: 'last' }]);
     assert.deepEqual(ops('Drop the second one.'), [{ kind: 'drop', note: 2 }]);
-    assert.deepEqual(ops('Delete number three.'), [{ kind: 'drop', note: 3 }]);
+    assert.deepEqual(ops('Forget number three.'), [{ kind: 'drop', note: 3 }]);
   });
-  it('takes the screen out on "remove it", and leaves "remove that" to the note', () => {
-    assert.deepEqual(ops('Remove it.'), [{ kind: 'remove' }]);
-    assert.deepEqual(ops('Okay, remove this screen please.'), [{ kind: 'remove' }]);
-    assert.deepEqual(ops('Take this out.'), [{ kind: 'remove' }]);
-    assert.deepEqual(ops('Remove that.'), [{ kind: 'drop', note: 'last' }]);
-    assert.deepEqual(ops('Remove the second one.'), [{ kind: 'drop', note: 2 }]);
+  it('takes the screen out only when the screenshot or the batch is named (D191)', () => {
+    assert.deepEqual(ops('Remove this screenshot.'), [{ kind: 'remove' }]);
+    assert.deepEqual(ops('Okay, remove it from the batch please.'), [{ kind: 'remove' }]);
+    assert.deepEqual(ops('Take this out of the batch.'), [{ kind: 'remove' }]);
     assert.equal(rest('I would remove it from the header.'), 'I would remove it from the header.');
+  });
+  it('leaves what is said of a thing on the screen as a note (D191)', () => {
+    // The author's second review: each of these was said while pointing at the thing.
+    for (const said of [
+      'Remove this.',
+      'Remove it.',
+      'Remove that.',
+      'Take this out.',
+      'Delete this.',
+      'Delete it.',
+      'Remove the second one.',
+    ]) {
+      assert.deepEqual(ops(said), [], said);
+      assert.equal(rest(said), said);
+    }
+  });
+  it('takes a tag that takes away only as a sentence of its own (D191)', () => {
+    assert.deepEqual(ops('Drop that, and that.'), []);
+    assert.equal(rest('Remove this screenshot, this, and this.'), 'Remove this screenshot, this, and this.');
+    assert.deepEqual(ops('Redo this screen, please.'), [{ kind: 'redo' }]);
+    // A tag that sets something is still heard in a clause.
+    assert.deepEqual(ops('Star this, it is the best one.').map((o) => o.kind), ['star']);
   });
   it('redoes the screen, points again, and moves', () => {
     assert.deepEqual(ops('Redo this screen.'), [{ kind: 'redo' }]);

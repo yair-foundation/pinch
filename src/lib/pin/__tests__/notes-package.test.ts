@@ -338,7 +338,8 @@ describe('a note about the whole screen, and what was said (D188)', () => {
   it('puts what was said beside the notes, and what to ask about ahead of them', () => {
     const words = [
       { text: 'Remove', start: 1000, end: 1250 },
-      { text: 'this.', start: 1300, end: 1550 },
+      { text: 'this', start: 1300, end: 1550 },
+      { text: 'screenshot.', start: 1600, end: 1850 },
       { text: 'Great', start: 11_000, end: 11_250 },
       { text: 'big', start: 11_300, end: 11_550 },
       { text: 'title.', start: 11_600, end: 11_850 },
@@ -350,7 +351,7 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     assert.ok(unsure > 0 && unsure < made.text.indexOf('## Vimeo Web.png'));
     assert.match(
       made.text,
-      /\n- `one\.png` at 0:01: "Remove this\." Taken as a command: this screenshot left the batch, so it has no notes\.\n/,
+      /\n- `one\.png` at 0:01: "Remove this screenshot\." Taken as a command: this screenshot left the batch, so it has no notes\.\n/,
     );
     assert.match(made.text, /Everything I said is in `transcript\.md`\./);
   });

@@ -258,7 +258,13 @@ const UNSTAR = [
   'not a best example',
   "that's not a best example",
 ];
-const DROP = ['drop', 'delete', 'remove', 'scratch', 'forget'];
+/*
+ * "Delete" and "remove" are not among these, nor is a bare "remove this" below (D191): they are
+ * what a person says of a thing on the screen. On the author's second review, "Remove this." was
+ * said fifteen times, fourteen of them while circling the thing to remove, and each took its
+ * screenshot out of the batch with every note on it.
+ */
+const DROP = ['drop', 'scratch', 'forget'];
 const REDO = [
   'redo',
   'redo this',
@@ -268,25 +274,19 @@ const REDO = [
   'start over on this one',
   'start this screen over',
 ];
-/** The screen out of the batch (D139): "remove" with "it" or "this", or the screen named. */
+/** The screen out of the batch (D139, D191): only said of the screenshot or the batch by name. */
 const REMOVE = [
-  'remove it',
-  'remove this',
-  'remove this one',
-  'remove this screen',
-  'remove this image',
   'remove this screenshot',
-  'remove the screen',
-  'remove the image',
+  'remove the screenshot',
+  'delete this screenshot',
+  'delete the screenshot',
   'remove it from the batch',
   'remove this from the batch',
-  'delete this screen',
-  'delete this image',
-  'delete this screenshot',
-  'take it out',
-  'take this out',
-  'take this one out',
+  'take it out of the batch',
+  'take this out of the batch',
 ];
+/** Tags that take something away: each is a sentence of its own, never one clause of several. */
+const TAKES_AWAY = new Set<VoiceOp['kind']>(['remove', 'drop', 'redo']);
 const NEXT = ['next', 'next one', 'next screen', 'go on', 'move on'];
 const BACK = ['back', 'go back', 'previous', 'previous one', 'previous screen', 'last screen'];
 const REPOINT = ['not that this', 'no not that this', 'not that this one', 'not that one this one'];
@@ -339,7 +339,7 @@ function command(c: Clause, known: readonly string[]): Op | null {
   // "drop that", "delete it", "drop the second one", "scratch that"
   if (DROP.includes(w[0])) {
     const rest = w.slice(1);
-    // "Remove it" and "remove this" take the screen out (above); "remove that" is the note.
+    // "Drop that" is the last note; "remove that" and "delete this" are said of the screen (D191).
     if (['that', 'it', 'this', 'that one', 'this one', 'the last one'].includes(phrase(rest)))
       return { kind: 'drop', note: 'last' };
     const note = noteRef(rest);
@@ -407,9 +407,11 @@ export function parseVoiceTags(
 
   const ops: VoiceOp[] = [];
   const rest: TimedWord[] = [];
-  const take = (c: Clause): boolean => {
+  const take = (c: Clause, alone = true): boolean => {
     const op = command(c, known);
     if (!op || !c.words.length) return false;
+    // "Drop that, and that" names things: a tag that takes away is the whole sentence (D191).
+    if (!alone && TAKES_AWAY.has(op.kind)) return false;
     ops.push({ ...op, start: c.words[0].start, end: c.words[c.words.length - 1].end } as VoiceOp);
     return true;
   };
@@ -427,8 +429,10 @@ export function parseVoiceTags(
       }
     }
     if (clause.length) clauses.push(clause);
+    // A clause of fillers, "Okay," or ", please", doesn't make the sentence more than one thing.
+    const saying = clauses.filter((c) => core(c.map((x) => norm(x.text))).length).length;
     for (const c of clauses) {
-      if (!take({ words: c, said: c.map((x) => norm(x.text)) })) rest.push(...c);
+      if (!take({ words: c, said: c.map((x) => norm(x.text)) }, saying <= 1)) rest.push(...c);
     }
   }
   return { ops, rest };
@@ -448,6 +452,6 @@ export const VOICE_LEGEND: { say: string[]; does: string; kind: VoiceOp['kind'] 
   { say: ['Drop that', 'Drop the second one'], does: 'Remove a note', kind: 'drop' },
   { say: ['Not that, this'], does: 'Point at the right spot again', kind: 'repoint' },
   { say: ['Redo this screen'], does: 'Talk through it again', kind: 'redo' },
-  { say: ['Remove it'], does: 'Take the screen out of the batch', kind: 'remove' },
+  { say: ['Remove this screenshot'], does: 'Take the screen out of the batch', kind: 'remove' },
   { say: ['Next', 'Back'], does: 'Turn the reel', kind: 'next' },
 ];
