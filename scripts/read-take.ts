@@ -23,8 +23,10 @@ if (!takeFile || !audioFile || !outFile) {
 async function main() {
   const take = JSON.parse(readFileSync(takeFile, "utf8")) as Take
   const started = Date.now()
-  const words = await transcribe(new Uint8Array(readFileSync(audioFile)))
-  writeFileSync(outFile, JSON.stringify({ ...take, words }))
+  const { words, readBy } = await transcribe(
+    new Uint8Array(readFileSync(audioFile)),
+  )
+  writeFileSync(outFile, JSON.stringify({ ...take, words, readBy }))
 
   const screens = take.screens.length
   const before = wordsByScreen(take.shown, take.words ?? [], screens)

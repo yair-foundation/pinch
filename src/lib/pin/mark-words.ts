@@ -96,9 +96,22 @@ export function mainColours(data: Uint8ClampedArray): string[] {
   return kept.slice(0, MOST_COLOURS).map(hex);
 }
 
-export function whereLine(q: Spot, text: string, colours: readonly string[]): string {
+/** A pixel's colour, from its bytes as a canvas gives them. */
+export const colourOf = (data: Uint8ClampedArray) => hex([data[0], data[1], data[2]]);
+
+/**
+ * `at` is the colour right under a point (D188): "this color" was said with the pointer on a coral
+ * dot, the spot's main colours were the map around it, and the agent took one of those.
+ */
+export function whereLine(
+  q: Spot,
+  text: string,
+  colours: readonly string[],
+  at?: string,
+): string {
   const whole = isWholeScreen(q);
   const place = whole ? 'the whole screen' : placeOf(q);
   const on = !whole && text ? `, on "${text}"` : '';
-  return `Where: ${place}${on}. Colours: ${colours.join(', ')}.`;
+  const point = !whole && at ? ` At the point: ${at}.` : '';
+  return `Where: ${place}${on}.${point} Colours: ${colours.join(', ')}.`;
 }

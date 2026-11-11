@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   loudnessOf,
@@ -14,6 +14,7 @@ import {
   soundOf,
   wordsOfPieces,
 } from './pin/speech-pieces';
+import type { ReadBy } from './pin/narration';
 import { wordsFromWhisper } from './pin/transcript';
 import type { TimedWord } from './pin/voice-tags';
 
@@ -143,8 +144,13 @@ async function wordsByPiece(
   return wordsOfPieces(read);
 }
 
-/** The words in a recording, each timed in milliseconds from its start. */
-export async function transcribe(audio: Uint8Array): Promise<TimedWord[]> {
+/**
+ * The words in a recording, each timed in milliseconds from its start, and how they were read
+ * (D188): the model's file name, never its path.
+ */
+export async function transcribe(
+  audio: Uint8Array,
+): Promise<{ words: TimedWord[]; readBy: ReadBy }> {
   const model = process.env.PINCH_WHISPER_MODEL;
   if (!model || transcriber() !== 'whisper') throw new Error('Speech-to-text is off.');
   const vad = process.env.PINCH_WHISPER_VAD;
@@ -168,8 +174,9 @@ export async function transcribe(audio: Uint8Array): Promise<TimedWord[]> {
       wav,
     ]);
     const whisper = process.env.PINCH_WHISPER_BIN || 'whisper-cli';
+    const readBy = (cut: boolean): ReadBy => ({ engine: 'server', model: basename(model), cut });
     const cut = vad ? await wordsByPiece(dir, wav, whisper, model, vad) : null;
-    if (cut) return cut;
+    if (cut) return { words: cut, readBy: readBy(true) };
     await run(
       whisper,
       [
@@ -192,7 +199,8 @@ export async function transcribe(audio: Uint8Array): Promise<TimedWord[]> {
       ],
       { maxBuffer: 16 * 1024 * 1024 },
     );
-    return wordsFromWhisper(JSON.parse(await readFile(`${out}.json`, 'utf8')));
+    const words = wordsFromWhisper(JSON.parse(await readFile(`${out}.json`, 'utf8')));
+    return { words, readBy: readBy(false) };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

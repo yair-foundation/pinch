@@ -849,11 +849,13 @@ function Workspace() {
       }
       const found = await unzip(await made.blob.arrayBuffer());
       const stamp = new Date().toISOString();
-      const pack = takePackage(readExport(found), found, stamp);
+      const takes = takesApplied(assetsRef.current, await store.loadTakes());
+      const pack = takePackage(readExport(found), found, stamp, takes);
       // The take itself goes beside the folder (D183), for the placing of notes to be tuned on.
-      const takes = takesApplied(assetsRef.current, await store.loadTakes()).map(takeFile);
       download(
-        new Blob(zip([...pack.files, ...takes]) as BlobPart[], { type: 'application/zip' }),
+        new Blob(zip([...pack.files, ...takes.map(takeFile)]) as BlobPart[], {
+          type: 'application/zip',
+        }),
         `${notesPackageRoot(stamp).slice(0, -1)}.zip`,
       );
       setStatus({

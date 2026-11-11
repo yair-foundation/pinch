@@ -9,6 +9,7 @@ import {
   createClock,
   type PointerSample,
   pointOn,
+  type ReadBy,
   type Shown,
   slotOf,
   type Take,
@@ -17,8 +18,8 @@ import {
 } from '@/lib/pin/narration';
 import { READING_SHOWN } from '@/lib/pin/notes-package';
 import { opLabel, wordsByScreen, wordsLookWrong } from '@/lib/pin/transcript';
-import { isWhole, voiceNotes, voicePrefix } from '@/lib/pin/voice-notes';
-import { parseVoiceTags, type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
+import { heard, isWhole, voiceNotes, voicePrefix, wordsIn } from '@/lib/pin/voice-notes';
+import { type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
 import { cn } from '@/lib/utils';
 import { hit } from './dialog';
 import {
@@ -48,16 +49,15 @@ type Heard = { id: string; name: string; ops: string[]; notes: { mark: Mark; n: 
 /** The take by screen, as the end card shows it: what it heard and the notes now in the batch. */
 function heardOf(take: Take, assets: Asset[], known: string[]): Heard {
   const prefix = voicePrefix(take.id);
-  return wordsByScreen(take.shown, take.words ?? [], take.screens.length)
+  return wordsByScreen(take.shown, wordsIn(take), take.screens.length)
     .map((said, k) => {
       const { id, name } = take.screens[k];
       const a = assets.find((x) => x.id === id);
-      const notes = a
-        ? voiceNotes(a)
-            .map((mark, i) => ({ mark, n: i + 1 }))
-            .filter((x) => x.mark.id.startsWith(prefix))
-        : [];
-      return { id, name, ops: parseVoiceTags(said, known).ops.map(opLabel), notes };
+      const all = a ? voiceNotes(a).map((mark, i) => ({ mark, n: i + 1 })) : [];
+      const notes = all.filter((x) => x.mark.id.startsWith(prefix));
+      // The tags as the take applied them: "Delete this" with no note to drop is a note (D188).
+      const { ops } = heard(said, known, all.length > notes.length);
+      return { id, name, ops: ops.map(opLabel), notes };
     })
     .filter((s) => s.ops.length || s.notes.length);
 }
@@ -476,7 +476,7 @@ export function Reel({
   }, [stop, onSave]);
 
   /** The words in a take: on Pinch's server where it has speech-to-text, else in this browser. */
-  const wordsOf = async (audio: Blob): Promise<TimedWord[]> => {
+  const wordsOf = async (audio: Blob): Promise<{ words: TimedWord[]; readBy?: ReadBy }> => {
     if (engine === 'browser')
       return transcribeInBrowser(audio, (p) => {
         if (mounted.current) setModel(p < 100 ? p : null);
@@ -487,7 +487,7 @@ export function Reel({
       body: audio,
     });
     if (!res.ok) throw new Error();
-    return ((await res.json()) as { words: TimedWord[] }).words;
+    return (await res.json()) as { words: TimedWord[]; readBy?: ReadBy };
   };
 
   /** Read a kept take's words, and keep them with it. */
@@ -496,9 +496,9 @@ export function Reel({
     const onShow = () => mounted.current && shownTake.current === done.take.id;
     setReading('working');
     try {
-      const words = await wordsOf(done.audio);
+      const { words, readBy } = await wordsOf(done.audio);
       if (mounted.current) setModel(null);
-      const take = { ...done.take, words };
+      const take = { ...done.take, words, ...(readBy && { readBy }) };
       await onSave(take, done.audio);
       onTake(take);
       if (!onShow()) return;

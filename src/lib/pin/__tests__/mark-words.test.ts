@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  colourOf,
   cleanLine,
   isWholeScreen,
   mainColours,
@@ -135,6 +136,18 @@ describe('the line under a note', () => {
     );
     assert.equal(
       whereLine({ x: 0, y: 0, w: 1, h: 1 }, 'Everything', ['#ffffff']),
+      'Where: the whole screen. Colours: #ffffff.',
+    );
+  });
+
+  it('says the colour right under a point, ahead of the colours around it (D188)', () => {
+    assert.equal(
+      whereLine({ x: 0.26, y: 0.5, w: 0.06, h: 0.06 }, 'New York', ['#072c23', '#bce5e5'], '#fa877d'),
+      'Where: middle left, on "New York". At the point: #fa877d. Colours: #072c23, #bce5e5.',
+    );
+    assert.equal(colourOf(new Uint8ClampedArray([250, 135, 125, 255])), '#fa877d');
+    assert.equal(
+      whereLine({ x: 0, y: 0, w: 1, h: 1 }, '', ['#ffffff'], '#000000'),
       'Where: the whole screen. Colours: #ffffff.',
     );
   });

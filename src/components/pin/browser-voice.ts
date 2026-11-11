@@ -1,4 +1,5 @@
 import { wordsOfPieces } from '@/lib/pin/speech-pieces';
+import type { ReadBy } from '@/lib/pin/narration';
 import { wordsFromChunks } from '@/lib/pin/transcript';
 import type { TimedWord } from '@/lib/pin/voice-tags';
 import type { PieceRead } from './whisper.worker';
@@ -82,13 +83,14 @@ export function prepareBrowserVoice(onModel: (progress: number) => void): () => 
 }
 
 /**
- * The words in a take, each timed in milliseconds from its start. `onModel` hears how much of the
- * voice model has come in (0–100) while it downloads, the first time.
+ * The words in a take, each timed in milliseconds from its start, and how they were read (D188).
+ * `onModel` hears how much of the voice model has come in (0–100) while it downloads, the first
+ * time.
  */
 export async function transcribeInBrowser(
   audio: Blob,
   onModel?: (progress: number) => void,
-): Promise<TimedWord[]> {
+): Promise<{ words: TimedWord[]; readBy: ReadBy }> {
   const samples = await samplesOf(audio);
   const w = workerHere();
   const id = ++next;
@@ -100,6 +102,7 @@ export async function transcribeInBrowser(
         | {
             type: 'words';
             id: number;
+            model: string;
             chunks?: Parameters<typeof wordsFromChunks>[0];
             pieces?: PieceRead[];
           }
@@ -111,8 +114,8 @@ export async function transcribeInBrowser(
       if (m.type === 'prepared' || m.id !== id) return;
       done();
       if (m.type === 'words')
-        resolve(
-          m.pieces
+        resolve({
+          words: m.pieces
             ? wordsOfPieces(
                 m.pieces.map((p) => ({
                   piece: p.piece,
@@ -121,7 +124,8 @@ export async function transcribeInBrowser(
                 })),
               )
             : wordsFromChunks(m.chunks),
-        );
+          readBy: { engine: 'browser', model: m.model, cut: Boolean(m.pieces) },
+        });
       else reject(new Error(m.message));
     };
     // A worker that won't load or dies answers nothing: the take's reading fails, to try again.

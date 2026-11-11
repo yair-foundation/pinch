@@ -27,7 +27,13 @@ import {
 } from './model';
 import type { PointerSample, Take } from './narration';
 import { wordsByScreen } from './transcript';
-import { type NoteRef, parseVoiceTags, SENTENCE_PAUSE, type TimedWord } from './voice-tags';
+import {
+  type NoteRef,
+  parseVoiceTags,
+  SENTENCE_PAUSE,
+  type TimedWord,
+  type VoiceOp,
+} from './voice-tags';
 
 /** A claim: one thing said about a screen, with when it was said. */
 export type Claim = { text: string; words: TimedWord[]; start: number; end: number };
@@ -85,6 +91,8 @@ const EMPTY = new Set([
   ...['now', 'or', 'but', 'if', 'what', 'which', 'thing', 'things'],
   ...['um', 'uh', 'erm', 'oh', 'ah', 'so', 'and', 'wait', 'hmm', 'hm', 'mm'],
 ]);
+/** What a screen is called: "this slide" is the screen, not something on it. */
+const SCREEN_NOUN = new Set(['slide', 'screen', 'page', 'screenshot']);
 /** Words no sentence ends on: whatever full stop or pause follows one, the sentence goes on. */
 const DANGLING = new Set([
   ...['the', 'a', 'an', 'my', 'your', 'our', 'their', 'of', 'and', 'or', 'because'],
@@ -188,6 +196,54 @@ function claimOf(words: TimedWord[], joined: ReadonlySet<TimedWord> = new Set())
   if (!/[.?!]["'”’)]*$/.test(text)) text += '.';
   return { text, words, start: words[0].start, end: words[words.length - 1].end };
 }
+
+/**
+ * What was said over a screen: the claims, and the voice tags heard. "Delete this" drops the last
+ * note, and with no note yet on the screen it has nothing to drop: it was said about the screen,
+ * so it is a claim (D188). On the author's review of 336 slides four such remarks left no trace.
+ */
+export function heard(
+  words: readonly TimedWord[],
+  known: readonly string[] = [],
+  hadNotes = false,
+): { claims: Claim[]; ops: VoiceOp[]; left: TimedWord[] } {
+  const { ops, rest } = parseVoiceTags(words, known);
+  const claims = claimsOf(rest);
+  // What was neither a voice tag nor enough to be a note: "This is.", "Okay."
+  const inClaims = new Set(claims.flatMap((c) => c.words));
+  const left = rest.filter((w) => !inClaims.has(w));
+  const kept: VoiceOp[] = [];
+  const more: Claim[] = [];
+  for (const op of ops) {
+    const said = words.filter((w) => w.start >= op.start && w.end <= op.end);
+    const nothingToDrop =
+      op.kind === 'drop' &&
+      op.note === 'last' &&
+      !hadNotes &&
+      !claims.some((c) => c.start < op.start) &&
+      !more.length;
+    if (nothingToDrop && said.length) more.push(claimOf(said));
+    else kept.push(op);
+  }
+  return { claims: [...claims, ...more].sort((a, b) => a.start - b.start), ops: kept, left };
+}
+
+/** Whether words left out of the notes held more than a filler: "This is." does, "Okay." doesn't. */
+export const saidSomething = (words: readonly TimedWord[]) =>
+  saidOf(words).some((w) => !FILLER.has(w));
+
+/**
+ * Whether a note names only the screen and says nothing about it: "This slide.", "Slide.". It is
+ * what is left when Whisper drops the start of "Delete this slide" (D187).
+ */
+export const namesOnlyTheScreen = (words: readonly TimedWord[]) => {
+  const said = saidOf(words);
+  return said.some((w) => SCREEN_NOUN.has(w)) && said.every((w) => EMPTY.has(w) || SCREEN_NOUN.has(w));
+};
+
+/** A take's words that were said in it: one timed after the recording ended was never said. */
+export const wordsIn = (take: Pick<Take, 'words' | 'durationMs'>): TimedWord[] =>
+  (take.words ?? []).filter((w) => w.start <= take.durationMs);
 
 const PRAISE = new Set([
   'like',
@@ -792,7 +848,23 @@ const isHuge = (a: Area) => a.w * a.h >= HUGE;
 const dotAt = (p: { x: number; y: number }): Shape => ({ kind: 'dot', x: p.x, y: p.y });
 
 /**
- * Where a claim lands on its screen, from the pointer while it was said (D185). The strokes
+ * Whether a claim points at nothing but the screen (D188): each "this" or "that" in it is followed
+ * by what a screen is called, "Delete this slide", "I like this page". On the author's review, 30
+ * of 35 such remarks got a mark where the hand had come to rest after a scroll.
+ */
+export function aboutTheScreen(words: readonly Pick<TimedWord, 'text'>[]): boolean {
+  let named = false;
+  for (const [i, word] of words.entries()) {
+    if (!DEICTIC.has(norm(word.text))) continue;
+    if (!SCREEN_NOUN.has(norm(words[i + 1]?.text ?? ''))) return false;
+    named = true;
+  }
+  return named;
+}
+
+/**
+ * Where a claim lands on its screen, from the pointer while it was said (D185). A claim that
+ * points at nothing but the screen is about the screen, whatever the hand did (D188). The strokes
  * come first: a circle or a scrub made while it was said is the thing, a huge one the screen. A
  * "move" with the pointer resting on two spots is an arrow from the first to the last. At "this",
  * the rest the pointer was in, or the one it came to just before or after the word, as pointing
@@ -805,6 +877,7 @@ export function placeClaim(
   screen: number,
   size: Size,
 ): Shape {
+  if (aboutTheScreen(claim.words)) return WHOLE;
   const from = claim.start - LEAD;
   const to = claim.end + LEAD / 2;
   const seen = pointerOn(pointer, screen, from - ARRIVED, to + LAG, size);
@@ -870,6 +943,14 @@ const ANAPHOR = new Set([
   'also',
   'same',
 ]);
+
+/**
+ * Words that can only be about what was just said. A sentence that starts with one in the same
+ * breath as the last goes on about its thing, wherever the hand has gone since (D188): read piece
+ * by piece, Whisper writes "This color should be changed. It's not good." where it wrote one
+ * sentence before, and the second landed where the hand was leaving for.
+ */
+const PRONOUN = new Set(['it', "it's", 'its', 'they', "they're", 'which']);
 
 /** How much of the bigger of two areas the smaller covers, and the smaller covers of it. */
 function overlapOf(a: Area, b: Area) {
@@ -949,7 +1030,7 @@ export function applyTake(
     ...a,
     marks: a.marks.filter((m) => !m.id.startsWith(prefix)),
   }));
-  const words = take.words ?? [];
+  const words = wordsIn(take);
   if (!words.length) return list;
   const byId = new Map(list.map((a, i) => [a.id, i]));
   const n = take.screens.length;
@@ -969,10 +1050,10 @@ export function applyTake(
     const at = byId.get(take.screens[k].id);
     if (at === undefined) continue;
     const size = take.screens[k];
-    const { ops, rest } = parseVoiceTags(said[k], known);
     const before = voiceNotes(list[at]);
+    const { ops, claims } = heard(said[k], known, before.length > 0);
     const events = [
-      ...claimsOf(rest).map((c) => ({ t: c.start, claim: c })),
+      ...claims.map((c) => ({ t: c.start, claim: c })),
       ...ops.map((op) => ({ t: op.start, op })),
     ].sort((a, b) => a.t - b.t);
     const notes = made[k];
@@ -1005,11 +1086,16 @@ export function applyTake(
         const before = last;
         const i = before ? notes.findIndex((m) => m.id === before.id) : -1;
         const prev: Made | undefined = notes[i];
+        const sameBreath =
+          !!before &&
+          claim.start - before.end < SENTENCE_PAUSE &&
+          PRONOUN.has(norm(claim.words[0]?.text ?? ''));
         const joins: boolean =
           !!before &&
           !!prev &&
           claim.start - before.end <= CONTINUE_GAP &&
-          (sameThing(prev.shape, shape, claim.text, size) ||
+          (sameBreath ||
+            sameThing(prev.shape, shape, claim.text, size) ||
             (isWhole(shape) && stayedOn(prev.shape, take.pointer, k, claim, size)));
         const parts: string[] = joins && before ? [...before.parts, claim.text] : [claim.text];
         const sides = sidesOf(parts);
@@ -1020,7 +1106,8 @@ export function applyTake(
         const note: Made = {
           ...(joins ? prev : {}),
           id: joins ? prev.id : nextId(),
-          shape: joins ? placeAgain(prev.shape, shape) : shape,
+          // In the same breath the place stays the first one: the hand has only moved on.
+          shape: joins ? (sameBreath ? prev.shape : placeAgain(prev.shape, shape)) : shape,
           label: '',
           good: sides.good,
           bad: sides.bad,
@@ -1117,6 +1204,6 @@ export function applyTake(
 
 /** The screens of a read take said "remove it" over (D139), to take out of the batch. */
 export const removedScreens = (take: Take, known: readonly string[] = []): string[] =>
-  wordsByScreen(take.shown, take.words ?? [], take.screens.length).flatMap((said, k) =>
+  wordsByScreen(take.shown, wordsIn(take), take.screens.length).flatMap((said, k) =>
     parseVoiceTags(said, known).ops.some((op) => op.kind === 'remove') ? [take.screens[k].id] : [],
   );
