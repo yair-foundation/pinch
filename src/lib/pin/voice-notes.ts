@@ -20,6 +20,7 @@ import {
   areaFrom,
   arrowFrom,
   type Mark,
+  placesOf,
   type Shape,
   type SourceKind,
   sortTopics,
@@ -589,10 +590,11 @@ export type Rest = { x: number; y: number; from: number; to: number };
  * A stroke (D185): the pointer's motion between two rests, read on its own before any words. A
  * circle goes round something and closes; a scrub goes back and forth over one spot; a travel is
  * straight and long, the hand going somewhere; the rest is wander, a hand moving while its owner
- * thinks. Only a circle or a scrub says what the person meant, as `area`.
+ * thinks. A line is traced along and back, as down a gutter or under a word (D190). Only a circle, a
+ * scrub or a line says what the person meant, as `area`.
  */
 export type Stroke = {
-  kind: 'circle' | 'scrub' | 'travel' | 'wander';
+  kind: 'circle' | 'scrub' | 'line' | 'travel' | 'wander';
   from: number;
   to: number;
   area: Area | null;
@@ -624,6 +626,15 @@ const SCRUB_ACROSS = 0.35;
 /** A travel is at least this straight (chord over path) and this long (of the diagonal). */
 const TRAVEL_STRAIGHT = 0.8;
 const TRAVEL_LENGTH = 0.1;
+/**
+ * A line is gone along and back (D190): this long, of the diagonal, covered this many times over,
+ * and never further than this from its own axis. A step this far off the axis, in radians, twice
+ * running, is a corner: the line has ended.
+ */
+const LINE_LENGTH = 0.07;
+const LINE_PASSES = 1.8;
+const LINE_THIN = 0.02;
+const LINE_CORNER = 0.6;
 /** An area's short side is at least this share of the diagonal, or it was too small to mean. */
 const SMALLEST = 0.012;
 /** A circle covering this much of the screen is about the screen. */
@@ -714,56 +725,153 @@ function atLeast(a: Area, size: Size): Area {
 }
 
 /**
- * A circle on a stroke: a run that turns through `CIRCLE_TURN` one way, ends near where it began
- * and takes no longer than a hand drawing takes, then goes on round the same spot as long as the
- * pointer stays by it; the box round all of it, or null. A sweep turns as far but doesn't close,
- * and a hand wandering round the slide turns but takes seconds a loop: neither counts (D185: on
- * the author's deck, six such sweeps became slide-sized areas on one slide).
+ * A circle on a stroke, begun at `i`: a run that turns through `CIRCLE_TURN` one way, ends near
+ * where it began and takes no longer than a hand drawing takes, then goes on round the same spot
+ * as long as the pointer stays by it; the box round all of it and where it ends, or null. A sweep
+ * turns as far but doesn't close, and a hand wandering round the slide turns but takes seconds a
+ * loop: neither counts (D185: on the author's deck, six such sweeps became slide-sized areas on
+ * one slide).
  */
-function circleOf(pts: readonly Point[], size: Size): Area | null {
-  for (let i = 0; i + 3 < pts.length; i++) {
-    let turned = 0;
-    for (let k = i + 1; k + 1 < pts.length; k++) {
-      turned += turnAt(pts[k - 1], pts[k], pts[k + 1], size);
-      if (Math.abs(turned) < CIRCLE_TURN) continue;
-      const run = pts.slice(i, k + 2);
-      const box = boxOf(run, 0);
-      const across =
-        Math.max(box.w * size.width, box.h * size.height) / Math.hypot(size.width, size.height);
-      const closes = dist(run[0], run[run.length - 1], size) <= CIRCLE_CLOSES * across;
-      const quick =
-        run[run.length - 1].t - run[0].t <= (CIRCLE_LOOP_MS * Math.abs(turned)) / (2 * Math.PI);
-      if (!quick) break;
-      // Turned enough but not back round yet: a little further may close it; past a turn and a
-      // fifth without closing, it never will.
-      if (!closes) {
-        if (Math.abs(turned) >= 2.4 * Math.PI) break;
-        continue;
-      }
-      // On round the same spot: every later point within a third of the circle's size of its box.
-      const near = (p: Point) =>
-        p.x >= box.x - across / 3 &&
-        p.x <= box.x + box.w + across / 3 &&
-        p.y >= box.y - across / 3 &&
-        p.y <= box.y + box.h + across / 3;
-      let end = k + 2;
-      while (end < pts.length && near(pts[end])) end++;
-      const area = boxOf(pts.slice(i, end), 0.01);
-      const short = Math.min(area.w * size.width, area.h * size.height);
-      if (short / Math.hypot(size.width, size.height) < SMALLEST) break;
-      return area;
+function circleFrom(
+  pts: readonly Point[],
+  i: number,
+  size: Size,
+): { area: Area; end: number } | null {
+  let turned = 0;
+  for (let k = i + 1; k + 1 < pts.length; k++) {
+    turned += turnAt(pts[k - 1], pts[k], pts[k + 1], size);
+    if (Math.abs(turned) < CIRCLE_TURN) continue;
+    const run = pts.slice(i, k + 2);
+    const box = boxOf(run, 0);
+    const across =
+      Math.max(box.w * size.width, box.h * size.height) / Math.hypot(size.width, size.height);
+    const closes = dist(run[0], run[run.length - 1], size) <= CIRCLE_CLOSES * across;
+    const quick =
+      run[run.length - 1].t - run[0].t <= (CIRCLE_LOOP_MS * Math.abs(turned)) / (2 * Math.PI);
+    if (!quick) return null;
+    // Turned enough but not back round yet: a little further may close it; past a turn and a
+    // fifth without closing, it never will.
+    if (!closes) {
+      if (Math.abs(turned) >= 2.4 * Math.PI) return null;
+      continue;
     }
+    // On round the same spot: every later point within a third of the circle's size of its box.
+    const near = (p: Point) =>
+      p.x >= box.x - across / 3 &&
+      p.x <= box.x + box.w + across / 3 &&
+      p.y >= box.y - across / 3 &&
+      p.y <= box.y + box.h + across / 3;
+    let end = k + 2;
+    while (end < pts.length && near(pts[end])) end++;
+    const area = boxOf(pts.slice(i, end), 0.01);
+    const short = Math.min(area.w * size.width, area.h * size.height);
+    if (short / Math.hypot(size.width, size.height) < SMALLEST) return null;
+    return { area, end };
   }
   return null;
 }
 
-/** What a stroke is, from its shape alone. */
-function classify(points: Point[], size: Size): Stroke {
+/**
+ * Every circle on a stroke, in the order drawn (D190): a hand that circles one thing, goes to the
+ * next and circles that, without stopping, has pointed at both. On the author's review, three
+ * circles over three quotes were one stroke, and only the first was read.
+ */
+function circlesOf(pts: readonly Point[], size: Size): { area: Area; from: number; to: number }[] {
+  const found: { area: Area; from: number; to: number }[] = [];
+  let i = 0;
+  while (i + 3 < pts.length) {
+    const one = circleFrom(pts, i, size);
+    if (one) {
+      found.push({ area: one.area, from: pts[i].t, to: pts[one.end - 1].t });
+      i = one.end;
+    } else i++;
+  }
+  return found;
+}
+
+/** How far apart two axes are, in radians: a line and the same line run backwards are one. */
+function axisGap(a: number, b: number): number {
+  const d = Math.abs(a - b) % Math.PI;
+  return Math.min(d, Math.PI - d);
+}
+
+/**
+ * The lines a stroke goes along and back (D190), each as the thin box it stayed in. The path is
+ * cut at its corners into runs that keep to one axis, a reversal being the same axis; a run is a
+ * line when it is long, thin, and covered nearly twice over. Once along is a hand on its way.
+ */
+function linesOf(pts: readonly Point[], size: Size): { area: Area; from: number; to: number }[] {
+  const d = Math.hypot(size.width, size.height);
+  const at = (p: Point) => ({ x: (p.x * size.width) / d, y: (p.y * size.height) / d });
+  const found: { area: Area; from: number; to: number }[] = [];
+  const close = (run: Point[]) => {
+    if (run.length < 4) return;
+    const q = run.map(at);
+    // The run's axis: from its first point to the one furthest from it.
+    let far = q[0];
+    for (const p of q) if (Math.hypot(p.x - q[0].x, p.y - q[0].y) > Math.hypot(far.x - q[0].x, far.y - q[0].y)) far = p;
+    const axis = Math.atan2(far.y - q[0].y, far.x - q[0].x);
+    const along = q.map((p) => (p.x - q[0].x) * Math.cos(axis) + (p.y - q[0].y) * Math.sin(axis));
+    const off = q.map((p) => -(p.x - q[0].x) * Math.sin(axis) + (p.y - q[0].y) * Math.cos(axis));
+    const length = Math.max(...along) - Math.min(...along);
+    const middle = (Math.max(...off) + Math.min(...off)) / 2;
+    const thin = Math.max(...off.map((o) => Math.abs(o - middle)));
+    let path = 0;
+    for (let k = 1; k < q.length; k++) path += Math.hypot(q[k].x - q[k - 1].x, q[k].y - q[k - 1].y);
+    if (length < LINE_LENGTH || thin > LINE_THIN || path < LINE_PASSES * length) return;
+    found.push({
+      area: atLeast(boxOf(run, 0.01), size),
+      from: run[0].t,
+      to: run[run.length - 1].t,
+    });
+  };
+  let run: Point[] = pts.length ? [pts[0]] : [];
+  let axis: number | null = null;
+  let strayed = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const a = at(pts[k - 1]);
+    const b = at(pts[k]);
+    const step = Math.atan2(b.y - a.y, b.x - a.x);
+    // The axis is set once the run has gone somewhere: its first steps have no direction yet.
+    if (axis === null) {
+      const start = at(run[0]);
+      if (Math.hypot(b.x - start.x, b.y - start.y) >= 2 * STEP)
+        axis = Math.atan2(b.y - start.y, b.x - start.x);
+      run.push(pts[k]);
+      continue;
+    }
+    if (axisGap(step, axis) <= LINE_CORNER) {
+      strayed = 0;
+      run.push(pts[k]);
+      continue;
+    }
+    // One step off the axis is a wobble; a second is the corner, begun at the first.
+    if (++strayed < 2) {
+      run.push(pts[k]);
+      continue;
+    }
+    const corner = run.pop() as Point;
+    close(run);
+    run = [corner, pts[k]];
+    axis = null;
+    strayed = 0;
+  }
+  close(run);
+  return found;
+}
+
+/**
+ * What a stroke is, from its shape alone: the circles, or the lines, drawn in it, each with when
+ * it was drawn (D190), or the one thing the whole of it was.
+ */
+function classify(points: Point[], size: Size): Stroke[] {
   const from = points[0].t;
   const to = points[points.length - 1].t;
   const pts: Point[] = [];
   for (const p of points)
     if (!pts.length || dist(pts[pts.length - 1], p, size) >= STEP) pts.push(p);
+  const drawn = (kind: 'circle' | 'line', all: { area: Area; from: number; to: number }[]) =>
+    all.map((one): Stroke => ({ kind, ...one }));
   // Sharp turns back first: a hand scrubbing makes narrow loops that would pass for circles.
   let turns = 0;
   for (let k = 1; k + 1 < pts.length; k++)
@@ -771,17 +879,21 @@ function classify(points: Point[], size: Size): Stroke {
   const box = boxOf(pts, 0);
   if (turns >= SCRUB_TURNS) {
     if (box.w <= SCRUB_ACROSS && box.h <= SCRUB_ACROSS)
-      return { kind: 'scrub', from, to, area: atLeast(boxOf(pts, 0.01), size) };
-    return { kind: 'wander', from, to, area: null };
+      return [{ kind: 'scrub', from, to, area: atLeast(boxOf(pts, 0.01), size) }];
+    // Too wide for a scrub: lines gone along and back, or a hand wandering.
+    const lines = linesOf(pts, size);
+    return lines.length ? drawn('line', lines) : [{ kind: 'wander', from, to, area: null }];
   }
-  const circle = pts.length >= 4 ? circleOf(pts, size) : null;
-  if (circle) return { kind: 'circle', from, to, area: circle };
+  const circles = pts.length >= 4 ? circlesOf(pts, size) : [];
+  if (circles.length) return drawn('circle', circles);
+  const lines = turns ? linesOf(pts, size) : [];
+  if (lines.length) return drawn('line', lines);
   let length = 0;
   for (let k = 1; k < pts.length; k++) length += dist(pts[k - 1], pts[k], size);
   const chord = pts.length > 1 ? dist(pts[0], pts[pts.length - 1], size) : 0;
   if (length >= TRAVEL_LENGTH && chord / length >= TRAVEL_STRAIGHT)
-    return { kind: 'travel', from, to, area: null };
-  return { kind: 'wander', from, to, area: null };
+    return [{ kind: 'travel', from, to, area: null }];
+  return [{ kind: 'wander', from, to, area: null }];
 }
 
 /**
@@ -802,13 +914,13 @@ export function strokesOf(
     while (j + 1 < path.length && dist(path[i], path[j + 1], size) <= REST_DRIFT) j++;
     const to = j + 1 < path.length ? path[j + 1].t : until;
     if (to - path[i].t >= REST_MIN) {
-      if (moving.length >= 3) strokes.push(classify(moving, size));
+      if (moving.length >= 3) strokes.push(...classify(moving, size));
       moving = [];
       rests.push(restAt(path.slice(i, j + 1), path[i].t, to));
     } else moving.push(...path.slice(i, j + 1));
     i = j + 1;
   }
-  if (moving.length >= 3) strokes.push(classify(moving, size));
+  if (moving.length >= 3) strokes.push(...classify(moving, size));
   return { rests, strokes };
 }
 
@@ -877,37 +989,139 @@ export function placeClaim(
   screen: number,
   size: Size,
 ): Shape {
-  if (aboutTheScreen(claim.words)) return WHOLE;
+  return placesOfClaim(claim, pointer, screen, size)[0];
+}
+
+/** The most spots one note points at: more than this is a hand that never settled. */
+const MOST_PLACES = 6;
+
+/** Whether two spots are one: areas that mostly cover each other, a dot on an area, two dots close by. */
+function samePlace(a: Shape, b: Shape, size: Size): boolean {
+  if (a.kind === 'arrow' || b.kind === 'arrow') return false;
+  if (a.kind === 'dot' && b.kind === 'dot') return dist(a, b, size) <= 0.06;
+  if (a.kind === 'area' && b.kind === 'area') {
+    const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return w > 0 && h > 0 && (w * h) / Math.min(a.w * a.h, b.w * b.h) >= 0.5;
+  }
+  const area = a.kind === 'area' ? a : (b as Area);
+  const dot = a.kind === 'area' ? b : a;
+  return (
+    dot.x >= area.x - 0.02 &&
+    dot.x <= area.x + area.w + 0.02 &&
+    dot.y >= area.y - 0.02 &&
+    dot.y <= area.y + area.h + 0.02
+  );
+}
+
+/** One box round two areas that are the same spot: loops drawn over each other, a line retraced. */
+const roundBoth = (a: Area, b: Area): Area =>
+  areaFrom(
+    Math.min(a.x, b.x),
+    Math.min(a.y, b.y),
+    Math.max(a.x + a.w, b.x + b.w),
+    Math.max(a.y + a.h, b.y + b.h),
+  );
+
+/**
+ * Every spot a claim points at, in the order pointed at (D190): each circle, scrub or line made
+ * while it was said, then each "this" or "here" said with the hand at rest somewhere else. One
+ * sentence can be about two things, "the stroke here and here are not consistent", and on the
+ * author's review three of eleven notes that pointed lost all but one of their spots. A stroke is
+ * the claim's when it was made while the claim was said, not one whose tail the claim began in.
+ * Among smaller spots, one that covers most of the screen is left out; alone, it is the screen.
+ */
+export function placesOfClaim(
+  claim: Pick<Claim, 'words' | 'start' | 'end' | 'text'>,
+  pointer: readonly PointerSample[],
+  screen: number,
+  size: Size,
+): Shape[] {
+  if (aboutTheScreen(claim.words)) return [WHOLE];
   const from = claim.start - LEAD;
   const to = claim.end + LEAD / 2;
   const seen = pointerOn(pointer, screen, from - ARRIVED, to + LAG, size);
   const during = (x: { from: number; to: number }) => x.to >= from && x.from <= to;
   const overlap = (x: { from: number; to: number }) => Math.min(x.to, to) - Math.max(x.from, from);
 
-  const drawn = seen.strokes
-    .filter((s) => s.area && during(s))
-    .sort((a, b) => overlap(b) - overlap(a));
-  const area = drawn[0]?.area;
-  if (area) return isHuge(area) ? WHOLE : area;
+  // The words that point, and the rest the hand was in as each was said, if it was in one.
+  const pointing = claim.words.filter(
+    (word, i) =>
+      DEICTIC.has(norm(word.text)) && !SCREEN_NOUN.has(norm(claim.words[i + 1]?.text ?? '')),
+  );
+  const restAt = (word: TimedWord) =>
+    seen.rests.find((r) => r.from <= word.start && r.to >= word.start);
+
+  const drawn = seen.strokes.filter((s) => s.area && during(s));
+  const own = drawn.filter((s) => overlap(s) >= Math.min(400, (s.to - s.from) / 2));
+  // With none made while it was said, the one it overlaps most, as before D190: a circle is often
+  // drawn just ahead of the words. Not when "this" was said with the hand at rest: that is the spot.
+  const strokes = own.length
+    ? own
+    : pointing.some(restAt)
+      ? []
+      : drawn.sort((a, b) => overlap(b) - overlap(a)).slice(0, 1);
+  const spots: { shape: Shape; at: number }[] = [];
+  // One that covers most of the screen is set aside first, or it would take in every spot in it.
+  let screenWide = false;
+  for (const stroke of strokes.sort((a, b) => a.from - b.from)) {
+    const area = stroke.area as Area;
+    if (isHuge(area)) {
+      screenWide = true;
+      continue;
+    }
+    const i = spots.findIndex((p) => samePlace(p.shape, area, size));
+    if (i < 0) spots.push({ shape: area, at: stroke.from });
+    else spots[i] = { shape: roundBoth(spots[i].shape as Area, area), at: spots[i].at };
+  }
+  if (screenWide && !spots.length) return [WHOLE];
 
   const rests = seen.rests.filter(during);
-  if (MOVES.test(claim.text) && rests.length >= 2) {
+  if (!spots.length && MOVES.test(claim.text) && rests.length >= 2) {
     const [a, b] = [rests[0], rests[rests.length - 1]];
-    if (dist(a, b, size) >= 0.05) return arrowFrom(a.x, a.y, b.x, b.y);
+    if (dist(a, b, size) >= 0.05) return [arrowFrom(a.x, a.y, b.x, b.y)];
   }
-  for (const word of claim.words) {
-    if (!DEICTIC.has(norm(word.text))) continue;
-    const at =
-      seen.rests.find((r) => r.from <= word.start && r.to >= word.start) ??
-      seen.rests.find((r) => r.from >= word.start - LEAD && r.from <= word.end + LAG) ??
-      pointerAt(pointer, screen, word.start);
-    if (at) return dotAt(at);
+  // Beside something drawn, a word points only from a rest the hand was already in: the rest it
+  // comes to after a circle is the end of the circle.
+  const beside = spots.length > 0;
+  for (const word of pointing) {
+    const rest =
+      restAt(word) ??
+      (beside
+        ? undefined
+        : seen.rests.find((r) => r.from >= word.start - LEAD && r.from <= word.end + LAG));
+    // Only the first spot is taken from a hand still moving: the others need it to have stopped.
+    const at = rest ?? (spots.length ? null : pointerAt(pointer, screen, word.start));
+    if (!at) continue;
+    const dot = dotAt(at);
+    if (!spots.some((p) => samePlace(p.shape, dot, size))) spots.push({ shape: dot, at: word.start });
   }
+  if (spots.length)
+    return spots
+      .sort((a, b) => a.at - b.at)
+      .slice(0, MOST_PLACES)
+      .map((p) => p.shape);
   const arrived = rests
     .filter((r) => r.from >= claim.start - ARRIVED)
     .sort((a, b) => b.to - b.from - (a.to - a.from))[0];
-  if (arrived) return dotAt(arrived);
-  return WHOLE;
+  return [arrived ? dotAt(arrived) : WHOLE];
+}
+
+/**
+ * A note's spots as more is said about it (D190): a claim with nothing pointed at leaves them as
+ * they were, a spot pointed at again stays one, a circle drawn over a dot takes its place, and a
+ * new spot is added after the others.
+ */
+function spotsAgain(last: readonly Shape[], next: readonly Shape[], size: Size): Shape[] {
+  if (next.every(isWhole)) return [...last];
+  if (last.every(isWhole)) return [...next];
+  const out = [...last];
+  for (const shape of next) {
+    const i = out.findIndex((p) => samePlace(p, shape, size));
+    if (i < 0) out.push(shape);
+    else if (out[i].kind === 'dot' && shape.kind === 'area') out[i] = shape;
+  }
+  return out.slice(0, MOST_PLACES);
 }
 
 /** Whether the pointer stayed on a note's place through a claim: the hand still on the thing. */
@@ -975,17 +1189,6 @@ export function sameThing(last: Shape, next: Shape, text: string, size: Size): b
   if (last.kind === 'dot' && next.kind === 'area') return inside(next, last);
   return last.kind === 'area' && next.kind === 'area' && overlapOf(last, next) >= 0.5;
 }
-
-/**
- * A note's place as more is said about it: the circle over a dot, a place over the whole screen,
- * and a claim with nothing pointed at (D185) leaves the place as it was.
- */
-const placeAgain = (last: Shape, next: Shape): Shape =>
-  isWhole(next)
-    ? last
-    : isWhole(last) || (last.kind === 'dot' && next.kind === 'area')
-      ? next
-      : last;
 
 /** Whether a point is on a note's place, as "star this" or "drop that" means it. */
 function under(shape: Shape, p: { x: number; y: number }, size: Size) {
@@ -1064,7 +1267,7 @@ export function applyTake(
       if (typeof ref === 'number') return all[ref - 1];
       const p = pointerAt(take.pointer, k, t);
       return (
-        (p && [...all].reverse().find((m) => under(m.shape, p, size))) ||
+        (p && [...all].reverse().find((m) => placesOf(m).some((s) => under(s, p, size)))) ||
         notes.at(-1) ||
         before.at(-1)
       );
@@ -1082,7 +1285,8 @@ export function applyTake(
     for (const e of events) {
       if ('claim' in e) {
         const { claim } = e;
-        const shape = placeClaim(claim, take.pointer, k, size);
+        const spots = placesOfClaim(claim, take.pointer, k, size);
+        const shape = spots[0];
         const before = last;
         const i = before ? notes.findIndex((m) => m.id === before.id) : -1;
         const prev: Made | undefined = notes[i];
@@ -1096,7 +1300,8 @@ export function applyTake(
           claim.start - before.end <= CONTINUE_GAP &&
           (sameBreath ||
             sameThing(prev.shape, shape, claim.text, size) ||
-            (isWhole(shape) && stayedOn(prev.shape, take.pointer, k, claim, size)));
+            (isWhole(shape) &&
+              placesOf(prev).some((s) => stayedOn(s, take.pointer, k, claim, size))));
         const parts: string[] = joins && before ? [...before.parts, claim.text] : [claim.text];
         const sides = sidesOf(parts);
         const topics = sortTopics([
@@ -1106,8 +1311,7 @@ export function applyTake(
         const note: Made = {
           ...(joins ? prev : {}),
           id: joins ? prev.id : nextId(),
-          // In the same breath the place stays the first one: the hand has only moved on.
-          shape: joins ? (sameBreath ? prev.shape : placeAgain(prev.shape, shape)) : shape,
+          shape,
           label: '',
           good: sides.good,
           bad: sides.bad,
@@ -1116,6 +1320,11 @@ export function applyTake(
           quote: parts.join(' '),
           at: joins ? prev.at : claim.start,
         };
+        // In the same breath the spots stay as they were: the hand has only moved on.
+        const all = !joins ? spots : sameBreath ? placesOf(prev) : spotsAgain(placesOf(prev), spots, size);
+        note.shape = all[0];
+        if (all.length > 1) note.also = all.slice(1);
+        else delete note.also;
         // Starred before, it stays a best example only while it still says what works.
         if (note.best && !note.good) delete note.best;
         if (joins) notes[i] = note;
@@ -1165,7 +1374,11 @@ export function applyTake(
           break;
         case 'repoint': {
           const p = pointerAt(take.pointer, k, op.end);
-          if (p) edit(notes.at(-1), (m) => ({ ...m, shape: { kind: 'dot', x: p.x, y: p.y } }));
+          if (p)
+            edit(notes.at(-1), ({ also: _also, ...m }) => ({
+              ...m,
+              shape: { kind: 'dot', x: p.x, y: p.y },
+            }));
           break;
         }
         // The role belongs to the tag's set on Your rules; the moves already happened.

@@ -17,6 +17,7 @@ import {
   settleCrop,
   type Shape,
   verdictOf,
+  placesOf,
 } from '@/lib/pin/model';
 import {
   colourOf,
@@ -490,9 +491,15 @@ function drawAll(
     // A note on the whole screen points at nothing, so nothing is drawn for it (D188); the
     // others keep their numbers.
     if (isWhole(m.shape)) continue;
-    const others = marks.filter((o) => o !== m && !isWhole(o.shape)).map((o) => o.shape);
-    const room = withOthers(busy, others, px, unit, placed);
-    placed.push(drawMark(ctx, m, i + 1, px, unit, undefined, room));
+    // Its number goes on each spot it points at (D190).
+    for (const shape of placesOf(m)) {
+      const others = marks
+        .filter((o) => !isWhole(o.shape))
+        .flatMap(placesOf)
+        .filter((o) => o !== shape);
+      const room = withOthers(busy, others, px, unit, placed);
+      placed.push(drawMark(ctx, { ...m, shape }, i + 1, px, unit, undefined, room));
+    }
   }
 }
 
@@ -959,34 +966,37 @@ export async function buildExport(
       ),
     ]);
     for (const [j, mark] of written(asset).entries()) {
-      const rect = settledCrop(bitmap, mark, grid);
-      const spot = spotOf(mark.shape, bitmap.width, bitmap.height);
-      crops.set(`${asset.id}/${mark.id}`, rect);
-      // For a point, the colour right under it (D188), ahead of the colours around it.
-      const at =
-        mark.shape.kind === 'dot'
-          ? colourOf(
-              spotPixels(bitmap, {
-                x: mark.shape.x,
-                y: mark.shape.y,
-                w: 1 / bitmap.width,
-                h: 1 / bitmap.height,
-              }),
-            )
-          : undefined;
-      wheres.set(
-        `${asset.id}/${mark.id}`,
-        whereLine(spot, textIn(text, spot), mainColours(spotPixels(bitmap, spot)), at),
-      );
-      files.push({
-        name: root + names.crop(j),
-        data: await bytes(await spotCrop(bitmap, spot, rect)),
-      });
+      // A close-up and a line for each spot the note points at (D190).
+      for (const [p, shape] of placesOf(mark).entries()) {
+        const rect = settledCrop(bitmap, { ...mark, shape }, grid);
+        const spot = spotOf(shape, bitmap.width, bitmap.height);
+        crops.set(`${asset.id}/${mark.id}/${p}`, rect);
+        // For a point, the colour right under it (D188), ahead of the colours around it.
+        const at =
+          shape.kind === 'dot'
+            ? colourOf(
+                spotPixels(bitmap, {
+                  x: shape.x,
+                  y: shape.y,
+                  w: 1 / bitmap.width,
+                  h: 1 / bitmap.height,
+                }),
+              )
+            : undefined;
+        wheres.set(
+          `${asset.id}/${mark.id}/${p}`,
+          whereLine(spot, textIn(text, spot), mainColours(spotPixels(bitmap, spot)), at),
+        );
+        files.push({
+          name: root + names.crop(j, p),
+          data: await bytes(await spotCrop(bitmap, spot, rect)),
+        });
+      }
     }
     bitmap.close();
   }
-  const cropOf: CropOf = (a, m) =>
-    crops.get(`${a.id}/${m.id}`) ?? cropRect(m.shape, a.width, a.height);
+  const cropOf: CropOf = (a, m, place = 0) =>
+    crops.get(`${a.id}/${m.id}/${place}`) ?? cropRect(placesOf(m)[place], a.width, a.height);
   const entries: ZipEntry[] = [
     { name: `${root}README.md`, data: encoder.encode(readme(assets, stamp)) },
     { name: root + GUIDE_FILE, data: encoder.encode(agentGuide()) },
@@ -994,7 +1004,9 @@ export async function buildExport(
       name: `${root}notes.json`,
       data: encoder.encode(
         `${JSON.stringify(
-          manifest(assets, stamp, cropOf, (a, m) => wheres.get(`${a.id}/${m.id}`)),
+          manifest(assets, stamp, cropOf, (a, m, place = 0) =>
+            wheres.get(`${a.id}/${m.id}/${place}`),
+          ),
           null,
           2,
         )}\n`,

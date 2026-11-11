@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight, CircleHelp, Download, Star, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
-import { type Asset, type Mark, verdictOf } from '@/lib/pin/model';
+import { type Asset, type Mark, placesOf, verdictOf } from '@/lib/pin/model';
 import {
   COUNTDOWN,
   clockText,
@@ -74,54 +74,57 @@ const VERDICT_WORD = { good: 'Works', bad: 'Doesn’t work', both: 'Mixed' };
 function VoiceMarks({ marks }: { marks: Mark[] }) {
   return (
     <span aria-hidden className="pointer-events-none absolute inset-0">
-      {marks.map((m, i) => {
-        if (isWhole(m.shape)) return null;
+      {marks.flatMap((m, i) => {
+        if (isWhole(m.shape)) return [];
         const color = MARK_COLOR;
-        const s = m.shape;
-        const badge = (
-          <span
-            className="absolute grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full font-mono text-[11px] font-medium text-white shadow-sm"
-            style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%`, background: color }}
-          >
-            {i + 1}
-          </span>
-        );
-        return (
-          <span key={m.id} className="contents">
-            {s.kind === 'area' && (
-              <span
-                className="absolute rounded-md border-2"
-                style={{
-                  left: `${s.x * 100}%`,
-                  top: `${s.y * 100}%`,
-                  width: `${s.w * 100}%`,
-                  height: `${s.h * 100}%`,
-                  borderColor: color,
-                }}
-              />
-            )}
-            {s.kind === 'arrow' && (
-              <svg
-                aria-hidden
-                className="absolute inset-0 size-full overflow-visible"
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-              >
-                <line
-                  x1={s.x * 100}
-                  y1={s.y * 100}
-                  x2={s.x2 * 100}
-                  y2={s.y2 * 100}
-                  stroke={color}
-                  strokeWidth={2}
-                  vectorEffect="non-scaling-stroke"
+        // Its number on each spot it points at (D190).
+        return placesOf(m).map((s, p) => {
+          const badge = (
+            <span
+              className="absolute grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full font-mono text-[11px] font-medium text-white shadow-sm"
+              style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%`, background: color }}
+            >
+              {i + 1}
+            </span>
+          );
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a note's spots never change order
+            <span key={`${m.id}-${p}`} className="contents">
+              {s.kind === 'area' && (
+                <span
+                  className="absolute rounded-md border-2"
+                  style={{
+                    left: `${s.x * 100}%`,
+                    top: `${s.y * 100}%`,
+                    width: `${s.w * 100}%`,
+                    height: `${s.h * 100}%`,
+                    borderColor: color,
+                  }}
                 />
-                <circle cx={s.x2 * 100} cy={s.y2 * 100} r={0.8} fill={color} />
-              </svg>
-            )}
-            {badge}
-          </span>
-        );
+              )}
+              {s.kind === 'arrow' && (
+                <svg
+                  aria-hidden
+                  className="absolute inset-0 size-full overflow-visible"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  <line
+                    x1={s.x * 100}
+                    y1={s.y * 100}
+                    x2={s.x2 * 100}
+                    y2={s.y2 * 100}
+                    stroke={color}
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <circle cx={s.x2 * 100} cy={s.y2 * 100} r={0.8} fill={color} />
+                </svg>
+              )}
+              {badge}
+            </span>
+          );
+        });
       })}
     </span>
   );

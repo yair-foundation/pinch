@@ -14,6 +14,8 @@ import {
   isWhole,
   leanOfClaim,
   placeClaim,
+  placesOfClaim,
+  pointerOn,
   removedScreens,
   sidesOf,
   takesApplied,
@@ -690,5 +692,187 @@ describe('voice notes: nothing said is lost (D188)', () => {
       "This color should be changed. It's not good. It's clashing with the background.",
     );
     assert.equal(one.marks[0].shape.kind, 'area');
+  });
+});
+
+describe('voice notes: several spots in one note (D190)', () => {
+  /** The pointer going straight from one point to another on screen 0, a sample every 20ms. */
+  const go = (x0: number, y0: number, x1: number, y1: number, from: number, steps = 10) =>
+    Array.from({ length: steps }, (_, i): PointerSample => {
+      const f = (i + 1) / steps;
+      return [from + (i + 1) * 20, 0, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
+    });
+  /** Along a line and back, `passes` times, from `from`. */
+  function trace(x0: number, y0: number, x1: number, y1: number, from: number, passes: number) {
+    const out: PointerSample[] = [[from, 0, x0, y0]];
+    for (let p = 0; p < passes; p++) {
+      const [a, b] = p % 2 ? [[x1, y1], [x0, y0]] : [[x0, y0], [x1, y1]];
+      out.push(...go(a[0], a[1], b[0], b[1], from + p * 400, 20));
+    }
+    return out;
+  }
+  const areas = (shapes: ReturnType<typeof placesOfClaim>) =>
+    shapes.map((s) => (s.kind === 'area' ? [s.x + s.w / 2, s.y + s.h / 2].map((v) => Number(v.toFixed(1))) : s.kind));
+
+  it('reads every circle in a stroke, not only the first', () => {
+    // Round one thing, straight on to the next and round that, without the hand stopping.
+    const path = [...circle(0.25, 0.3, 0.06, 0), ...go(0.31, 0.3, 0.76, 0.7, 800), ...circle(0.7, 0.7, 0.06, 1020)];
+    const { strokes } = pointerOn(path, 0, 0, 3000, size);
+    assert.deepEqual(
+      strokes.map((s) => s.kind),
+      ['circle', 'circle'],
+    );
+    assert.ok(strokes[0].to <= strokes[1].from);
+  });
+
+  it('reads a line gone along and back as the thin area it kept to, and once along as a hand on its way', () => {
+    const { strokes } = pointerOn(trace(0.3, 0.5, 0.6, 0.5, 0, 3), 0, 0, 3000, size);
+    assert.deepEqual(
+      strokes.map((s) => s.kind),
+      ['line'],
+    );
+    const area = strokes[0].area;
+    assert.ok(area && area.w > 0.28 && area.h < 0.05);
+    const once = pointerOn(trace(0.3, 0.5, 0.6, 0.5, 0, 1), 0, 0, 3000, size);
+    assert.deepEqual(
+      once.strokes.map((s) => s.kind),
+      ['travel'],
+    );
+  });
+
+  it('reads two lines that meet at a corner as two, as down one gutter and along the next', () => {
+    // The author's "reduce these margins": down the gutter and back, then along the other and back.
+    const path = [...trace(0.5, 0.5, 0.5, 0.9, 0, 2), ...trace(0.5, 0.5, 0.7, 0.5, 820, 2).slice(1)];
+    const lines = pointerOn(path, 0, 0, 4000, size).strokes.filter((s) => s.kind === 'line');
+    assert.equal(lines.length, 2);
+    assert.ok((lines[0].area?.h ?? 0) > 0.3 && (lines[1].area?.w ?? 0) > 0.15);
+  });
+
+  it('puts a sentence on each thing circled while it was said, in the order circled', () => {
+    const path = [...circle(0.25, 0.8, 0.06, 0), ...go(0.31, 0.8, 0.76, 0.8, 800), ...circle(0.7, 0.8, 0.06, 1020)];
+    const spots = placesOfClaim(claim('The stroke here and here are not consistent'), path, 0, size);
+    assert.deepEqual(areas(spots), [
+      [0.3, 0.8],
+      [0.7, 0.8],
+    ]);
+    // The first is still the place a single-place reading gives.
+    assert.deepEqual(placeClaim(claim('The stroke here and here are not consistent'), path, 0, size), spots[0]);
+  });
+
+  it('puts "this" and "this" on the two places the hand rested, one dot each', () => {
+    const pointer = [...rest(0.2, 0.2, 0, 900), ...rest(0.7, 0.7, 1000, 4000)];
+    const spots = placesOfClaim(claim('This … and this clash'), pointer, 0, size);
+    assert.deepEqual(spots, [
+      { kind: 'dot', x: 0.2, y: 0.2 },
+      { kind: 'dot', x: 0.7, y: 0.7 },
+    ]);
+  });
+
+  it('counts a spot once: loops over each other, and a "here" said on what was just circled', () => {
+    const twice = [...circle(0.5, 0.5, 0.08, 0), ...circle(0.51, 0.5, 0.05, 820)];
+    assert.equal(placesOfClaim(claim('I like this a lot here'), twice, 0, size).length, 1);
+  });
+
+  it('leaves out a sweep round most of the screen beside a real spot, and alone takes it for the screen', () => {
+    const small = circle(0.2, 0.2, 0.05, 0);
+    const wide = circle(0.5, 0.5, 0.45, 1020).map(([t, s, x, y]): PointerSample => [t, s, x, y]);
+    const both = placesOfClaim(claim('Add a mark here and move the whole section down a bit'), [...small, ...go(0.25, 0.2, 0.95, 0.5, 800), ...wide], 0, size);
+    assert.deepEqual(areas(both), [[0.2, 0.2]]);
+    assert.ok(isWhole(placesOfClaim(claim('Move the whole section down a bit'), wide, 0, size)[0]));
+  });
+
+  it('does not take a circle whose tail the sentence began in', () => {
+    // The circle was made for the sentence before: this one starts as it ends, and points elsewhere.
+    const pointer = [...circle(0.2, 0.2, 0.06, 0), ...rest(0.7, 0.7, 1000, 4000)];
+    const spots = placesOfClaim(claim('And this is too heavy', 1100), pointer, 0, size);
+    assert.deepEqual(spots, [{ kind: 'dot', x: 0.7, y: 0.7 }]);
+  });
+
+  const one: Asset = {
+    id: 'one',
+    name: 'one.png',
+    type: 'image/png',
+    width: 1000,
+    height: 1000,
+    note: '',
+    marks: [],
+  };
+  const takeOf = (words: TimedWord[], pointer: PointerSample[]): Take => ({
+    id: 'aaaa-bbbb',
+    version: 1,
+    recordedAt: '2026-11-11T10:00:00.000Z',
+    durationMs: 20_000,
+    mimeType: 'audio/webm',
+    screens: [{ id: 'one', name: 'one.png', width: 1000, height: 1000 }],
+    shown: [{ t: 0, screen: 0 }],
+    pointer,
+    words,
+  });
+
+  it('keeps every spot on the note it makes, the first as its place', () => {
+    const pointer = [
+      ...circle(0.25, 0.8, 0.06, 0),
+      ...go(0.31, 0.8, 0.76, 0.8, 800),
+      ...circle(0.7, 0.8, 0.06, 1020),
+    ];
+    const take = takeOf(say('The stroke here and here are not consistent.'), pointer);
+    const [made] = applyTake([one], take);
+    assert.equal(made.marks.length, 1);
+    assert.equal(made.marks[0].shape.kind, 'area');
+    assert.deepEqual(
+      (made.marks[0].also ?? []).map((s) => s.kind),
+      ['area'],
+    );
+    // Read again, it comes to the same.
+    assert.deepEqual(applyTake([made], take)[0].marks, made.marks);
+  });
+
+  it('adds a spot pointed at as more is said about the same thing, and counts the first once', () => {
+    const words = [
+      ...say('The header is loud here.'),
+      ...say('Here it is the same … and here', 2400),
+    ];
+    const pointer = [...rest(0.2, 0.2, 0, 3000), ...rest(0.7, 0.7, 3100, 9000)];
+    const [made] = applyTake([one], takeOf(words, pointer));
+    assert.equal(made.marks.length, 1);
+    assert.deepEqual(made.marks[0].shape, { kind: 'dot', x: 0.2, y: 0.2 });
+    assert.deepEqual(made.marks[0].also, [{ kind: 'dot', x: 0.7, y: 0.7 }]);
+  });
+
+  it('takes every spot to the export and back, each with its own close-up', () => {
+    const pointer = [
+      ...circle(0.25, 0.8, 0.06, 0),
+      ...go(0.31, 0.8, 0.76, 0.8, 800),
+      ...circle(0.7, 0.8, 0.06, 1020),
+    ];
+    const [made] = applyTake(
+      [one],
+      takeOf(say('The stroke here and here are not consistent.'), pointer),
+    );
+    const data = manifest([made], '2026-11-11T10:00:00.000Z');
+    const [noted] = data.assets[0].notes;
+    assert.equal(noted.crop, 'crops/01-one-note-1.jpg');
+    assert.deepEqual(
+      noted.also?.map((p) => [p.shape.kind, p.crop]),
+      [['area', 'crops/01-one-note-1-2.jpg']],
+    );
+    const encode = (x: string) => new TextEncoder().encode(x);
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const files = new Map<string, Uint8Array>([
+      ['pinch-x/notes.json', encode(JSON.stringify(data))],
+      [`pinch-x/${data.assets[0].image}`, PNG],
+    ]);
+    const exp = readExport(files);
+    assert.deepEqual(batchNotes(exp)[0].also, [{ crop: 'crops/01-one-note-1-2.jpg' }]);
+    let n = 0;
+    const back = assetsOf(exp, files, () => `id${++n}`).assets[0].asset;
+    assert.equal(back.marks[0].also?.length, 1);
+    assert.equal(back.marks[0].also?.[0].kind, 'area');
+  });
+
+  it('leaves a note with one spot as it was before', () => {
+    const [made] = applyTake([one], takeOf(say('This is too heavy.'), rest(0.3, 0.7, 0, 3000)));
+    assert.equal(made.marks.length, 1);
+    assert.ok(!('also' in made.marks[0]));
   });
 });

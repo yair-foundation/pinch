@@ -31,6 +31,17 @@ const noteSchema = z.object({
   origin: z.string().max(20).optional(),
   where: z.string().max(500).optional(),
   spoken: z.string().max(10000).optional(),
+  // The other spots a note points at (D190).
+  also: z
+    .array(
+      z.object({
+        shape: shapeSchema,
+        crop: z.string().max(300),
+        where: z.string().max(500).optional(),
+      }),
+    )
+    .max(12)
+    .optional(),
 });
 const assetSchema = z.object({
   number: z.string().max(4),
@@ -88,6 +99,7 @@ function markOf(n: PinchExport['assets'][number]['notes'][number], id: string): 
   return {
     id,
     shape: n.shape,
+    ...(n.also?.length ? { also: n.also.map((p) => p.shape) } : {}),
     label: n.label ?? '',
     good: n.works,
     bad: n.doesNotWork,
@@ -156,6 +168,9 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       ...(n.spoken ? { spoken: n.spoken } : {}),
       ...(n.shape.kind === 'area' && n.shape.w >= 0.999 && n.shape.h >= 0.999
         ? { whole: true as const }
+        : {}),
+      ...(n.also?.length
+        ? { also: n.also.map((p) => ({ crop: p.crop, ...(p.where ? { where: p.where } : {}) })) }
         : {}),
     })),
   );

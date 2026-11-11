@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D190 a note keeps every spot its sentence points at, each with its number on the marked copy, its own close-up and its own line; every circle in a stroke is read, and a line gone along and back. On the author's review the three notes that had lost spots have them, and two more were found. Not yet: a rest with nothing said over it as a spot, "And here." on its own. Not run on the live site.
+
 Since D189 `transcript.md` ends with the screens nothing was said over, the ones on show for under half a second marked and the ones never shown apart, `notes.md` says how many there are, and the intro says how to read a take that is a work order. The new paragraph was not run through the taste harness.
 
 Since D188 the package carries everything said in a take as `transcript.md`, and `notes.md` opens with the remarks it is not sure of; "Delete this" with no note to drop is a note; a remark about "this slide" is on the whole screen, with no mark and no close-up; a point's line names the colour under it; long file names keep their end; and a take records how it was read. "Remove this." still takes the screen out of the batch, and the package says so. Not yet: several places in one sentence, traced lines, the intro for a review that is a work order. Not run on the live site.

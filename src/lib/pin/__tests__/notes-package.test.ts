@@ -55,7 +55,12 @@ function exportOf(b: Batch) {
       [`${b.root}${a.image}`, bytes('image')],
       [`${b.root}${a.marked}`, bytes('marked')],
     ]),
-    ...b.notes.map((n): [string, Uint8Array] => [`${b.root}${n.crop}`, bytes('crop')]),
+    ...b.notes.flatMap((n): [string, Uint8Array][] =>
+      [n.crop, ...(n.also ?? []).map((p) => p.crop)].map((crop) => [
+        `${b.root}${crop}`,
+        bytes('crop'),
+      ]),
+    ),
   ]);
 }
 
@@ -348,6 +353,43 @@ describe('a note about the whole screen, and what was said (D188)', () => {
       /\n- `one\.png` at 0:01: "Remove this\." Taken as a command: this screenshot left the batch, so it has no notes\.\n/,
     );
     assert.match(made.text, /Everything I said is in `transcript\.md`\./);
+  });
+
+  it('gives a note that points at several spots a close-up and a line for each (D190)', () => {
+    const made = packed([
+      note('01.1', {
+        where: 'Where: bottom left. Colours: #5f1632.',
+        also: [
+          { crop: 'crops/01.1-2.jpg', where: 'Where: bottom right. At the point: #fa877d. Colours: #5f1632.' },
+          { crop: 'crops/01.1-3.jpg' },
+        ],
+      }),
+    ]);
+    assert.deepEqual(made.names, [
+      'crops/01.1-2.jpg',
+      'crops/01.1-3.jpg',
+      'crops/01.1.jpg',
+      'images/01.png',
+      'marked/01.jpg',
+      'notes.md',
+      'pinch-check.md',
+    ]);
+    assert.match(
+      made.text,
+      /\n- 1\. \(`crops\/01\.1\.jpg`, `crops\/01\.1-2\.jpg`, `crops\/01\.1-3\.jpg`\) Great big title\.\n {2}Where: bottom left\. Colours: #5f1632\.\n {2}Also: bottom right\. At the point: #fa877d\. Colours: #5f1632\.\n/,
+    );
+    assert.equal(made.missing, 0);
+    assert.match(made.text, /A note that points at several spots has its number on each of them/);
+  });
+
+  it('counts a spot whose close-up can\'t be read, and still names the others (D190)', () => {
+    const b = batch('a', [note('01.1', { also: [{ crop: 'crops/gone.jpg' }] })]);
+    const files = exportOf(b);
+    files.delete('a/crops/gone.jpg');
+    const c = { ...newCollection('take', 'c1', STAMP), batches: [b] };
+    const made = notesPackage(c, new Map([['a', files]]), STAMP, true);
+    assert.equal(made.missing, 1);
+    assert.match(new TextDecoder().decode(made.files[0].data), /\n- 1\. \(`crops\/01\.1\.jpg`\) Great big title\./);
   });
 
   it('says how to read a take that is a work order, after the line about taste (D189)', () => {
