@@ -96,6 +96,44 @@ export function remarksOf(take: Take, known: readonly string[] = []): Remark[] {
   return out.sort((a, b) => a.at - b.at);
 }
 
+/** A screen on show for less than this was passed, not looked at. */
+const GLANCE = 500;
+
+/** How long each screen of a take was on show, in milliseconds: 0 for one that never was. */
+export function dwellOf(take: Take): number[] {
+  const dwell = take.screens.map(() => 0);
+  const marks = [...take.shown].sort((a, b) => a.t - b.t);
+  marks.forEach((mark, i) => {
+    if (mark.screen === null || mark.screen >= dwell.length) return;
+    dwell[mark.screen] += Math.max(0, (marks[i + 1]?.t ?? take.durationMs) - mark.t);
+  });
+  return dwell;
+}
+
+/**
+ * The screens of a take nothing was said over (D189): those shown, with whether each was only
+ * glanced at, and those the take ended before. In a review where saying nothing means "keep", it
+ * is the list of what to keep, and a screen that flashed past is one the author may not have seen.
+ */
+export function quietOf(
+  take: Take,
+  known: readonly string[] = [],
+): { quiet: { screen: number; glanced: boolean }[]; unseen: number[] } {
+  const spoken = new Set(remarksOf(take, known).map((r) => r.screen));
+  const seen = new Set(take.shown.flatMap((s) => (s.screen === null ? [] : [s.screen])));
+  const dwell = dwellOf(take);
+  const quiet: { screen: number; glanced: boolean }[] = [];
+  const unseen: number[] = [];
+  take.screens.forEach((_, screen) => {
+    if (spoken.has(screen)) return;
+    if (seen.has(screen)) quiet.push({ screen, glanced: dwell[screen] < GLANCE });
+    else unseen.push(screen);
+  });
+  return { quiet, unseen };
+}
+
+const screens = (n: number) => `${n} ${n === 1 ? 'screen' : 'screens'}`;
+
 export const TRANSCRIPT_FILE = 'transcript.md';
 
 const remarkLine = (r: Remark) =>
@@ -103,7 +141,8 @@ const remarkLine = (r: Remark) =>
 
 /**
  * The takes' words as a file for the package: each screen in the order it was first spoken over,
- * with its remarks and the time of each. Empty when nothing was said.
+ * with its remarks and the time of each, then the screens nothing was said over (D189). Empty when
+ * nothing was said.
  */
 export function transcriptText(takes: readonly Take[], known: readonly string[] = []): string {
   const lines: string[] = [];
@@ -114,16 +153,41 @@ export function transcriptText(takes: readonly Take[], known: readonly string[] 
       lines.push('', `## Take recorded ${take.recordedAt.slice(0, 16).replace('T', ' ')}`);
     const shown = new Set(take.shown.flatMap((s) => (s.screen === null ? [] : [s.screen]))).size;
     const order = [...new Set(remarks.map((r) => r.screen))];
-    lines.push(
-      '',
-      `${shown} ${shown === 1 ? 'screen' : 'screens'} shown, ${order.length} with something said.`,
-    );
+    const head = takes.length > 1 ? '###' : '##';
+    lines.push('', `${screens(shown)} shown, ${order.length} with something said.`);
     for (const screen of order)
       lines.push(
         '',
-        `${takes.length > 1 ? '###' : '##'} ${take.screens[screen].name}`,
+        `${head} ${take.screens[screen].name}`,
         '',
         ...remarks.filter((r) => r.screen === screen).map(remarkLine),
+      );
+    const { quiet, unseen } = quietOf(take, known);
+    const glanced = quiet.filter((q) => q.glanced).length;
+    // Marked one by one only where some were glanced at and some were not.
+    const marked = glanced > 0 && glanced < quiet.length;
+    const brief = marked
+      ? ` The ${glanced} marked * ${glanced === 1 ? 'was' : 'were'} on show for under half a second.`
+      : glanced
+        ? ` ${glanced === 1 ? 'It was' : 'All were'} on show for under half a second.`
+        : '';
+    if (quiet.length)
+      lines.push(
+        '',
+        `${head} Nothing said`,
+        '',
+        `I said nothing over ${quiet.length === 1 ? 'this screen' : `these ${screens(quiet.length)}`}.${brief}`,
+        '',
+        ...quiet.map((q) => `- ${take.screens[q.screen].name}${marked && q.glanced ? ' *' : ''}`),
+      );
+    if (unseen.length)
+      lines.push(
+        '',
+        `${head} Never shown`,
+        '',
+        `The take ended before ${unseen.length === 1 ? 'this screen' : `these ${screens(unseen.length)}`} came up.`,
+        '',
+        ...unseen.map((screen) => `- ${take.screens[screen].name}`),
       );
   }
   if (!lines.length) return '';
@@ -146,4 +210,25 @@ export function unsureLines(takes: readonly Take[], known: readonly string[] = [
           `- \`${take.screens[r.screen].name}\` at ${clockText(r.at)}: "${r.text.replace(/ \([^)]*\)$/, '')}" ${r.unsure}`,
       ),
   );
+}
+
+/**
+ * A line for the notes on the screens nothing was said over (D189), or nothing when every screen
+ * was spoken over or no take said anything: how many, and where they are listed.
+ */
+export function quietLine(takes: readonly Take[], known: readonly string[] = []): string {
+  const said = takes.filter((take) => remarksOf(take, known).length);
+  const all = said.map((take) => quietOf(take, known));
+  if (!all.some((q) => q.quiet.length || q.unseen.length)) return '';
+  if (said.length > 1)
+    return `The screens I said nothing over in each take are listed in \`${TRANSCRIPT_FILE}\`.`;
+  const [{ quiet, unseen }] = all;
+  const shown = new Set(said[0].shown.flatMap((s) => (s.screen === null ? [] : [s.screen]))).size;
+  const passed = quiet.length
+    ? `I said nothing over ${quiet.length} of the ${screens(shown)} I was shown.`
+    : '';
+  const missed = unseen.length
+    ? `${unseen.length === 1 ? 'One screen was' : `${unseen.length} screens were`} never shown.`
+    : '';
+  return `${[passed, missed].filter(Boolean).join(' ')} They are listed at the end of \`${TRANSCRIPT_FILE}\`.`;
 }
