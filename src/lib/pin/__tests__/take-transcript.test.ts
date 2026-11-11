@@ -48,7 +48,7 @@ describe('the transcript of a take (D188)', () => {
     const remarks = remarksOf(
       take([
         ...say('The header is loud.', 1000),
-        ...say('Remove this.', 11_000),
+        ...say('Remove this screenshot.', 11_000),
         ...say('Oh, wait.', 21_000),
         ...say('Delete this slide.', 24_000),
       ]),
@@ -57,7 +57,7 @@ describe('the transcript of a take (D188)', () => {
       remarks.map((r) => [r.screen, r.kind, r.text]),
       [
         [0, 'note', 'The header is loud.'],
-        [1, 'tag', 'Remove this. (Removed)'],
+        [1, 'tag', 'Remove this screenshot. (Removed)'],
         [2, 'left', 'Oh, wait.'],
         [2, 'note', 'Delete this slide.'],
       ],
@@ -66,7 +66,7 @@ describe('the transcript of a take (D188)', () => {
 
   it('is unsure of a tag that took something away, and of words left out', () => {
     const remarks = remarksOf(
-      take([...say('Remove this.', 11_000), ...say('Oh, wait.', 21_000), ...say('Okay.', 25_000)]),
+      take([...say('Remove this screenshot.', 11_000), ...say('Oh, wait.', 21_000), ...say('Okay.', 25_000)]),
     );
     assert.match(remarks[0].unsure ?? '', /^Taken as a command: this screenshot left the batch/);
     assert.equal(remarks[1].unsure, 'Too short to be a note.');
@@ -97,7 +97,7 @@ describe('the transcript of a take (D188)', () => {
     const text = transcriptText([
       take([
         ...say('The header is loud.', 1000),
-        ...say('Remove this.', 11_000),
+        ...say('Remove this screenshot.', 11_000),
         ...say('Okay.', 21_000),
       ]),
     ]);
@@ -106,7 +106,7 @@ describe('the transcript of a take (D188)', () => {
     assert.match(text, /\n## one\.png\n\n- 0:01 The header is loud\.\n/);
     assert.match(
       text,
-      /\n## two\.png\n\n- 0:11 Remove this\. \(Removed\) \[Taken as a command: this screenshot left the batch, so it has no notes\.\]\n/,
+      /\n## two\.png\n\n- 0:11 Remove this screenshot\. \(Removed\) \[Taken as a command: this screenshot left the batch, so it has no notes\.\]\n/,
     );
     assert.match(text, /\n## three\.png\n\n- 0:21 Okay\. \[Not a note\.\]\n/);
   });
@@ -125,10 +125,10 @@ describe('the transcript of a take (D188)', () => {
 
   it('lists the remarks to ask about, with the screen, the time and the words', () => {
     const lines = unsureLines([
-      take([...say('The header is loud.', 1000), ...say('Remove this.', 11_000)]),
+      take([...say('The header is loud.', 1000), ...say('Remove this screenshot.', 11_000)]),
     ]);
     assert.deepEqual(lines, [
-      '- `two.png` at 0:11: "Remove this." Taken as a command: this screenshot left the batch, so it has no notes.',
+      '- `two.png` at 0:11: "Remove this screenshot." Taken as a command: this screenshot left the batch, so it has no notes.',
     ]);
   });
 
@@ -182,7 +182,7 @@ describe('the screens nothing was said over (D189)', () => {
   });
 
   it('counts a screen as spoken over whatever became of the words', () => {
-    const { quiet } = quietOf(four([...said, ...say('Remove this.', 12_000)]));
+    const { quiet } = quietOf(four([...said, ...say('Remove this screenshot.', 12_000)]));
     assert.deepEqual(quiet, [{ screen: 1, glanced: true }]);
   });
 

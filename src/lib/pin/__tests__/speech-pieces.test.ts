@@ -176,6 +176,21 @@ describe('speech pieces: the words of a piece', () => {
     assert.deepEqual(out[1], { text: 'think', start: 12_270, end: 12_550 });
     assert.equal(read([{ text: 'Early', start: 0, end: 100 }])[0].start, 12_000);
   });
+  it('leaves a first word where Whisper heard it, behind a long noise that began the piece (D191)', () => {
+    // A robot vacuum talks for fifteen seconds, then "Move this": "Move" was said at the end.
+    const long = { from: 12_000, to: 30_000, onset: 12_400 };
+    const out = wordsOfPiece({
+      piece: long,
+      soundFrom: 11_750,
+      words: [
+        { text: 'Move', start: 15_200, end: 15_500 },
+        { text: 'this', start: 15_500, end: 15_800 },
+      ],
+    });
+    assert.deepEqual(out[0], { text: 'Move', start: 26_950, end: 27_250 });
+    assert.equal(out[1].start, 27_250);
+  });
+
   it('brings in a word timed after the piece ended', () => {
     const out = read([
       { text: 'Thank', start: 700, end: 1000 },

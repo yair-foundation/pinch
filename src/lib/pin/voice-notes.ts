@@ -37,7 +37,14 @@ import {
 } from './voice-tags';
 
 /** A claim: one thing said about a screen, with when it was said. */
-export type Claim = { text: string; words: TimedWord[]; start: number; end: number };
+export type Claim = {
+  text: string;
+  words: TimedWord[];
+  start: number;
+  end: number;
+  /** It only points, "Here and here." (D191): more spots for the note before it. */
+  pointing?: true;
+};
 
 /** The note's place when nothing was pointed at: the whole screen. */
 export const WHOLE: Area = { kind: 'area', x: 0, y: 0, w: 1, h: 1 };
@@ -97,7 +104,8 @@ const SCREEN_NOUN = new Set(['slide', 'screen', 'page', 'screenshot']);
 /** Words no sentence ends on: whatever full stop or pause follows one, the sentence goes on. */
 const DANGLING = new Set([
   ...['the', 'a', 'an', 'my', 'your', 'our', 'their', 'of', 'and', 'or', 'because'],
-  ...['would', 'could', 'should', 'very'],
+  // "Change the numbers to. Bolder font." (D191): Whisper's stop at a pause to look.
+  ...['would', 'could', 'should', 'very', 'to'],
 ]);
 /** Words that begin a thought without being one, so a sentence of only these is still open. */
 const OPENS = new Set(['is', 'are', 'was', 'were', 'be', "i'm", "it's", "that's", 'would']);
@@ -105,6 +113,23 @@ const OPENS = new Set(['is', 'are', 'was', 'were', 'be', "i'm", "it's", "that's"
 const saidOf = (words: readonly TimedWord[]) => words.map((w) => norm(w.text)).filter(Boolean);
 /** Whether what was said says nothing: only words with no thought of their own. */
 const saysNothing = (said: readonly string[]) => said.every((w) => EMPTY.has(w));
+
+/** Words that say where: "here" alone points, and so do two or more of the rest. */
+const POINTS = new Set(['this', 'here', 'these', 'that', 'those', 'there']);
+const PLACE = new Set(['here', 'there']);
+const BETWEEN = new Set(['and', 'also', 'too', 'again', 'as', 'well']);
+/**
+ * Whether what was said only points (D191): "Here and here.", "This, this and this.", "Here.".
+ * It says nothing on its own (D186), but it was said while pointing at more of what the note
+ * before is about: on the author's second review three such remarks were dropped with their spots.
+ */
+const onlyPoints = (said: readonly string[]) => {
+  const points = said.filter((w) => POINTS.has(w));
+  return (
+    said.every((w) => POINTS.has(w) || BETWEEN.has(w)) &&
+    (points.length >= 2 || points.some((w) => PLACE.has(w)))
+  );
+};
 
 /**
  * Whether a sentence so far is unfinished (D186): it ends on a word no sentence ends on ("I would
@@ -163,6 +188,7 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
       const enough = said.length >= 2 || (said[0]?.length ?? 0) >= 3;
       if (enough && said.some((w) => !FILLER.has(w)) && !saysNothing(said))
         claims.push(claimOf(part, joined));
+      else if (onlyPoints(said)) claims.push({ ...claimOf(part, joined), pointing: true });
       part = [];
     };
     for (const word of sentence) {
@@ -634,6 +660,8 @@ const TRAVEL_LENGTH = 0.1;
 const LINE_LENGTH = 0.07;
 const LINE_PASSES = 1.8;
 const LINE_THIN = 0.02;
+/** A long line drawn by hand wobbles: it may stray this share of its own length (D191). */
+const LINE_WOBBLE = 0.06;
 const LINE_CORNER = 0.6;
 /** An area's short side is at least this share of the diagonal, or it was too small to mean. */
 const SMALLEST = 0.012;
@@ -818,7 +846,8 @@ function linesOf(pts: readonly Point[], size: Size): { area: Area; from: number;
     const thin = Math.max(...off.map((o) => Math.abs(o - middle)));
     let path = 0;
     for (let k = 1; k < q.length; k++) path += Math.hypot(q[k].x - q[k - 1].x, q[k].y - q[k - 1].y);
-    if (length < LINE_LENGTH || thin > LINE_THIN || path < LINE_PASSES * length) return;
+    const wobble = Math.max(LINE_THIN, LINE_WOBBLE * length);
+    if (length < LINE_LENGTH || thin > wobble || path < LINE_PASSES * length) return;
     found.push({
       area: atLeast(boxOf(run, 0.01), size),
       from: run[0].t,
@@ -873,13 +902,24 @@ function classify(points: Point[], size: Size): Stroke[] {
   const drawn = (kind: 'circle' | 'line', all: { area: Area; from: number; to: number }[]) =>
     all.map((one): Stroke => ({ kind, ...one }));
   // Sharp turns back first: a hand scrubbing makes narrow loops that would pass for circles.
-  let turns = 0;
+  const turned: number[] = [];
   for (let k = 1; k + 1 < pts.length; k++)
-    if (Math.abs(turnAt(pts[k - 1], pts[k], pts[k + 1], size)) > 2.5) turns++;
-  const box = boxOf(pts, 0);
+    if (Math.abs(turnAt(pts[k - 1], pts[k], pts[k + 1], size)) > 2.5) turned.push(k);
+  const turns = turned.length;
   if (turns >= SCRUB_TURNS) {
+    // The scrub is what lies between its first turn back and its last (D191): the way the hand
+    // came and the way it left are not part of it, and made a small scrub a wide box, or a wander.
+    const scrubbed = pts.slice(turned[0], turned[turns - 1] + 1);
+    const box = boxOf(scrubbed, 0);
     if (box.w <= SCRUB_ACROSS && box.h <= SCRUB_ACROSS)
-      return [{ kind: 'scrub', from, to, area: atLeast(boxOf(pts, 0.01), size) }];
+      return [
+        {
+          kind: 'scrub',
+          from: scrubbed[0].t,
+          to: scrubbed[scrubbed.length - 1].t,
+          area: atLeast(boxOf(scrubbed, 0.01), size),
+        },
+      ];
     // Too wide for a scrub: lines gone along and back, or a hand wandering.
     const lines = linesOf(pts, size);
     return lines.length ? drawn('line', lines) : [{ kind: 'wander', from, to, area: null }];
@@ -992,6 +1032,65 @@ export function placeClaim(
   return placesOfClaim(claim, pointer, screen, size)[0];
 }
 
+/** A hand hovering over a spot stays within this share of the diagonal, for at least this long. */
+const HOVER = 0.05;
+const HOVER_MS = 300;
+
+/**
+ * Where the hand hovered as a word was said (D191): not at rest, but kept to one small spot from
+ * a little before the word to a little after, as a hand does that wiggles on the thing it means.
+ * "Move this to be here" was said with the hand jiggling on each, and "here" was lost.
+ */
+function hoverAt(
+  pointer: readonly PointerSample[],
+  screen: number,
+  word: TimedWord,
+  size: Size,
+): { x: number; y: number } | undefined {
+  const from = word.start - HOVER_MS;
+  const to = word.end + HOVER_MS;
+  const at: { x: number; y: number }[] = [];
+  let before: { x: number; y: number } | null = null;
+  for (const [t, s, x, y] of pointer) {
+    if (t > to) break;
+    const on = s === screen && x !== null && y !== null ? { x, y } : null;
+    if (t < from) before = on;
+    else if (on) at.push(on);
+    else return undefined;
+  }
+  // Where it was when the window opened counts: no samples since means it has not moved.
+  if (before) at.unshift(before);
+  if (!at.length) return undefined;
+  const xs = at.map((p) => p.x);
+  const ys = at.map((p) => p.y);
+  const across = dist(
+    { x: Math.min(...xs), y: Math.min(...ys) },
+    { x: Math.max(...xs), y: Math.max(...ys) },
+    size,
+  );
+  if (across > HOVER) return undefined;
+  return { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
+}
+
+/** A gesture this long before a claim or after it may still be its own (D191). */
+const REACH = 3000;
+
+/**
+ * The time each claim on a screen reaches over (D191): from halfway back to the claim before to
+ * halfway on to the one after, and no further than `REACH` either way. Every gesture then belongs
+ * to the sentence nearest it, and to one only.
+ */
+export function reachOf(claims: readonly Pick<Claim, 'start' | 'end'>[]) {
+  return claims.map((claim, i) => {
+    const before = claims[i - 1];
+    const after = claims[i + 1];
+    return {
+      from: Math.max(claim.start - REACH, before ? (before.end + claim.start) / 2 : -Infinity),
+      to: Math.min(claim.end + REACH, after ? (claim.end + after.start) / 2 : Infinity),
+    };
+  });
+}
+
 /** The most spots one note points at: more than this is a hand that never settled. */
 const MOST_PLACES = 6;
 
@@ -1036,13 +1135,25 @@ export function placesOfClaim(
   pointer: readonly PointerSample[],
   screen: number,
   size: Size,
+  /** The time around the claim that is nearer to it than to the claims either side (`reachOf`). */
+  reach?: { from: number; to: number },
 ): Shape[] {
   if (aboutTheScreen(claim.words)) return [WHOLE];
   const from = claim.start - LEAD;
   const to = claim.end + LEAD / 2;
-  const seen = pointerOn(pointer, screen, from - ARRIVED, to + LAG, size);
+  const seen = pointerOn(
+    pointer,
+    screen,
+    Math.min(from - ARRIVED, reach?.from ?? from),
+    Math.max(to + LAG, reach?.to ?? to),
+    size,
+  );
   const during = (x: { from: number; to: number }) => x.to >= from && x.from <= to;
   const overlap = (x: { from: number; to: number }) => Math.min(x.to, to) - Math.max(x.from, from);
+  // A gesture is the claim's when its middle falls in the claim's reach (D191): people go on
+  // pointing after a short sentence, and point before the next.
+  const reached = (x: { from: number; to: number }) =>
+    !!reach && (x.from + x.to) / 2 >= reach.from && (x.from + x.to) / 2 <= reach.to;
 
   // The words that point, and the rest the hand was in as each was said, if it was in one.
   const pointing = claim.words.filter(
@@ -1050,10 +1161,13 @@ export function placesOfClaim(
       DEICTIC.has(norm(word.text)) && !SCREEN_NOUN.has(norm(claim.words[i + 1]?.text ?? '')),
   );
   const restAt = (word: TimedWord) =>
-    seen.rests.find((r) => r.from <= word.start && r.to >= word.start);
+    seen.rests.find((r) => r.from <= word.start && r.to >= word.start) ??
+    hoverAt(pointer, screen, word, size);
 
-  const drawn = seen.strokes.filter((s) => s.area && during(s));
-  const own = drawn.filter((s) => overlap(s) >= Math.min(400, (s.to - s.from) / 2));
+  const drawn = seen.strokes.filter((s) => s.area && (during(s) || reached(s)));
+  const own = drawn.filter((s) =>
+    reach ? reached(s) : overlap(s) >= Math.min(400, (s.to - s.from) / 2),
+  );
   // With none made while it was said, the one it overlaps most, as before D190: a circle is often
   // drawn just ahead of the words. Not when "this" was said with the hand at rest: that is the spot.
   const strokes = own.length
@@ -1255,8 +1369,9 @@ export function applyTake(
     const size = take.screens[k];
     const before = voiceNotes(list[at]);
     const { ops, claims } = heard(said[k], known, before.length > 0);
+    const reach = reachOf(claims);
     const events = [
-      ...claims.map((c) => ({ t: c.start, claim: c })),
+      ...claims.map((c, i) => ({ t: c.start, claim: c, reach: reach[i] })),
       ...ops.map((op) => ({ t: op.start, op })),
     ].sort((a, b) => a.t - b.t);
     const notes = made[k];
@@ -1285,7 +1400,7 @@ export function applyTake(
     for (const e of events) {
       if ('claim' in e) {
         const { claim } = e;
-        const spots = placesOfClaim(claim, take.pointer, k, size);
+        const spots = placesOfClaim(claim, take.pointer, k, size, e.reach);
         const shape = spots[0];
         const before = last;
         const i = before ? notes.findIndex((m) => m.id === before.id) : -1;
@@ -1294,14 +1409,18 @@ export function applyTake(
           !!before &&
           claim.start - before.end < SENTENCE_PAUSE &&
           PRONOUN.has(norm(claim.words[0]?.text ?? ''));
+        // "Here and here." after a note points at more of what the note is about (D191).
+        const pointsOn =
+          !!claim.pointing && !!before && !!prev && claim.start - before.end < LOST_THREAD;
         const joins: boolean =
-          !!before &&
-          !!prev &&
-          claim.start - before.end <= CONTINUE_GAP &&
-          (sameBreath ||
-            sameThing(prev.shape, shape, claim.text, size) ||
-            (isWhole(shape) &&
-              placesOf(prev).some((s) => stayedOn(s, take.pointer, k, claim, size))));
+          pointsOn ||
+          (!!before &&
+            !!prev &&
+            claim.start - before.end <= CONTINUE_GAP &&
+            (sameBreath ||
+              sameThing(prev.shape, shape, claim.text, size) ||
+              (isWhole(shape) &&
+                placesOf(prev).some((s) => stayedOn(s, take.pointer, k, claim, size)))));
         const parts: string[] = joins && before ? [...before.parts, claim.text] : [claim.text];
         const sides = sidesOf(parts);
         const topics = sortTopics([

@@ -16,6 +16,7 @@ import {
   placeClaim,
   placesOfClaim,
   pointerOn,
+  reachOf,
   removedScreens,
   sidesOf,
   takesApplied,
@@ -544,11 +545,15 @@ describe('voice notes: a take applied', () => {
 
   it('names the screens said "remove it" over, and leaves the rest', () => {
     const t = take([
-      ...say('This is a duplicate. … Remove it.'),
+      ...say('This is a duplicate. … Remove this screenshot.'),
       ...say('The list reads well.', 11_000),
     ]);
     assert.deepEqual(removedScreens(t), ['one']);
     assert.deepEqual(removedScreens(take(say('Remove that.'))), []);
+    // Said of a thing on the screen, it is a note, and the screen stays (D191).
+    const said = take(say('Remove this.'));
+    assert.deepEqual(removedScreens(said), []);
+    assert.equal(applyTake([asset('one'), asset('two')], said)[0].marks.length, 1);
     assert.equal(applyTake([asset('one'), asset('two')], t).length, 2);
   });
 
@@ -623,7 +628,7 @@ describe('voice notes: nothing said is lost (D188)', () => {
     );
   });
   it('still drops the last note with it, said after one', () => {
-    const { claims, ops } = heard(say('The header is loud. … Delete that.'));
+    const { claims, ops } = heard(say('The header is loud. … Drop that.'));
     assert.equal(claims.length, 1);
     assert.deepEqual(
       ops.map((o) => o.kind),
@@ -631,14 +636,16 @@ describe('voice notes: nothing said is lost (D188)', () => {
     );
     const [one] = applyTake(
       [asset('one'), asset('two')],
-      take(say('The header is loud. … Delete that.')),
+      take(say('The header is loud. … Drop that.')),
     );
     assert.equal(one.marks.length, 0);
     // A note from an earlier take is one to drop, too.
     assert.deepEqual(
-      heard(say('Delete this'), [], true).ops.map((o) => o.kind),
+      heard(say('Drop this'), [], true).ops.map((o) => o.kind),
       ['drop'],
     );
+    // "Delete" is said of a thing on the screen, whatever notes there are (D191).
+    assert.deepEqual(heard(say('Delete this'), [], true).ops, []);
   });
   it('says what it left out of the notes', () => {
     const { claims, left } = heard(say('Oh, wait. … The header is loud.'));
@@ -874,5 +881,147 @@ describe('voice notes: several spots in one note (D190)', () => {
     const [made] = applyTake([one], takeOf(say('This is too heavy.'), rest(0.3, 0.7, 0, 3000)));
     assert.equal(made.marks.length, 1);
     assert.ok(!('also' in made.marks[0]));
+  });
+});
+
+describe('voice notes: what a second real review showed (D191)', () => {
+  const go = (x0: number, y0: number, x1: number, y1: number, from: number, steps = 10) =>
+    Array.from({ length: steps }, (_, i): PointerSample => {
+      const f = (i + 1) / steps;
+      return [from + (i + 1) * 20, 0, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
+    });
+  /** A hand wiggling on a spot from `from` for `ms`: never at rest, never far. */
+  const wiggle = (x: number, y: number, from: number, ms: number) =>
+    Array.from({ length: Math.floor(ms / 20) }, (_, i): PointerSample => [
+      from + i * 20,
+      0,
+      x + 0.012 * Math.sin(i),
+      y + 0.012 * Math.cos(i * 1.3),
+    ]);
+  const one: Asset = {
+    id: 'one',
+    name: 'one.png',
+    type: 'image/png',
+    width: 1000,
+    height: 1000,
+    note: '',
+    marks: [],
+  };
+  const takeOf = (words: TimedWord[], pointer: PointerSample[]): Take => ({
+    id: 'aaaa-bbbb',
+    version: 1,
+    recordedAt: '2026-11-11T15:19:00.000Z',
+    durationMs: 30_000,
+    mimeType: 'audio/webm',
+    screens: [{ id: 'one', name: 'one.png', width: 1000, height: 1000 }],
+    shown: [{ t: 0, screen: 0 }],
+    pointer,
+    words,
+  });
+
+  it('keeps a remark that only points, and drops one that never began', () => {
+    const texts = (said: string) => claimsOf(say(said)).map((c) => [c.text, c.pointing ?? false]);
+    assert.deepEqual(texts('Here and here.'), [['Here and here.', true]]);
+    assert.deepEqual(texts('This, this, and this.'), [['This, this, and this.', true]]);
+    assert.deepEqual(texts('Here.'), [['Here.', true]]);
+    assert.deepEqual(texts('This.'), []);
+    assert.deepEqual(texts('This is.'), []);
+  });
+
+  it('adds what "Here and here." points at to the note before it', () => {
+    const words = [...say('Change to rounded corners.'), ...say('Here and here.', 3000)];
+    const pointer = [
+      ...circle(0.2, 0.3, 0.05, 0),
+      ...rest(0.6, 0.3, 2400, 3250),
+      ...rest(0.8, 0.7, 3300, 6000),
+    ];
+    const [made] = applyTake([one], takeOf(words, pointer));
+    assert.equal(made.marks.length, 1);
+    assert.equal(made.marks[0].quote, 'Change to rounded corners. Here and here.');
+    assert.deepEqual(
+      [made.marks[0].shape, ...(made.marks[0].also ?? [])].map((s) => s.kind),
+      ['area', 'dot', 'dot'],
+    );
+  });
+
+  it('does not end a sentence on "to"', () => {
+    const words = [...say("Let's try to change the numbers to."), ...say('Bolder font.', 2500)];
+    assert.deepEqual(
+      claimsOf(words).map((c) => c.text),
+      ["Let's try to change the numbers to bolder font."],
+    );
+  });
+
+  it('gives each claim the time nearer to it than to its neighbours, and no further than three seconds', () => {
+    assert.deepEqual(
+      reachOf([
+        { start: 1000, end: 2000 },
+        { start: 4000, end: 5000 },
+        { start: 20_000, end: 21_000 },
+      ]),
+      [
+        { from: -2000, to: 3000 },
+        { from: 3000, to: 8000 },
+        { from: 17_000, to: 24_000 },
+      ],
+    );
+  });
+
+  it('gives a short sentence the things circled after it, and the next sentence the ones before it', () => {
+    // "These are too small", then on along the row; then three captions and "This is also too small".
+    const first = claim('These are too small', 0);
+    const second = claim('This is also too small', 8000);
+    const pointer = [
+      ...circle(0.1, 0.2, 0.04, 0),
+      ...go(0.14, 0.2, 0.5, 0.2, 800),
+      ...circle(0.46, 0.2, 0.04, 1020),
+      ...go(0.5, 0.2, 0.3, 0.8, 1840),
+      ...circle(0.26, 0.8, 0.04, 6200),
+      ...go(0.3, 0.8, 0.7, 0.8, 7020),
+      ...circle(0.66, 0.8, 0.04, 7240),
+    ];
+    const reach = reachOf([first, second]);
+    assert.equal(placesOfClaim(first, pointer, 0, size, reach[0]).length, 2);
+    assert.equal(placesOfClaim(second, pointer, 0, size, reach[1]).length, 2);
+    // Without its reach, a claim has only what was drawn while it was said.
+    assert.equal(placesOfClaim(first, pointer, 0, size).length, 1);
+  });
+
+  it('boxes a scrub by where it went back and forth, not by the way the hand came', () => {
+    const scrub: PointerSample[] = [...go(0.9, 0.1, 0.3, 0.6, 0, 20)];
+    for (let i = 0; i <= 40; i++) {
+      const x = 0.3 + 0.08 * (i % 10 < 5 ? (i % 10) / 5 : (10 - (i % 10)) / 5);
+      scrub.push([420 + i * 25, 0, x, 0.6 + 0.004 * Math.sin(i)]);
+    }
+    const [stroke] = pointerOn(scrub, 0, 0, 3000, size).strokes;
+    assert.equal(stroke.kind, 'scrub');
+    assert.ok(stroke.area && stroke.area.w < 0.15 && stroke.area.x > 0.25 && stroke.area.y > 0.55);
+  });
+
+  it('takes "this" and "here" from a hand wiggling on each, as on a hand at rest', () => {
+    const said = claim('Move this to be … here');
+    const there = said.words[said.words.length - 1].start;
+    const pointer = [
+      ...wiggle(0.85, 0.1, 0, 1200),
+      ...go(0.85, 0.1, 0.1, 0.45, 1200, 20),
+      ...wiggle(0.1, 0.45, 1620, 3000),
+    ];
+    assert.ok(there > 1900);
+    const spots = placesOfClaim(said, pointer, 0, size);
+    assert.equal(spots.length, 2);
+    const centre = (s: (typeof spots)[number]) =>
+      s.kind === 'area' ? [s.x + s.w / 2, s.y + s.h / 2] : s.kind === 'dot' ? [s.x, s.y] : [];
+    assert.ok(Math.abs(centre(spots[0])[0] - 0.85) < 0.05 && Math.abs(centre(spots[1])[0] - 0.1) < 0.05);
+  });
+
+  it('reads a long line drawn by hand, wobble and all, and not a loop as wide as it is long', () => {
+    // Along the row and back a little lower: a divider drawn where there is none.
+    const wobbly: PointerSample[] = [[0, 0, 0.2, 0.5], ...go(0.2, 0.5, 0.9, 0.51, 0, 30), ...go(0.9, 0.51, 0.2, 0.53, 620, 30)];
+    assert.deepEqual(
+      pointerOn(wobbly, 0, 0, 3000, size).strokes.map((s) => s.kind),
+      ['line'],
+    );
+    const loop: PointerSample[] = [[0, 0, 0.2, 0.3], ...go(0.2, 0.3, 0.6, 0.3, 0, 30), ...go(0.6, 0.3, 0.6, 0.7, 620, 30), ...go(0.6, 0.7, 0.2, 0.7, 1240, 30)];
+    assert.ok(!pointerOn(loop, 0, 0, 3000, size).strokes.some((s) => s.kind === 'line'));
   });
 });

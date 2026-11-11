@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D191 "Remove this" and "Delete this" are notes on what is pointed at, and a screen leaves the batch only when the screenshot or the batch is named; a remark that only points adds its spots to the note before; a gesture belongs to the sentence nearest it; a scrub is boxed by where it went back and forth; "this" said over a hovering hand is a spot. On the author's second real review, 251 slides, the 23 notes that had left with 15 screenshots are kept. Not run on the live site.
+
 Since D190 a note keeps every spot its sentence points at, each with its number on the marked copy, its own close-up and its own line; every circle in a stroke is read, and a line gone along and back. On the author's review the three notes that had lost spots have them, and two more were found. Not yet: a rest with nothing said over it as a spot, "And here." on its own. Not run on the live site.
 
 Since D189 `transcript.md` ends with the screens nothing was said over, the ones on show for under half a second marked and the ones never shown apart, `notes.md` says how many there are, and the intro says how to read a take that is a work order. The new paragraph was not run through the taste harness.
