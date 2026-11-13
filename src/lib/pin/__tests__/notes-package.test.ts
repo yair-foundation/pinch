@@ -328,7 +328,10 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     assert.match(made.text, /\n- 1\. Great big title\.\n {2}Where: the whole screen\./);
     assert.doesNotMatch(made.text, /Marked copy/);
     assert.match(made.text, /\n## Vimeo Web\.png\n\nScreenshot: `images\/01\.png`\n/);
-    assert.match(made.text, /A note about the whole screen has no mark\./);
+    assert.match(
+      made.text,
+      /A note about the whole screen has no mark, and neither has one I said with nothing pointed at: its words are all that place it\./,
+    );
   });
 
   it('keeps the marked copy and the close-up of a note that points, beside one that does not', () => {
@@ -489,6 +492,34 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     const system = text.indexOf('Where this project has a design system');
     assert.ok(taste > 0 && taste < work && work < system);
     assert.match(text, /If my first notes say how to read the rest, .* follow that for every screen\./);
+  });
+
+  it('opens with what the take is for, where its author said so (D194)', () => {
+    const words = [
+      ...'This take is bad examples to learn rules from.'
+        .split(' ')
+        .map((text, i) => ({ text, start: 1000 + i * 300, end: 1250 + i * 300 })),
+      { text: 'Great', start: 11_000, end: 11_250 },
+      { text: 'big', start: 11_300, end: 11_550 },
+      { text: 'title.', start: 11_600, end: 11_850 },
+    ];
+    const made = packed([note('01.1')], [take(words)]);
+    assert.ok(
+      made.text.startsWith(
+        '# My notes on these screenshots\n\nWhat these notes are for, as I said it: "This take is bad examples to learn rules from."\n\nRead all of this first and open the images.\n\nA note that asks for something',
+      ),
+    );
+    assert.doesNotMatch(made.text, /When you design for me/);
+    assert.match(
+      made.transcript ?? '',
+      /\n- 0:01 This take is bad examples to learn rules from\. \(Purpose\)\n/,
+    );
+    // Said nothing of it, the take opens as the trials tested it (D157).
+    assert.ok(
+      packed([note('01.1')]).text.startsWith(
+        '# My notes on these screenshots\n\nWhen you design for me, read all of this first and open the images: it is everything you know about my taste.\n',
+      ),
+    );
   });
 
   it('says how many screens nothing was said over, ahead of the notes (D189)', () => {

@@ -33,6 +33,8 @@ export type VoiceOp = { start: number; end: number } & (
   | { kind: 'repoint' }
   | { kind: 'next' }
   | { kind: 'back' }
+  // What the take is for, in the author's words (D194): read from the claims, in `heard`.
+  | { kind: 'purpose'; text: string }
 );
 
 /** A pause this long between two words ends a sentence, as a full stop does. */

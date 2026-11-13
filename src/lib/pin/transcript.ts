@@ -191,5 +191,7 @@ export function opLabel(op: VoiceOp): string {
       return 'Next';
     case 'back':
       return 'Back';
+    case 'purpose':
+      return 'Purpose';
   }
 }

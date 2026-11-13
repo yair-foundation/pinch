@@ -1084,7 +1084,13 @@ export async function buildExport(
             : undefined;
         wheres.set(
           `${asset.id}/${mark.id}/${p}`,
-          whereLine(spot, textIn(text, spot), mainColours(spotPixels(bitmap, spot)), at),
+          whereLine(
+            spot,
+            textIn(text, spot),
+            mainColours(spotPixels(bitmap, spot)),
+            at,
+            Boolean(mark.unpointed),
+          ),
         );
         files.push({
           name: root + names.crop(j, p),

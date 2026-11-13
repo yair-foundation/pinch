@@ -893,7 +893,10 @@ export function Reel({
                                       />
                                     )}
                                     {isWhole(mark.shape) && (
-                                      <span className="text-muted-foreground"> · Whole screen</span>
+                                      <span className="text-muted-foreground">
+                                        {' '}
+                                        · {mark.unpointed ? 'Not pointed at' : 'Whole screen'}
+                                      </span>
                                     )}
                                   </span>
                                 </li>

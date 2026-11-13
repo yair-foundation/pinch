@@ -51,6 +51,17 @@ export const WHOLE: Area = { kind: 'area', x: 0, y: 0, w: 1, h: 1 };
 
 export const isWhole = (s: Shape) => s.kind === 'area' && s.w >= 0.999 && s.h >= 0.999;
 
+/**
+ * A claim's place when the hand was on the screenshot and pointed at nothing (D194): parked, or
+ * moving about. It is drawn and counted as the whole screen is, and is not about it: "Too much
+ * margin" said over a wandering hand names no margin, and the package had it as "the whole
+ * screen". A claim that names the screen, a circle round most of it, or a hand taken off the
+ * screenshot to speak, is about the screen.
+ */
+const NOWHERE: Area = { ...WHOLE };
+/** Whether a claim's spots are no spot at all: nothing was pointed at, and the screen wasn't meant. */
+export const pointedNowhere = (spots: readonly Shape[]) => spots.length === 1 && spots[0] === NOWHERE;
+
 /** The ids of the notes a take makes start with this, so a second reading replaces them. */
 export const voicePrefix = (takeId: string) =>
   `v${takeId
@@ -305,7 +316,15 @@ function claimOf(words: TimedWord[], joined: ReadonlySet<TimedWord> = new Set())
 }
 
 /**
- * What was said over a screen: the claims, and the voice tags heard. "Delete this" drops the last
+ * How a remark about the take itself begins (D194): "This take is bad examples to learn rules
+ * from." The package told its reader "When you design for me" over a review that was nothing of
+ * the kind, and only a line the author typed to the agent said what it was for.
+ */
+const PURPOSE = /^(this (take|review) is|these notes are|the purpose( of (this|the) (take|review))? is)\b/i;
+
+/**
+ * What was said over a screen: the claims, and the voice tags heard. A claim about the take
+ * itself is a tag, not a note on the screen it was said over (D194). "Delete this" drops the last
  * note, and with no note yet on the screen it has nothing to drop: it was said about the screen,
  * so it is a claim (D188). On the author's review of 336 slides four such remarks left no trace.
  */
@@ -315,11 +334,14 @@ export function heard(
   hadNotes = false,
 ): { claims: Claim[]; ops: VoiceOp[]; left: TimedWord[] } {
   const { ops, rest } = parseVoiceTags(words, known);
-  const claims = claimsOf(rest);
+  const all = claimsOf(rest);
   // What was neither a voice tag nor enough to be a note: "This is.", "Okay."
-  const inClaims = new Set(claims.flatMap((c) => c.words));
+  const inClaims = new Set(all.flatMap((c) => c.words));
   const left = rest.filter((w) => !inClaims.has(w));
-  const kept: VoiceOp[] = [];
+  const claims = all.filter((c) => !PURPOSE.test(c.text));
+  const kept: VoiceOp[] = all
+    .filter((c) => PURPOSE.test(c.text))
+    .map((c) => ({ kind: 'purpose', text: c.text, start: c.start, end: c.end }));
   const more: Claim[] = [];
   for (const op of ops) {
     const said = words.filter((w) => w.start >= op.start && w.end <= op.end);
@@ -332,7 +354,11 @@ export function heard(
     if (nothingToDrop && said.length) more.push(claimOf(said));
     else kept.push(op);
   }
-  return { claims: [...claims, ...more].sort((a, b) => a.start - b.start), ops: kept, left };
+  return {
+    claims: [...claims, ...more].sort((a, b) => a.start - b.start),
+    ops: kept.sort((a, b) => a.start - b.start),
+    left,
+  };
 }
 
 /** Whether words left out of the notes held more than a filler: "This is." does, "Okay." doesn't. */
@@ -742,6 +768,12 @@ const LINE_PASSES = 1.8;
 const LINE_THIN = 0.02;
 /** A long line drawn by hand wobbles: it may stray this share of its own length (D191). */
 const LINE_WOBBLE = 0.06;
+/**
+ * One gone over this many times is no accident, and may stray further (D194): "Text is too wide"
+ * was a hand going along the paragraph nearly five times, 6.4% of its length off its axis.
+ */
+const LINE_OFTEN = 3;
+const LINE_OFTEN_WOBBLE = 0.1;
 const LINE_CORNER = 0.6;
 /** An area's short side is at least this share of the diagonal, or it was too small to mean. */
 const SMALLEST = 0.012;
@@ -926,7 +958,10 @@ function linesOf(pts: readonly Point[], size: Size): { area: Area; from: number;
     const thin = Math.max(...off.map((o) => Math.abs(o - middle)));
     let path = 0;
     for (let k = 1; k < q.length; k++) path += Math.hypot(q[k].x - q[k - 1].x, q[k].y - q[k - 1].y);
-    const wobble = Math.max(LINE_THIN, LINE_WOBBLE * length);
+    const wobble = Math.max(
+      LINE_THIN,
+      (path >= LINE_OFTEN * length ? LINE_OFTEN_WOBBLE : LINE_WOBBLE) * length,
+    );
     if (length < LINE_LENGTH || thin > wobble || path < LINE_PASSES * length) return;
     found.push({
       area: atLeast(boxOf(run, 0.01), size),
@@ -1000,9 +1035,22 @@ function classify(points: Point[], size: Size): Stroke[] {
           area: atLeast(boxOf(scrubbed, 0.01), size),
         },
       ];
-    // Too wide for a scrub: lines gone along and back, or a hand wandering.
+    // Too wide for a scrub: lines gone along and back, a strip, or a hand wandering.
     const lines = linesOf(pts, size);
-    return lines.length ? drawn('line', lines) : [{ kind: 'wander', from, to, area: null }];
+    if (lines.length) return drawn('line', lines);
+    // A strip gone up and down (D194): a margin, the width of a paragraph. Longer than a scrub
+    // one way and no wider the other, where a line is thin: "Too much margin" was a hand going
+    // up and down the left edge, 8% of the width across, and landed nowhere.
+    if (Math.min(box.w, box.h) <= SCRUB_ACROSS)
+      return [
+        {
+          kind: 'scrub',
+          from: scrubbed[0].t,
+          to: scrubbed[scrubbed.length - 1].t,
+          area: atLeast(boxOf(scrubbed, 0.01), size),
+        },
+      ];
+    return [{ kind: 'wander', from, to, area: null }];
   }
   const circles = pts.length >= 4 ? circlesOf(pts, size) : [];
   if (circles.length) return drawn('circle', circles);
@@ -1298,7 +1346,12 @@ export function placesOfClaim(
   const arrived = rests
     .filter((r) => r.from >= claim.start - ARRIVED)
     .sort((a, b) => b.to - b.from - (a.to - a.from))[0];
-  return [arrived ? dotAt(arrived) : WHOLE];
+  if (arrived) return [dotAt(arrived)];
+  // Off the screenshot as it was said is how to speak of the whole screen; on it, nothing was meant.
+  const on = [claim.start, (claim.start + claim.end) / 2, claim.end].some((t) =>
+    pointerAt(pointer, screen, t),
+  );
+  return [on ? NOWHERE : WHOLE];
 }
 
 /**
@@ -1524,6 +1577,10 @@ export function applyTake(
         note.shape = all[0];
         if (all.length > 1) note.also = all.slice(1);
         else delete note.also;
+        // Not pointed at (D194): nothing in the note names the screen or has a place.
+        if (isWhole(note.shape) && pointedNowhere(spots) && (!joins || prev.unpointed))
+          note.unpointed = true;
+        else delete note.unpointed;
         // Starred before, it stays a best example only while it still says what works.
         if (note.best && !note.good) delete note.best;
         if (joins) notes[i] = note;

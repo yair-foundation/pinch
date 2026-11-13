@@ -169,3 +169,11 @@ describe('which spots need a close-up (D193)', () => {
     assert.equal(isSmallSpot({ kind: 'arrow', x: 0.66, y: 0.75, x2: 0.06, y2: 0.51 }), false);
   });
 });
+
+describe('a note with nothing pointed at (D194)', () => {
+  it('says so in place of where, with no colours', () => {
+    const whole = { x: 0, y: 0, w: 1, h: 1 };
+    assert.equal(whereLine(whole, '', ['#ffffff'], undefined, true), 'Where: not pointed at.');
+    assert.equal(whereLine(whole, '', ['#ffffff']), 'Where: the whole screen. Colours: #ffffff.');
+  });
+});

@@ -32,6 +32,8 @@ const noteSchema = z.object({
   origin: z.string().max(20).optional(),
   where: z.string().max(500).optional(),
   spoken: z.string().max(10000).optional(),
+  // Said with nothing pointed at (D194).
+  unpointed: z.boolean().optional(),
   // The other spots a note points at (D190).
   also: z
     .array(
@@ -107,6 +109,7 @@ function markOf(n: PinchExport['assets'][number]['notes'][number], id: string): 
     // A note said aloud stays one (D137), so the reel still numbers and shows it.
     origin: n.origin === 'voice' ? 'voice' : 'user',
     ...(n.origin === 'voice' && n.spoken ? { quote: n.spoken } : {}),
+    ...(n.origin === 'voice' && n.unpointed ? { unpointed: true as const } : {}),
     ...(n.best && n.works.trim() ? { best: true } : {}),
     ...(topics.length ? { topics } : {}),
     ...(accepted.good || accepted.bad ? { accepted } : {}),

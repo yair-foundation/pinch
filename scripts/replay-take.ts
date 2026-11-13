@@ -52,7 +52,10 @@ for (const file of files) {
     list.forEach((m, i) => {
       const words = m.quote ?? [m.good, m.bad].filter(Boolean).join(" ")
       // Every spot the note points at, in the order pointed at (D190).
-      const places = [m.shape, ...(m.also ?? [])].map(placeOf).join("; ")
+      // One said with nothing pointed at is kept on the whole screen, and says so (D194).
+      const places = m.unpointed
+        ? "not pointed at"
+        : [m.shape, ...(m.also ?? [])].map(placeOf).join("; ")
       console.log(`- ${i + 1}. ${places}: ${words}`)
     })
   }
