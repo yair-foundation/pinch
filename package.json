@@ -2,6 +2,8 @@
   "name": "pinch",
   "version": "1.0.0",
   "private": true,
+  "author": "Yair Cohen",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
