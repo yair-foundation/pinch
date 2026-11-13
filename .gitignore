@@ -4,6 +4,7 @@
 # test & build
 /.next/
 /out/
+/.e2e/
 *.tsbuildinfo
 next-env.d.ts
 

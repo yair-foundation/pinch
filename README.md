@@ -26,6 +26,8 @@ pnpm lint                 # biome lint
 pnpm build                # next build
 ```
 
+`pnpm test:e2e` runs made-up takes through the app's own placing of notes and Export in headless Chromium (Playwright's, or set `PW_PATH`) and checks each package it makes; it leaves the zips and a report in `.e2e/package/` (D197).
+
 `pnpm format <files>` runs Prettier on the files you name, in the style of their folder.
 
 ## Using Pinch on your own Mac, free

@@ -17,6 +17,7 @@ import {
   drawnOn,
   purposeOf,
   quietLine,
+  quietOf,
   TRANSCRIPT_FILE,
   takeFileName,
   transcriptText,
@@ -265,7 +266,8 @@ export function notesPackage(
   if (kinds) lines.push('', kinds);
   const quiet = quietLine(takes);
   const quietSheets = sheets.flatMap((s) => s.quiet);
-  if (quiet) lines.push('', quiet + drawnOn(quietSheets));
+  const quietCount = takes.reduce((n, t) => n + quietOf(t).quiet.length, 0);
+  if (quiet) lines.push('', quiet + drawnOn(quietSheets, quietCount));
   const unsure = unsureLines(takes);
   if (unsure.length) lines.push('', ...UNSURE, ...unsure);
   let notes = 0;

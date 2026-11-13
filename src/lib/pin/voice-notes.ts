@@ -27,6 +27,7 @@ import {
   type Topic,
 } from './model';
 import type { PointerSample, Take } from './narration';
+import { takesBack } from './note-kind';
 import { withoutLooseHyphens, wordsByScreen } from './transcript';
 import {
   type NoteRef,
@@ -1303,7 +1304,7 @@ export function placesOfClaim(
     : pointing.some(restAt)
       ? []
       : drawn.sort((a, b) => overlap(b) - overlap(a)).slice(0, 1);
-  const spots: { shape: Shape; at: number }[] = [];
+  const spots: { shape: Shape; at: number; rest?: Rest }[] = [];
   // One that covers most of the screen is set aside first, or it would take in every spot in it.
   let screenWide = false;
   for (const stroke of strokes.sort((a, b) => a.from - b.from)) {
@@ -1336,7 +1337,13 @@ export function placesOfClaim(
     const at = rest ?? (spots.length ? null : pointerAt(pointer, screen, word.start));
     if (!at) continue;
     const dot = dotAt(at);
-    if (!spots.some((p) => samePlace(p.shape, dot, size))) spots.push({ shape: dot, at: word.start });
+    const still = rest && seen.rests.includes(rest as Rest) ? (rest as Rest) : undefined;
+    // Two rests the hand moved between, each with its own "here", are two spots however near: two
+    // icons a row apart in a list are closer than a dot's reach (end-to-end run, D197).
+    const apart = (p: { rest?: Rest }) =>
+      !!still && !!p.rest && p.rest !== still && dist(p.rest, still, size) >= 2 * REST_DRIFT;
+    if (!spots.some((p) => samePlace(p.shape, dot, size) && !apart(p)))
+      spots.push({ shape: dot, at: word.start, ...(still && { rest: still }) });
   }
   if (spots.length)
     return spots
@@ -1545,10 +1552,13 @@ export function applyTake(
         // "Here and here." after a note points at more of what the note is about (D191).
         const pointsOn =
           !!claim.pointing && !!before && !!prev && claim.start - before.end < LOST_THREAD;
+        // A sentence that takes the last one back is a note of its own (D195): joined, the package
+        // can't say what it took back, and the two read as one "partly right" note (D197).
         const joins: boolean =
           pointsOn ||
           (!!before &&
             !!prev &&
+            !takesBack(claim.text) &&
             claim.start - before.end <= CONTINUE_GAP &&
             (sameBreath ||
               sameThing(prev.shape, shape, claim.text, size) ||

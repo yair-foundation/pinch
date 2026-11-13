@@ -431,6 +431,18 @@ describe('voice notes: a take applied', () => {
     assert.equal(m.quote, m.bad);
   });
 
+  it('makes a note of its own of one that takes back the last, on the same spot (D195, D197)', () => {
+    const words = say('Avoid this black colour. Actually you can keep this black.');
+    const [one] = applyTake(
+      [asset('one'), asset('two')],
+      take(words, rest(0.3, 0.7, 0, words.at(-1)?.end ?? 0)),
+    );
+    assert.deepEqual(
+      one.marks.map((m) => m.quote),
+      ['Avoid this black colour.', 'Actually you can keep this black.'],
+    );
+  });
+
   it('keeps both sides of one thing in its note, and a contrast in it', () => {
     const words = say("The button is small and flat. It's an obvious action but it doesn't shout.");
     const [one] = applyTake(
@@ -815,6 +827,18 @@ describe('voice notes: several spots in one note (D190)', () => {
       { kind: 'dot', x: 0.2, y: 0.2 },
       { kind: 'dot', x: 0.7, y: 0.7 },
     ]);
+  });
+
+  it('keeps two near things apart when the hand rested on each for its own "here" (D197)', () => {
+    // Two icons a row apart in a list: nearer than a dot's reach, and still two things.
+    const icons = [...rest(0.5, 0.2, 0, 700), ...rest(0.5, 0.27, 800, 4000)];
+    assert.deepEqual(placesOfClaim(claim("These icons here and here don't match"), icons, 0, size), [
+      { kind: 'dot', x: 0.5, y: 0.2 },
+      { kind: 'dot', x: 0.5, y: 0.27 },
+    ]);
+    // A hand that only settled again on the same thing is one spot still.
+    const settled = [...rest(0.5, 0.2, 0, 700), ...rest(0.53, 0.2, 800, 4000)];
+    assert.equal(placesOfClaim(claim("These icons here and here don't match"), settled, 0, size).length, 1);
   });
 
   it('counts a spot once: loops over each other, and a "here" said on what was just circled', () => {

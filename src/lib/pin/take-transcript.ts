@@ -167,8 +167,10 @@ export const filesSpan = (names: readonly string[]) =>
   names.length > 1 ? `\`${names[0]}\` to \`${names[names.length - 1]}\`` : `\`${names[0]}\``;
 
 /** Where the screens nothing was said over can be seen (D193), as a sentence after the count. */
-export const drawnOn = (sheets: readonly string[]) =>
-  sheets.length ? ` They are drawn small, each with its name, on ${filesSpan(sheets)}.` : '';
+export const drawnOn = (sheets: readonly string[], count = 2) =>
+  sheets.length
+    ? ` ${count === 1 ? 'It is drawn small, with its name,' : 'They are drawn small, each with its name,'} on ${filesSpan(sheets)}.`
+    : '';
 
 /**
  * The takes' words as a file for the package: each screen in the order it was first spoken over,
@@ -221,7 +223,7 @@ export function transcriptText(
         '',
         `${head} Nothing said`,
         '',
-        `I said nothing over ${quiet.length === 1 ? 'this screen' : `these ${screens(quiet.length)}`}.${brief}${drawnOn(quietSheets)}`,
+        `I said nothing over ${quiet.length === 1 ? 'this screen' : `these ${screens(quiet.length)}`}.${brief}${drawnOn(quietSheets, quiet.length)}`,
         '',
         ...quiet.map((q) => `- ${take.screens[q.screen].name}${marked && q.glanced ? ' *' : ''}`),
       );
@@ -282,5 +284,6 @@ export function quietLine(takes: readonly Take[], known: readonly string[] = [])
   const missed = unseen.length
     ? `${unseen.length === 1 ? 'One screen was' : `${unseen.length} screens were`} never shown.`
     : '';
-  return `${[passed, missed].filter(Boolean).join(' ')} They are listed at the end of \`${TRANSCRIPT_FILE}\`.`;
+  const listed = quiet.length + unseen.length === 1 ? 'It is listed' : 'They are listed';
+  return `${[passed, missed].filter(Boolean).join(' ')} ${listed} at the end of \`${TRANSCRIPT_FILE}\`.`;
 }

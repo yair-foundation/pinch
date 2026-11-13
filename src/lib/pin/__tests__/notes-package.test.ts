@@ -462,14 +462,14 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     assert.match(text, /\n## 09\.png\n\nMarked copy: `marked\/09\.jpg`, on `sheets\/marked-02\.jpg`\n/);
     assert.match(
       text,
-      /They are listed at the end of `transcript\.md`\. They are drawn small, each with its name, on `sheets\/quiet-01\.jpg`\.\n/,
+      /It is listed at the end of `transcript\.md`\. It is drawn small, with its name, on `sheets\/quiet-01\.jpg`\.\n/,
     );
     const transcript = new TextDecoder().decode(
       made.files.find((f) => f.name === `${root}transcript.md`)?.data,
     );
     assert.match(
       transcript,
-      /I said nothing over this screen\. They are drawn small, each with its name, on `sheets\/quiet-01\.jpg`\.\n/,
+      /I said nothing over this screen\. It is drawn small, with its name, on `sheets\/quiet-01\.jpg`\.\n/,
     );
     // An export with no sheets says nothing of them.
     assert.doesNotMatch(packed([note('01.1', { where: 'Where: top left.' })]).text, /sheet/);
@@ -562,7 +562,7 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     ];
     const made = packed([note('01.1')], [take(words)]);
     const line =
-      'I said nothing over 1 of the 2 screens I was shown. They are listed at the end of `transcript.md`.';
+      'I said nothing over 1 of the 2 screens I was shown. It is listed at the end of `transcript.md`.';
     assert.ok(made.text.includes(`\n\n${line}\n`));
     assert.ok(made.text.indexOf(line) < made.text.indexOf('## Vimeo Web.png'));
     assert.match(made.transcript ?? '', /\n## Nothing said\n\nI said nothing over this screen\.\n\n- one\.png\n/);
