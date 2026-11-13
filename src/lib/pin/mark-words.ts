@@ -108,7 +108,10 @@ export function whereLine(
   text: string,
   colours: readonly string[],
   at?: string,
+  /** Nothing was pointed at (D194): the note has no place, and no colours of its own. */
+  unpointed = false,
 ): string {
+  if (unpointed) return 'Where: not pointed at.';
   const whole = isWholeScreen(q);
   const place = whole ? 'the whole screen' : placeOf(q);
   const on = !whole && text ? `, on "${text}"` : '';

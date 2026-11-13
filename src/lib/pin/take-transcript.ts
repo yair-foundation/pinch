@@ -106,6 +106,15 @@ export function remarksOf(take: Take, known: readonly string[] = []): Remark[] {
   return out.sort((a, b) => a.at - b.at);
 }
 
+/** What the takes are for, as their author said it (D194): each such remark, in order. */
+export function purposeOf(takes: readonly Take[], known: readonly string[] = []): string[] {
+  return takes.flatMap((take) =>
+    wordsByScreen(take.shown, wordsIn(take), take.screens.length).flatMap((words) =>
+      heard(words, known).ops.flatMap((op) => (op.kind === 'purpose' ? [op.text] : [])),
+    ),
+  );
+}
+
 /** A screen on show for less than this was passed, not looked at. */
 const GLANCE = 500;
 

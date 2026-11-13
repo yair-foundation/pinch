@@ -14,6 +14,7 @@ import type { Take } from './narration';
 import { MARKED_PER_SHEET, markedSheetOf, sheetFile } from './sheet';
 import {
   drawnOn,
+  purposeOf,
   quietLine,
   TRANSCRIPT_FILE,
   takeFileName,
@@ -101,10 +102,24 @@ const DEFER_LINE =
 const WORK_LINE =
   'A note that asks for something to be changed or removed is about the screen it is on: where that screen is yours to change, do it there. If my first notes say how to read the rest, such as what I will say for a screen to go, or what it means when I say nothing over one, follow that for every screen.';
 
-const INTRO = [
+/*
+ * The first line is the one the trials tested (D157), and stays for a take that says nothing of
+ * what it is for. A take whose author said so (D194) opens with their words instead, and is not
+ * told it is about designing for them: a review of 220 slides was bad examples to write rules from.
+ */
+const TASTE_LINE =
+  'When you design for me, read all of this first and open the images: it is everything you know about my taste.';
+
+const introOf = (purpose: readonly string[]) => [
   '# My notes on these screenshots',
   '',
-  'When you design for me, read all of this first and open the images: it is everything you know about my taste.',
+  ...(purpose.length
+    ? [
+        `What these notes are for, as I said it: ${purpose.map((p) => `"${p}"`).join(' ')}`,
+        '',
+        'Read all of this first and open the images.',
+      ]
+    : [TASTE_LINE]),
   '',
   WORK_LINE,
   '',
@@ -123,7 +138,7 @@ const MARKS_DRAWN =
  * and the close-ups are found by name. A spot's colours are given where the note speaks of colour.
  */
 const MARKS_IN_WORDS = [
-  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Under each note is where it is and the text there, and where the note speaks of colour, the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark. A note that points at several spots has its number on each of them and a line for each, in the order I pointed. A mark's colour means nothing.",
+  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Under each note is where it is and the text there, and where the note speaks of colour, the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark, and neither has one I said with nothing pointed at: its words are all that place it. A note that points at several spots has its number on each of them and a line for each, in the order I pointed. A mark's colour means nothing.",
   '',
   'Each screen is named with its marked copy, or with its screenshot where every note on it is about the whole screen. The screenshot without the marks has the marked copy\'s name in `images/`. A close-up of a small spot, bright with the rest dimmed, is in `crops/` under that name with `-note-` and the note\'s number, and `-2`, `-3` for the note\'s further spots; a spot large enough to read on the marked copy has none.',
 ].join('\n');
@@ -203,7 +218,7 @@ export function notesPackage(
     const placed = (list: string[]) => list.flatMap((path) => placeIn(i, b)(path) ?? []);
     return { marked: new Set(placed(drawn.marked)), quiet: placed(drawn.quiet) };
   });
-  const lines = [...INTRO, inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
+  const lines = [...introOf(purposeOf(takes)), inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
   if (sheets.some((s) => s.marked.size)) lines.push('', SHEETS_LINE);
   const quiet = quietLine(takes);
   const quietSheets = sheets.flatMap((s) => s.quiet);

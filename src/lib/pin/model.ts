@@ -88,6 +88,11 @@ export type Mark = {
    * here" is one note on two things. `shape` is the first.
    */
   also?: Shape[];
+  /**
+   * Said with the hand on the screenshot and nothing pointed at (D194): its shape is the whole
+   * screen, as a place to keep it, and it is not about the whole screen.
+   */
+  unpointed?: true;
   /** A short name for the spot: "one number, huge". Optional. */
   label: string;
   /** What works here, and why. */
@@ -732,7 +737,11 @@ export function manifest(
             ...(m.origin === 'ai'
               ? { origin: 'ai', fromNote: m.quote ?? '', checked: Boolean(m.confirmed) }
               : m.origin === 'voice'
-                ? { origin: 'voice', ...(m.quote ? { spoken: m.quote } : {}) }
+                ? {
+                    origin: 'voice',
+                    ...(m.quote ? { spoken: m.quote } : {}),
+                    ...(m.unpointed ? { unpointed: true } : {}),
+                  }
                 : {}),
             ...suggestedData(m),
           })),

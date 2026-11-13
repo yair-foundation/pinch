@@ -1070,3 +1070,118 @@ describe('voice notes: what a second real review showed (D191)', () => {
     assert.ok(!pointerOn(loop, 0, 0, 3000, size).strokes.some((s) => s.kind === 'line'));
   });
 });
+
+describe('voice notes: what a third real review showed (D194)', () => {
+  const one: Asset = {
+    id: 'one',
+    name: 'one.png',
+    type: 'image/png',
+    width: 1000,
+    height: 1000,
+    note: '',
+    marks: [],
+  };
+  const takeOf = (words: TimedWord[], pointer: PointerSample[]): Take => ({
+    id: 'aaaa-bbbb',
+    version: 1,
+    recordedAt: '2026-11-13T07:37:56.000Z',
+    durationMs: 20_000,
+    mimeType: 'audio/webm',
+    screens: [{ id: 'one', name: 'one.png', width: 1000, height: 1000 }],
+    shown: [{ t: 0, screen: 0 }],
+    pointer,
+    words,
+  });
+  /** A hand going up and down a strip from `y0` to `y1`, four times, swaying a little as it goes. */
+  const strip = (x: number, y0: number, y1: number): PointerSample[] =>
+    Array.from({ length: 81 }, (_, i): PointerSample => {
+      const along = i % 40 < 20 ? (i % 40) / 20 : (40 - (i % 40)) / 20;
+      return [i * 25, 0, x + 0.08 * Math.sin(i * 0.05), y0 + (y1 - y0) * along];
+    });
+  /** A hand moving slowly about the slide, never at rest and never back on itself. */
+  const about: PointerSample[] = Array.from({ length: 61 }, (_, i): PointerSample => {
+    const a = (i / 60) * 1.2 * Math.PI;
+    return [i * 100, 0, 0.5 + 0.4 * Math.cos(a), 0.5 + 0.35 * Math.sin(a)];
+  });
+
+  it('reads a strip gone up and down as the thing, too long for a scrub and too wide for a line', () => {
+    const pointer = strip(0.12, 0.3, 0.8);
+    assert.deepEqual(
+      pointerOn(pointer, 0, 0, 3000, size).strokes.map((s) => s.kind),
+      ['scrub'],
+    );
+    const shape = placeClaim(claim('Too much margin', 400), pointer, 0, size);
+    assert.equal(shape.kind, 'area');
+    if (shape.kind !== 'area') return;
+    assert.ok(shape.h > 0.45 && shape.w < 0.2, JSON.stringify(shape));
+    // As wide as it is long, it is a hand wandering still.
+    const wide: PointerSample[] = Array.from({ length: 81 }, (_, i): PointerSample => {
+      const along = i % 40 < 20 ? (i % 40) / 20 : (40 - (i % 40)) / 20;
+      return [i * 25, 0, 0.5 + 0.45 * Math.sin((i - 40) * 0.03), 0.05 + 0.9 * along];
+    });
+    assert.ok(!pointerOn(wide, 0, 0, 3000, size).strokes.some((s) => s.area));
+  });
+
+  it('says a note was not pointed at when the hand was on the slide and meant nothing', () => {
+    const [made] = applyTake([one], takeOf(say('Very bad layout.', 2000), about));
+    assert.equal(made.marks.length, 1);
+    assert.ok(isWhole(made.marks[0].shape));
+    assert.equal(made.marks[0].unpointed, true);
+  });
+
+  it('keeps a note about the screen on the whole screen: named, or said with the hand off it', () => {
+    const [named] = applyTake([one], takeOf(say('This slide is too plain.', 2000), about));
+    assert.ok(isWhole(named.marks[0].shape));
+    assert.ok(!('unpointed' in named.marks[0]));
+    const off: PointerSample[] = [[0, 0, null, null]];
+    const [away] = applyTake([one], takeOf(say('Very bad layout.', 2000), off));
+    assert.ok(isWhole(away.marks[0].shape));
+    assert.ok(!('unpointed' in away.marks[0]));
+  });
+
+  it('takes "not pointed at" to the export and back', () => {
+    const [made] = applyTake([one], takeOf(say('Very bad layout.', 2000), about));
+    const data = manifest([made], '2026-11-13T08:00:00.000Z');
+    assert.equal((data.assets[0].notes[0] as { unpointed?: boolean }).unpointed, true);
+    const files = new Map<string, Uint8Array>([
+      ['pinch-x/notes.json', new TextEncoder().encode(JSON.stringify(data))],
+      [
+        `pinch-x/${data.assets[0].image}`,
+        new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]),
+      ],
+    ]);
+    const exp = readExport(files);
+    let n = 0;
+    const [back] = assetsOf(exp, files, () => `id${n++}`).assets.map((a) => a.asset);
+    assert.equal(back.marks[0].unpointed, true);
+  });
+
+  it('hears what the take is for as a tag, and leaves it out of the notes', () => {
+    const words = [
+      ...say('This take is bad examples to learn rules from.', 500),
+      ...say('The header is loud.', 6000),
+    ];
+    const { claims, ops } = heard(words);
+    assert.deepEqual(
+      claims.map((c) => c.text),
+      ['The header is loud.'],
+    );
+    assert.deepEqual(
+      ops.map((op) => (op.kind === 'purpose' ? op.text : op.kind)),
+      ['This take is bad examples to learn rules from.'],
+    );
+    // Said with a stop after "is", it is one sentence still (D192).
+    const paused = [...say('These notes are', 500), ...say('for the pricing page.', 3000)];
+    assert.deepEqual(
+      heard(paused).ops.map((op) => (op.kind === 'purpose' ? op.text : op.kind)),
+      ['These notes are for the pricing page.'],
+    );
+    const [made] = applyTake([one], takeOf(words, []));
+    assert.deepEqual(
+      made.marks.map((m) => m.quote),
+      ['The header is loud.'],
+    );
+    // A remark about a thing on the screen that begins the same way is rare enough to live with.
+    assert.equal(heard(say('This review card is too wide.')).ops.length, 0);
+  });
+});
