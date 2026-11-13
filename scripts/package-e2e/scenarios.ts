@@ -576,7 +576,13 @@ function trickyTake(): Scenario {
     take: b.take("take-tricky"),
     expect: {
       notes: [
-        { screen: 0, says: "don't match", at: ["icon1", "icon2"] },
+        // Two icons with no text: each spot keeps the colour under it (D198).
+        {
+          screen: 0,
+          says: "don't match",
+          at: ["icon1", "icon2"],
+          colours: true,
+        },
         { screen: 0, says: "Avoid this black", at: ["save"], colours: true },
         {
           screen: 0,

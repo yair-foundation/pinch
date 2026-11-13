@@ -12,6 +12,7 @@ import {
   type TextLine,
   textIn,
   whereLine,
+  whereWithoutColours,
 } from '../mark-words';
 
 const line = (text: string, x: number, y: number, w = 0.1, h = 0.02): TextLine => ({
@@ -150,6 +151,23 @@ describe('the line under a note', () => {
     assert.equal(
       whereLine({ x: 0, y: 0, w: 1, h: 1 }, '', ['#ffffff'], '#000000'),
       'Where: the whole screen. Colours: #ffffff.',
+    );
+  });
+});
+
+describe('a mark said without its colours (D192, D198)', () => {
+  it('keeps where it is and the text there', () => {
+    assert.equal(
+      whereWithoutColours('Where: middle left, on "New York". At the point: #fa877d. Colours: #072c23.'),
+      'Where: middle left, on "New York".',
+    );
+    assert.equal(whereWithoutColours('Where: top left. Colours: #ffffff.'), 'Where: top left.');
+  });
+
+  it('keeps the colour under a point with no text, to tell it from a spot beside it', () => {
+    assert.equal(
+      whereWithoutColours('Where: top right. At the point: #3b82f6. Colours: #ffffff, #3b82f6.'),
+      'Where: top right. At the point: #3b82f6.',
     );
   });
 });
