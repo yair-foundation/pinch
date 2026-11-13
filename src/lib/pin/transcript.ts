@@ -52,6 +52,23 @@ export function wordsFromWhisper(json: unknown): TimedWord[] {
   return withoutStretch(words);
 }
 
+/**
+ * The browser's Whisper gives a hyphen to the word after it (D192): "off" then "-brand", which
+ * read "off -brand" 58 times in one review. A word that begins with a hyphen and a letter is the
+ * rest of the word before it. It is done where a take's words are read as well, so one kept
+ * before this reads right.
+ */
+export function withoutLooseHyphens(words: readonly TimedWord[]): TimedWord[] {
+  const out: TimedWord[] = [];
+  for (const word of words) {
+    const last = out[out.length - 1];
+    if (last && /^-\p{L}/u.test(word.text) && /[\p{L}\p{N}]$/u.test(last.text))
+      out[out.length - 1] = { ...last, text: last.text + word.text, end: word.end };
+    else out.push(word);
+  }
+  return out;
+}
+
 /** A word as transformers.js gives it in the browser (D140): its text and its times in seconds. */
 type BrowserChunk = { text?: string; timestamp?: [number | null, number | null] };
 
@@ -67,7 +84,7 @@ export function wordsFromChunks(chunks: readonly BrowserChunk[] | undefined): Ti
     const end = typeof to === 'number' ? Math.max(start, Math.round(to * 1000)) : start + 300;
     words.push({ text, start, end });
   }
-  return withoutRepeats(withoutStretch(words));
+  return withoutLooseHyphens(withoutRepeats(withoutStretch(words)));
 }
 
 /** A word to compare: "Good," and "good" are one word. */

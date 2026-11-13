@@ -2,6 +2,10 @@
 
 ## Current state (2026-11-07)
 
+Since D193 a take of more than eight noted screens comes with sheets of its marked copies, eight to a sheet, and with sheets of the screens nothing was said over, twelve to a sheet with their names; `notes.md` names the sheet each screen is on, and the package holds a close-up only for a small spot. On the author's review of 220 slides: 17 and 8 sheets, 121 close-ups where there were 306, exported in 28 seconds in a browser. Not run through the taste harness or on the live site.
+
+Since D192 `notes.md` holds the notes: a screen names its marked copy, the screenshot and close-ups are found by name, and a spot's colours are given where the note speaks of colour; `transcript.md` ends by naming the take's file beside the folder; a pause of 2.5 seconds ends a remark unless its words go on; "Not sure" lists a note that stops mid-sentence and no lone "but"; "off -brand" reads "off-brand"; a deck's pages share one cut of their name. On the author's review of 220 slides `notes.md` is 47,000 characters where it was 80,700, and 271 notes become 288. Not run through the taste harness, in a browser or on the live site.
+
 Since D191 "Remove this" and "Delete this" are notes on what is pointed at, and a screen leaves the batch only when the screenshot or the batch is named; a remark that only points adds its spots to the note before; a gesture belongs to the sentence nearest it; a scrub is boxed by where it went back and forth; "this" said over a hovering hand is a spot. On the author's second real review, 251 slides, the 23 notes that had left with 15 screenshots are kept. Not run on the live site.
 
 Since D190 a note keeps every spot its sentence points at, each with its number on the marked copy, its own close-up and its own line; every circle in a stroke is read, and a line gone along and back. On the author's review the three notes that had lost spots have them, and two more were found. Not yet: a rest with nothing said over it as a spot, "And here." on its own. Not run on the live site.

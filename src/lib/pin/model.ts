@@ -497,11 +497,15 @@ export function shapePixels(shape: Shape, width: number, height: number) {
 
 /** The longest a file-safe name gets. */
 const SLUG_LENGTH = 40;
+/** Room kept for the number a name ends on, as a deck's pages do. */
+const PAGE_DIGITS = 3;
 
 /**
  * A file-safe name from what the user called the image: "Pricing page (v2).png" → "pricing-page-v2".
  * A long name loses its middle, never its end (D188): the end is what tells "…-investor-final-6"
- * from "…-investor-final-7".
+ * from "…-investor-final-7". The number a name ends on stays out of the count (D192), so every
+ * page of one deck is cut at the same place: "…-vision-2026-2-pptx-p9" kept "ision" and "…-p12"
+ * "sion", and a name of 40 characters stayed whole beside its neighbour of 41.
  */
 export function slug(name: string): string {
   const base = name
@@ -511,10 +515,13 @@ export function slug(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  if (base.length <= SLUG_LENGTH) return base || 'image';
-  const tail = Math.floor(SLUG_LENGTH / 2);
-  const head = base.slice(0, SLUG_LENGTH - tail - 1).replace(/-+$/, '');
-  return `${head}-${base.slice(-tail).replace(/^-+/, '')}`;
+  const page = base.match(/\d{1,4}$/)?.[0] ?? '';
+  const stem = base.slice(0, base.length - page.length);
+  const room = SLUG_LENGTH - PAGE_DIGITS;
+  if (stem.length <= room) return base || 'image';
+  const tail = Math.floor(room / 2);
+  const head = stem.slice(0, room - tail - 1).replace(/-+$/, '');
+  return `${head}-${stem.slice(-tail).replace(/^-+/, '')}${page}`;
 }
 
 export const extensionOf = (type: string) =>
@@ -669,6 +676,8 @@ export function manifest(
   cropOf: CropOf = plainCrop,
   /** Each note's mark in words (D166), when the export has worked it out. */
   whereOf?: (a: Asset, m: Mark, place?: number) => string | undefined,
+  /** The sheets drawn (D193): the marked copies, and the screens nothing was said over, in order. */
+  sheets?: { marked: string[]; quiet: string[] },
 ) {
   const list = exportable(assets);
   return {
@@ -678,6 +687,7 @@ export function manifest(
     coordinates:
       'Fractions of the image: x from the left edge, y from the top, 0 to 1. Pixels are of the image in images/.',
     contactSheet: SHEET_FILE,
+    ...(sheets && (sheets.marked.length || sheets.quiet.length) ? { sheets } : {}),
     guide: 'README.md',
     topics: Object.fromEntries(TOPICS.map((t) => [t.kind, t.hint])),
     assets: list.map((a, i) => {

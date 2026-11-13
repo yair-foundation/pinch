@@ -9,7 +9,14 @@
 
 import { clockText, type Take } from './narration';
 import { opLabel, spoken, wordsByScreen } from './transcript';
-import { heard, namesOnlyTheScreen, saidSomething, wordsIn } from './voice-notes';
+import {
+  heard,
+  namesOnlyTheScreen,
+  onlyTurns,
+  saidSomething,
+  stopsShort,
+  wordsIn,
+} from './voice-notes';
 import { SENTENCE_PAUSE, type TimedWord } from './voice-tags';
 
 /** One thing said over a screen. */
@@ -54,9 +61,11 @@ export function remarksOf(take: Take, known: readonly string[] = []): Remark[] {
       const ended = screenAt(take, last.start);
       const unsure = namesOnlyTheScreen(claim.words)
         ? 'Too short to say what I meant: its start may be missing.'
-        : ended !== screen
-          ? `Said as the reel turned to ${take.screens[ended].name}.`
-          : undefined;
+        : stopsShort(claim.words)
+          ? 'Stops mid-sentence: its end may be missing.'
+          : ended !== screen
+            ? `Said as the reel turned to ${take.screens[ended].name}.`
+            : undefined;
       out.push({
         screen,
         at: claim.start,
@@ -84,13 +93,14 @@ export function remarksOf(take: Take, known: readonly string[] = []): Remark[] {
       if (run && before && word.start - before.end < SENTENCE_PAUSE) run.push(word);
       else runs.push([word]);
     }
+    // A lone "but" is where a remark was split in two (D192), not a remark to ask about.
     for (const run of runs)
       out.push({
         screen,
         at: run[0].start,
         text: spoken(run),
         kind: 'left',
-        ...(saidSomething(run) && { unsure: 'Too short to be a note.' }),
+        ...(saidSomething(run) && !onlyTurns(run) && { unsure: 'Too short to be a note.' }),
       });
   });
   return out.sort((a, b) => a.at - b.at);
@@ -136,19 +146,45 @@ const screens = (n: number) => `${n} ${n === 1 ? 'screen' : 'screens'}`;
 
 export const TRANSCRIPT_FILE = 'transcript.md';
 
+/** A take's file beside the notes folder (D183): "pinch-take-2026-11-13-07-37-56.json". */
+export const takeFileName = (take: Pick<Take, 'recordedAt'>) =>
+  `pinch-take-${take.recordedAt.slice(0, 19).replace(/[T:]/g, '-')}.json`;
+
 const remarkLine = (r: Remark) =>
   `- ${clockText(r.at)} ${r.text}${r.unsure ? ` [${r.unsure}]` : r.kind === 'left' ? ' [Not a note.]' : ''}`;
+
+/** Files as a span: "`sheets/quiet-01.jpg` to `sheets/quiet-08.jpg`", or the one. */
+export const filesSpan = (names: readonly string[]) =>
+  names.length > 1 ? `\`${names[0]}\` to \`${names[names.length - 1]}\`` : `\`${names[0]}\``;
+
+/** Where the screens nothing was said over can be seen (D193), as a sentence after the count. */
+export const drawnOn = (sheets: readonly string[]) =>
+  sheets.length ? ` They are drawn small, each with its name, on ${filesSpan(sheets)}.` : '';
 
 /**
  * The takes' words as a file for the package: each screen in the order it was first spoken over,
  * with its remarks and the time of each, then the screens nothing was said over (D189). Empty when
- * nothing was said.
+ * nothing was said. With the take's file beside the folder, it ends by naming it (D192): an agent
+ * that wanted to trace a note back reported there was nothing to trace it with.
  */
-export function transcriptText(takes: readonly Take[], known: readonly string[] = []): string {
+export function transcriptText(
+  takes: readonly Take[],
+  known: readonly string[] = [],
+  {
+    takeFiles = false,
+    quietSheets = [],
+  }: {
+    takeFiles?: boolean;
+    /** The sheets the screens nothing was said over are drawn on (D193), as the package names them. */
+    quietSheets?: readonly string[];
+  } = {},
+): string {
   const lines: string[] = [];
+  const said: Take[] = [];
   for (const take of takes) {
     const remarks = remarksOf(take, known);
     if (!remarks.length) continue;
+    said.push(take);
     if (takes.length > 1)
       lines.push('', `## Take recorded ${take.recordedAt.slice(0, 16).replace('T', ' ')}`);
     const shown = new Set(take.shown.flatMap((s) => (s.screen === null ? [] : [s.screen]))).size;
@@ -176,7 +212,7 @@ export function transcriptText(takes: readonly Take[], known: readonly string[] 
         '',
         `${head} Nothing said`,
         '',
-        `I said nothing over ${quiet.length === 1 ? 'this screen' : `these ${screens(quiet.length)}`}.${brief}`,
+        `I said nothing over ${quiet.length === 1 ? 'this screen' : `these ${screens(quiet.length)}`}.${brief}${drawnOn(quietSheets)}`,
         '',
         ...quiet.map((q) => `- ${take.screens[q.screen].name}${marked && q.glanced ? ' *' : ''}`),
       );
@@ -191,6 +227,13 @@ export function transcriptText(takes: readonly Take[], known: readonly string[] 
       );
   }
   if (!lines.length) return '';
+  if (takeFiles)
+    lines.push(
+      '',
+      '## The take',
+      '',
+      `${said.map((take) => `\`${takeFileName(take)}\``).join(', ')}, beside this folder, has when each word was said, which screen was on show and where the pointer went. Open it only to trace a note that looks wrong.`,
+    );
   return [
     '# Everything I said, in order',
     '',

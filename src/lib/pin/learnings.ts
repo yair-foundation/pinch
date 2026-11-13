@@ -80,8 +80,10 @@ export type BatchNote = {
   spoken?: string;
   /** It is about the whole screen (D188): it points at nothing, so it has no close-up to show. */
   whole?: true;
+  /** Its spot is large enough to read on the marked copy (D193): the package leaves its close-up out. */
+  large?: true;
   /** The other spots it points at (D190), in the order pointed at: each one's close-up and words. */
-  also?: { crop: string; where?: string }[];
+  also?: { crop: string; where?: string; large?: true }[];
 };
 
 export type Batch = {

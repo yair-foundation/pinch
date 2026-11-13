@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   colourOf,
   cleanLine,
+  isSmallSpot,
   isWholeScreen,
   mainColours,
   placeOf,
@@ -150,5 +151,21 @@ describe('the line under a note', () => {
       whereLine({ x: 0, y: 0, w: 1, h: 1 }, '', ['#ffffff'], '#000000'),
       'Where: the whole screen. Colours: #ffffff.',
     );
+  });
+});
+
+describe('which spots need a close-up (D193)', () => {
+  it('is a point, and an area under a hundredth of the screen', () => {
+    assert.equal(isSmallSpot({ kind: 'dot', x: 0.4, y: 0.4 }), true);
+    // An icon or a label.
+    assert.equal(isSmallSpot({ kind: 'area', x: 0.1, y: 0.1, w: 0.05, h: 0.09 }), true);
+    // A title across a third of the screen, a chart, the whole screen.
+    assert.equal(isSmallSpot({ kind: 'area', x: 0.07, y: 0.04, w: 0.34, h: 0.04 }), false);
+    assert.equal(isSmallSpot({ kind: 'area', x: 0.04, y: 0.38, w: 0.9, h: 0.46 }), false);
+    assert.equal(isSmallSpot({ kind: 'area', x: 0, y: 0, w: 1, h: 1 }), false);
+  });
+  it('is an arrow between two things close together, and not one across the screen', () => {
+    assert.equal(isSmallSpot({ kind: 'arrow', x: 0.3, y: 0.3, x2: 0.4, y2: 0.35 }), true);
+    assert.equal(isSmallSpot({ kind: 'arrow', x: 0.66, y: 0.75, x2: 0.06, y2: 0.51 }), false);
   });
 });

@@ -9,8 +9,17 @@ import {
 } from './learnings';
 import { batchNotes, type PinchExport } from './import';
 import { assetOf, numberOf } from './library';
+import { speaksOfColour, whereWithoutColours } from './mark-words';
 import type { Take } from './narration';
-import { quietLine, TRANSCRIPT_FILE, transcriptText, unsureLines } from './take-transcript';
+import { MARKED_PER_SHEET, markedSheetOf, sheetFile } from './sheet';
+import {
+  drawnOn,
+  quietLine,
+  TRANSCRIPT_FILE,
+  takeFileName,
+  transcriptText,
+  unsureLines,
+} from './take-transcript';
 
 /*
  * The package an agent gets (D157): the author's words, what they pointed at, and nothing else.
@@ -107,8 +116,31 @@ const INTRO = [
 /** For notes kept before D166, whose close-ups have the mark drawn on them. */
 const MARKS_DRAWN =
   "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes, and each close-up shows one spot. A mark's colour means nothing.";
-const MARKS_IN_WORDS =
-  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Each close-up shows one spot, bright, with the rest dimmed. Under each note is where it is, the text there and the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark and no close-up. A note that points at several spots has its number on each of them, and a close-up and a line for each, in the order I pointed. A mark's colour means nothing.";
+/*
+ * Since D192 the notes are the notes: a review of 220 slides came to 80,000 characters, over half
+ * of them file paths and colours, and its reader had to strip it by script to read it whole. A
+ * screen names its marked copy, the one picture every rule it wrote was read from; the screenshot
+ * and the close-ups are found by name. A spot's colours are given where the note speaks of colour.
+ */
+const MARKS_IN_WORDS = [
+  "Each note has a number. Each marked copy has those numbers on the spots I pointed at while saying the notes. Under each note is where it is and the text there, and where the note speaks of colour, the spot's main colours; for a point, the colour right under it comes first. A note about the whole screen has no mark. A note that points at several spots has its number on each of them and a line for each, in the order I pointed. A mark's colour means nothing.",
+  '',
+  'Each screen is named with its marked copy, or with its screenshot where every note on it is about the whole screen. The screenshot without the marks has the marked copy\'s name in `images/`. A close-up of a small spot, bright with the rest dimmed, is in `crops/` under that name with `-note-` and the note\'s number, and `-2`, `-3` for the note\'s further spots; a spot large enough to read on the marked copy has none.',
+].join('\n');
+
+/*
+ * A long take comes with sheets (D193): its reader drew 134 marked copies eight to a sheet before
+ * it could read the notes, and asked for the screens nothing was said over, to learn what passed.
+ */
+const SHEETS_LINE = `Look at the sheets first: the marked copies drawn small, ${MARKED_PER_SHEET} to a sheet, each screen with its number in the corner and its notes' numbers on their spots. Each screen below says which sheet it is on; open its marked copy to read it closely.`;
+
+/** The sheets an export says it drew: the marked copies', and those of the screens nothing was said over. */
+function sheetsOf(manifest: unknown): { marked: string[]; quiet: string[] } {
+  const sheets = (manifest as { sheets?: { marked?: unknown; quiet?: unknown } } | null)?.sheets;
+  const names = (list: unknown) =>
+    Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
+  return { marked: names(sheets?.marked), quiet: names(sheets?.quiet) };
+}
 
 /*
  * The remarks that may not have been taken as they were meant (D188), ahead of the notes, so an
@@ -157,9 +189,25 @@ export function notesPackage(
   const root = notesPackageRoot(stamp);
   const images: PackageFile[] = [];
   const inWords = c.batches.some((b) => b.notes.some((n) => n.where));
+  /** A file of a batch, added to the package: its path there, or null if it can't be read. */
+  const placeIn = (i: number, b: Batch) => (path: unknown) => {
+    const data = typeof path === 'string' ? files.get(b.id)?.get(b.root + path) : undefined;
+    if (!data) return null;
+    const name = (flat ? '' : batchFolder(i, b)) + path;
+    images.push({ name: root + name, data });
+    return name;
+  };
+  // Each batch's sheets (D193) first: the intro says whether there are any.
+  const sheets = c.batches.map((b, i) => {
+    const drawn = sheetsOf(manifestOf(files.get(b.id), b));
+    const placed = (list: string[]) => list.flatMap((path) => placeIn(i, b)(path) ?? []);
+    return { marked: new Set(placed(drawn.marked)), quiet: placed(drawn.quiet) };
+  });
   const lines = [...INTRO, inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
+  if (sheets.some((s) => s.marked.size)) lines.push('', SHEETS_LINE);
   const quiet = quietLine(takes);
-  if (quiet) lines.push('', quiet);
+  const quietSheets = sheets.flatMap((s) => s.quiet);
+  if (quiet) lines.push('', quiet + drawnOn(quietSheets));
   const unsure = unsureLines(takes);
   if (unsure.length) lines.push('', ...UNSURE, ...unsure);
   let notes = 0;
@@ -167,13 +215,16 @@ export function notesPackage(
   for (const [i, b] of c.batches.entries()) {
     const found = files.get(b.id);
     const manifest = manifestOf(found, b);
-    /** A file of this batch, added to the package: its path there, or null if it can't be read. */
-    const place = (path: unknown) => {
-      const data = typeof path === 'string' ? found?.get(b.root + path) : undefined;
-      if (!data) return null;
-      const name = (flat ? '' : batchFolder(i, b)) + path;
-      images.push({ name: root + name, data });
-      return name;
+    const place = placeIn(i, b);
+    const assets = (manifest as { assets?: unknown } | null)?.assets;
+    const numbers = Array.isArray(assets)
+      ? assets.map((a) => (a as { number?: unknown } | null)?.number)
+      : [];
+    /** The sheet a screen is on, as the package names it, or nothing. */
+    const sheetOf = (number: string) => {
+      const page = markedSheetOf(numbers.indexOf(number), numbers.length);
+      const name = page === null ? '' : (flat ? '' : batchFolder(i, b)) + sheetFile('marked', page);
+      return sheets[i].marked.has(name) ? `, on \`${name}\`` : '';
     };
     const screens = new Map<string, BatchNote[]>();
     for (const n of b.notes) {
@@ -188,33 +239,47 @@ export function notesPackage(
       const about = [
         list[0].source === 'ours' ? 'My own work.' : '',
         list[0].screenTag ? `Tag: ${list[0].screenTag}` : '',
-        image ? `Screenshot: \`${image}\`` : '',
-        marked ? `Marked copy: \`${marked}\`` : '',
+        // In words, the marked copy alone: the screenshot has its name (D192).
+        image && !(inWords && marked) ? `Screenshot: \`${image}\`${sheetOf(number)}` : '',
+        marked ? `Marked copy: \`${marked}\`${sheetOf(number)}` : '',
       ].filter(Boolean);
       lines.push('', `## ${list[0].image}`, '', ...about, ...(about.length ? [''] : []));
       for (const n of list) {
-        // A close-up for each spot the note points at (D190), none for the whole screen (D188).
-        const crops = n.whole ? [] : [n.crop, ...(n.also ?? []).map((p) => p.crop)].map(place);
+        // A close-up for each small spot the note points at (D190, D193), none for the whole
+        // screen (D188) or for a spot large enough to read on the marked copy.
+        const crops = n.whole
+          ? []
+          : [n, ...(n.also ?? [])].filter((p) => !p.large).map((p) => place(p.crop));
         missing += crops.filter((c) => !c).length;
-        const shown = crops.flatMap((c) => (c ? [`\`${c}\``] : []));
+        // In words, a close-up is found by its note's number, not listed (D192).
+        const shown = inWords ? [] : crops.flatMap((c) => (c ? [`\`${c}\``] : []));
+        const words = wordsOf(n);
+        const where = (line: string) => (speaksOfColour(words) ? line : whereWithoutColours(line));
         notes++;
         lines.push(
-          `- ${n.ref.split('.')[1]}. ${shown.length ? `(${shown.join(', ')}) ` : ''}${n.best ? 'My best example: ' : ''}${wordsOf(n)}`,
+          `- ${n.ref.split('.')[1]}. ${shown.length ? `(${shown.join(', ')}) ` : ''}${n.best ? 'My best example: ' : ''}${words}`,
         );
-        if (n.where) lines.push(`  ${n.where}`);
+        if (n.where) lines.push(`  ${where(n.where)}`);
         for (const p of n.also ?? [])
-          if (p.where) lines.push(`  ${p.where.replace(/^Where:/, 'Also:')}`);
+          if (p.where) lines.push(`  ${where(p.where).replace(/^Where:/, 'Also:')}`);
       }
     }
   }
   const text = new TextEncoder().encode(`${lines.join('\n')}\n`);
   const check = { name: root + CHECK_FILE, data: new TextEncoder().encode(CHECK_AGENT) };
-  const said = transcriptText(takes);
+  const said = transcriptText(takes, [], { takeFiles: true, quietSheets });
   const transcript = said
     ? [{ name: root + TRANSCRIPT_FILE, data: new TextEncoder().encode(said) }]
     : [];
   return {
-    files: [{ name: root + NOTES_FILE, data: text }, check, ...transcript, ...images],
+    // Each take goes beside the folder (D183), where the transcript says it is (D192).
+    files: [
+      { name: root + NOTES_FILE, data: text },
+      check,
+      ...transcript,
+      ...images,
+      ...takes.map(takeFile),
+    ],
     notes,
     missing,
   };
@@ -248,16 +313,15 @@ export function takePackage(
   return notesPackage(take, new Map([[batch.id, files]]), stamp, true, takes);
 }
 
-const toTheSecond = (stamp: string) => stamp.slice(0, 19).replace(/[T:]/g, '-');
-
 /**
  * A take beside the notes folder (D183): the pointer's path, when each screen was shown and the
  * timed words, as the browser kept them, with no audio. It sits beside the folder, as the rules
- * file does (D164), so an agent reading the folder never meets it. It is what the placing of
- * notes is checked and tuned against: `scripts/replay-take.ts` runs it through `applyTake` again.
+ * file does (D164), so an agent reading the folder doesn't open it by the way; the transcript's
+ * last lines say where it is (D192). It is what the placing of notes is checked and tuned
+ * against: `scripts/replay-take.ts` runs it through `applyTake` again.
  */
 export const takeFile = (take: Take): PackageFile => ({
-  name: `pinch-take-${toTheSecond(take.recordedAt)}.json`,
+  name: takeFileName(take),
   data: new TextEncoder().encode(JSON.stringify(take)),
 });
 

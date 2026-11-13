@@ -244,3 +244,30 @@ export function layoutSheet(sizes: { width: number; height: number }[]): SheetLa
   const badgeScale = Math.max(0.5, Math.min(0.9, minCellW / 120, minCellH / 72));
   return { width, height, cells, badgeScale };
 }
+
+/*
+ * A take's sheets (D193): the batch a few screens to a sheet, so that an agent sees a long review
+ * without opening every marked copy. The reader of a review of 220 slides drew them itself, eight
+ * to a sheet, before it could read the notes. One sheet's worth of screens needs none. The screens
+ * nothing was said over go on sheets of their own, smaller, as there is no mark on them to read.
+ */
+export const MARKED_PER_SHEET = 8;
+export const QUIET_PER_SHEET = 12;
+
+export type SheetKind = 'marked' | 'quiet';
+
+/** A sheet's file in the export: "sheets/marked-03.jpg" for the third. */
+export const sheetFile = (kind: SheetKind, page: number) =>
+  `sheets/${kind}-${String(page + 1).padStart(2, '0')}.jpg`;
+
+/** `count` screens split into sheets of `per`, in order. */
+export function sheetPages(count: number, per: number): Row[] {
+  const pages: Row[] = [];
+  for (let start = 0; start < count; start += per)
+    pages.push({ start, end: Math.min(count, start + per) });
+  return pages;
+}
+
+/** The sheet a screen with notes is on, by its place among them, or none when all fit on one. */
+export const markedSheetOf = (place: number, count: number) =>
+  count > MARKED_PER_SHEET ? Math.floor(place / MARKED_PER_SHEET) : null;
