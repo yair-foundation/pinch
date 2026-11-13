@@ -251,6 +251,21 @@ Anthropic's "The components of agent memory" (2026-11-06) warns that memory goes
 - **What it means:** at this size Pinch doesn't need consolidation. The article's case was hundreds of files and long-running agents; a person's takes reach that only after months. Worth testing again when someone real has dozens of takes, not before.
 - **Limits:** three designers, two screens each, twelve judgings; four takes; a taste change made all at once.
 
+## The package before and after D192 to D195, 2026-11-13
+
+D192 to D195 changed what Export writes, after the author's review of 220 slides: `notes.md` names the marked copy alone, gives a spot's colours only where the note speaks of colour, ships a close-up only for a small spot, and begins a note that plainly approves with "This is right:". `run.mjs` writes its own `notes.md` by hand, as Export did on 2026-11-06, so it could not tell. `scripts/taste-harness/package.mjs` packages the same take twice with Pinch's own code (`pack-take.ts`): **P** with the tree at daf5e39, before D192, and **N** with main at 40edfa6. Same corrections, same pictures, the check as a sub-agent in both. The three designers far from the agent's taste (2, 4, 5), each with a new first screen and eight corrections, two new screens each, built twice from each package, 24 builds. Each pair judged twice by a session holding the hidden taste, once in each order.
+
+| Package | Changes | Taste points broken | Corrections repeated | Mean rank of 2 | Cells |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| P, before | 4.50 | 3.00 | 0.25 | 1.50 | 12 |
+| N, now | 4.50 | 3.04 | 0.29 | 1.50 | 12 |
+
+- **No difference in what got built.** N beat P in 5 cells, lost 5, tied 2. The twelve cells are three packages built four times each, so the split by designer matters more than the total: designer 2 favoured P (3 wins, 1 tie), designer 4 favoured N (3 of 4), designer 5 N (2 wins, 1 loss, 1 tie). That is noise at this size. Designer 2's N package was the one that dropped the most close-ups, 5 of 8, but its P builders opened none of theirs and still won, so the close-ups don't explain it. `RUNS=4 ONLY=2` would settle it.
+- **No saving either.** Every builder in both arms opened the screenshot and the marked copy, whether `notes.md` named the screenshot or not. N's builders opened more close-ups, 27 reads against 8, perhaps because the intro says where they are and none are listed. A build cost the same, $2.94 against $2.90. On one screen of eight notes the new `notes.md` was no shorter: the paths it saves are about what the longer intro adds. D192 and D193's case rests on long reviews, 80,700 characters cut to 47,000 on 220 slides, which this harness can't build.
+- **What was not exercised:** a take is passed to neither package, so none of the sentence splitting, the hyphens, "Not sure", the transcript, the sheets, "not pointed at" or a spoken purpose was. D195 fired once, "Partly right:" on "This I like … Keep it exactly there, just make it true white", which is right.
+- **Sound as a test:** all 24 builds read `notes.md` (some with a shell command, which the harness's tools let through), the screen shown first won 12 of 24 judgings, and the two judgings of a cell agreed on the winner in 10 of 12.
+- **Cost:** $70 for the 24 builds, and about the same again for designers, first screens, takes and judgings. The run is kept in `~/taste-harness/package-2026-11-13`.
+
 ## Verdict for v1
 
 **The promise:** stop giving your design agent the same feedback. Point at it once, say why, and your agent remembers it and checks every screen against it before you see it. A plain agent can't: it remembers nothing, and when it reviews its own work it pulls the screen back to its own taste.
