@@ -294,7 +294,8 @@ function ReferenceDialog({
             onChange={(e) => setTag(e.target.value)}
             onBlur={saveTag}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              // Enter confirms the characters being composed in Chinese, Japanese or Korean.
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 saveTag();
               }
