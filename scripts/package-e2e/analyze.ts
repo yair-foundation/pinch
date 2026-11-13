@@ -368,7 +368,13 @@ function checkLine(
           `${label}: Where doesn't give the text under it ("${box.text}"): ${where[i]}`,
         )
     })
-    const coloured = where.some((x) => x.includes("Colours:"))
+    // Each spot of a note is told apart in words, not only on the marked copy (D198).
+    const bare = where.map((x) => x.replace(/^(Where|Also): /, ""))
+    if (new Set(bare).size < bare.length)
+      warn(`${label}: two of its spots read the same: ${where.join(" | ")}`)
+    const coloured = where.some(
+      (x) => x.includes("Colours:") || x.includes("At the point"),
+    )
     if (e.colours && !coloured)
       warn(`${label} speaks of colour but has no colours`)
     if (!e.colours && coloured)

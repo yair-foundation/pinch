@@ -128,9 +128,16 @@ export const speaksOfColour = (words: string) =>
     words,
   );
 
-/** A mark's line without its colours: where it is and the text there. */
+/**
+ * A mark's line without its colours: where it is and the text there. A point with no text under it
+ * keeps the colour right under it (D198): with nothing else in words it was only a ninth of the
+ * screen, and two icons a row apart read "Where: top right." and "Also: top right.".
+ */
 export const whereWithoutColours = (line: string) =>
-  line.replace(/ At the point: #[0-9a-f]{6}\.(?= Colours:)/i, '').replace(/ Colours: [#0-9a-f, ]*\.$/i, '');
+  (line.includes(', on "') ? line.replace(/ At the point: #[0-9a-f]{6}\.(?= Colours:)/i, '') : line).replace(
+    / Colours: [#0-9a-f, ]*\.$/i,
+    '',
+  );
 
 /** A spot under this share of the screen is small: a marked copy shows where it is, not what is in it. */
 const SMALL_SPOT = 0.01;

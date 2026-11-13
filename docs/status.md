@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-13)
 
+Since D198 a spot with no text under it keeps the colour under the pointer in its "Where" line, so two icons pointed at in one note read apart; the intro, the full-size screenshots and a voice tag carrying to the screens after it stay as they are.
+
 Since D197 the package is tested end to end: `pnpm test:e2e` runs three made-up takes through the app's own placing and Export in headless Chromium and holds each zip to what its take should make. It found, and this fixes, two near spots made one, a note taken back joined to the note it takes back, and one silent screen called "they".
 
 Since D196 Space is held to talk and let go to stop, after Wispr Flow: the microphone is muted at once and the take keeps time for a few seconds so the notes are still cut where the author stopped; R still records hands-free. Backspace, or Talk again at the top, drops the recording and goes back to the first screen, with Undo until the next recording. While recording, a waveform shows what the microphone hears. After Finish one bar shows the words being read, with a percentage where the browser reads them, then the package being put together, so Export only downloads it. Checked on a production build with a stand-in microphone, light and dark; not with a real microphone.
