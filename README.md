@@ -39,7 +39,7 @@ pnpm whisper-model            # prints PINCH_WHISPER_MODEL=… and PINCH_WHISPER
 
 Then in `.env.local`: those two, `PINCH_TEST_LOGIN=1`, any long random `AUTH_SECRET`, and `PINCH_LOCAL_DATA` set to a folder (say `~/.pinch-local`) so your account and rules outlast a restart. Leave the Google variables unset. Run `pnpm dev`, then:
 
-1. Add screenshots, press R and talk while you point; F, then Enter. The notes show on each screen.
+1. Add screenshots, hold Space and talk while you point (or press R to record hands-free); F, then Enter. The notes show on each screen.
 2. Your rules, Connect agent, Sign in (a local account, no Google), Connect: run the command it shows. The page with this button is off since D164, so put `<CollectionsView>` back in `pin-app.tsx` for it, or reuse a key you made before. It adds the server as `pinch-local`, beside the live `pinch`.
 3. Ask your agent to read your Pinch notes into rules. Open Your rules again to see them.
 

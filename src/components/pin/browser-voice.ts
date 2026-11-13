@@ -85,11 +85,12 @@ export function prepareBrowserVoice(onModel: (progress: number) => void): () => 
 /**
  * The words in a take, each timed in milliseconds from its start, and how they were read (D188).
  * `onModel` hears how much of the voice model has come in (0–100) while it downloads, the first
- * time.
+ * time, and `onRead` how far the reading has come (0–1, D196).
  */
 export async function transcribeInBrowser(
   audio: Blob,
   onModel?: (progress: number) => void,
+  onRead?: (done: number) => void,
 ): Promise<{ words: TimedWord[]; readBy: ReadBy }> {
   const samples = await samplesOf(audio);
   const w = workerHere();
@@ -99,6 +100,7 @@ export async function transcribeInBrowser(
       e: MessageEvent<
         | { type: 'progress'; progress: number }
         | { type: 'prepared' }
+        | { type: 'reading'; id: number; done: number }
         | {
             type: 'words';
             id: number;
@@ -112,6 +114,7 @@ export async function transcribeInBrowser(
       const m = e.data;
       if (m.type === 'progress') return onModel?.(m.progress);
       if (m.type === 'prepared' || m.id !== id) return;
+      if (m.type === 'reading') return onRead?.(m.done);
       done();
       if (m.type === 'words')
         resolve({

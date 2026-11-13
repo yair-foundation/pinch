@@ -141,7 +141,7 @@ const QUESTIONS = [
   },
   {
     q: 'What does a take look like?',
-    a: 'Drop in your screenshots and press R. Talk through each one while you point, turn to the next with the arrow keys, and press F to finish. Your words come back as numbered notes on the spots you meant, and Export gives you the folder.',
+    a: 'Drop in your screenshots and hold Space to talk. Talk through each one while you point, turn to the next with the arrow keys, and press F to finish. Your words come back as numbered notes on the spots you meant, and Export gives you the folder.',
   },
   {
     q: 'How does it know what I’m pointing at?',
@@ -181,7 +181,7 @@ const QUESTIONS = [
   },
   {
     q: 'What if I get something wrong?',
-    a: 'Say so. “Drop that” removes a note, “Not that, this” points again, and “Redo this screen” starts it over. Space pauses whenever you need to think.',
+    a: 'Say so. “Drop that” removes a note, “Not that, this” points again, and “Redo this screen” starts it over. Let go of Space whenever you need to think, or press Backspace to talk again from the start.',
   },
   {
     q: 'What if I change my mind?',

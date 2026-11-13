@@ -74,8 +74,17 @@ const earHere = () =>
     device: 'wasm',
   }) as unknown as Promise<Ear>);
 
+/**
+ * How far the reading of take `id` has come, 0 to 1 (D196): hearing where the speech is counts
+ * for the first tenth, and the pieces for the rest, by how long each is.
+ */
+const reached = (id: number | undefined, done: number) =>
+  post({ type: 'reading', id, done: Math.min(1, done) });
+/** The share of the reading that goes to finding the speech. */
+const HEARING = 0.1;
+
 /** The stretches of speech in a recording, or null when Silero can't be had: it's read whole. */
-async function piecesIn(audio: Float32Array): Promise<Piece[] | null> {
+async function piecesIn(audio: Float32Array, id?: number): Promise<Piece[] | null> {
   try {
     const listen = await earHere();
     const sr = new Tensor('int64', BigInt64Array.from([BigInt(SPEECH_RATE)]), []);
@@ -89,6 +98,7 @@ async function piecesIn(audio: Float32Array): Promise<Piece[] | null> {
       const answer = await listen({ input, sr, state });
       state = answer.stateN;
       answers[i] = answer.output.data[0];
+      if (i % 500 === 499) reached(id, (HEARING * i) / answers.length);
     }
     const db = loudnessOf(audio);
     return piecesOf(loudRuns(db), speechIn(answers, 0, (WINDOW * 1000) / SPEECH_RATE), db);
@@ -126,8 +136,9 @@ async function load(): Promise<{ asr: Asr; tier: VoiceTier }> {
 
 async function transcribe(
   audio: Float32Array,
+  id?: number,
 ): Promise<{ model: string } & ({ chunks: Chunk[] } | { pieces: PieceRead[] })> {
-  const pieces = await piecesIn(audio);
+  const pieces = await piecesIn(audio, id);
   const duration = (audio.length * 1000) / SPEECH_RATE;
   const at = (ms: number) => Math.round((ms * SPEECH_RATE) / 1000);
   for (;;) {
@@ -138,11 +149,17 @@ async function transcribe(
       const model = tier.model;
       if (!pieces) return { model, chunks: (await asr(audio, options)).chunks ?? [] };
       const read: PieceRead[] = [];
-      for (const piece of pieces) {
-        const sound = soundOf(piece, duration);
+      const sounds = pieces.map((piece) => soundOf(piece, duration));
+      const total = sounds.reduce((n, s) => n + (s.to - s.from), 0) || 1;
+      let done = 0;
+      reached(id, HEARING);
+      for (const [k, piece] of pieces.entries()) {
+        const sound = sounds[k];
         // A copy of its own: each piece is read as a recording that starts and ends in quiet.
         const heard = await asr(audio.slice(at(sound.from), at(sound.to)), options);
         read.push({ piece, from: sound.from, chunks: heard.chunks ?? [] });
+        done += sound.to - sound.from;
+        reached(id, HEARING + ((1 - HEARING) * done) / total);
       }
       return { model, pieces: read };
     } catch (error) {
@@ -168,7 +185,7 @@ self.onmessage = async (e: MessageEvent<{ id?: number; audio?: Float32Array }>) 
       post({ type: 'prepared' });
       return;
     }
-    post({ type: 'words', id, ...(await transcribe(audio)) });
+    post({ type: 'words', id, ...(await transcribe(audio, id)) });
   } catch (error) {
     ready = null;
     tiers = null;

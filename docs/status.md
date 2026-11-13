@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D196 Space is held to talk and let go to stop, after Wispr Flow: the microphone is muted at once and the take keeps time for a few seconds so the notes are still cut where the author stopped; R still records hands-free. Backspace, or Talk again at the top, drops the recording and goes back to the first screen, with Undo until the next recording. While recording, a waveform shows what the microphone hears. After Finish one bar shows the words being read, with a percentage where the browser reads them, then the package being put together, so Export only downloads it. Checked on a production build with a stand-in microphone, light and dark; not with a real microphone.
+
 Since D195 a note said aloud that plainly says something is right begins "This is right:", or "Partly right:" where only some of it does; one put to the reader begins "A question:"; and a note that begins "Actually" or "Sorry" is tied to the note before it on its screen, both ways. `notes.md` says how many there are, only where a take has any. On the author's three reviews nine notes are marked right and all nine are, with no correction marked. Not run through the taste harness or on the live site.
 
 Since D194 a strip gone up and down, a margin or the width of a paragraph, is a spot; a note said with the hand on the screenshot and nothing pointed at reads "Where: not pointed at." and "the whole screen" is kept for what means it; and a take that says "This take is …" opens `notes.md` with those words in place of the line about designing for the author. On the author's review of 220 slides four notes gain a place, three points become strips and six notes say they were not pointed at. The taste harness was not run; no take has said its purpose yet.
