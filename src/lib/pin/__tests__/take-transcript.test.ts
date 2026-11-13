@@ -64,6 +64,29 @@ describe('the transcript of a take (D188)', () => {
     );
   });
 
+  it('is unsure of a note that stops mid-sentence, and not of a lone "but" (D192)', () => {
+    const remarks = remarksOf(
+      take([
+        ...say('This slide is not a disaster,', 1000),
+        ...say('but', 4000),
+        ...say('The title should be bigger.', 5000),
+        ...say('The typography is just', 21_000),
+      ]),
+    );
+    assert.deepEqual(
+      remarks.map((r) => [r.kind, r.text, r.unsure]),
+      [
+        ['note', 'This slide is not a disaster.', undefined],
+        ['left', 'but', undefined],
+        ['note', 'The title should be bigger.', undefined],
+        ['note', 'The typography is just.', 'Stops mid-sentence: its end may be missing.'],
+      ],
+    );
+    assert.deepEqual(unsureLines([take(say('The typography is just', 21_000))]), [
+      '- `three.png` at 0:21: "The typography is just." Stops mid-sentence: its end may be missing.',
+    ]);
+  });
+
   it('is unsure of a tag that took something away, and of words left out', () => {
     const remarks = remarksOf(
       take([...say('Remove this screenshot.', 11_000), ...say('Oh, wait.', 21_000), ...say('Okay.', 25_000)]),

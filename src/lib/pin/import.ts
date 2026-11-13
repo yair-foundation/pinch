@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { sniffImage } from '@/lib/image';
 import type { BatchNote } from './learnings';
+import { isSmallSpot } from './mark-words';
 import { type Asset, cleanScreenTag, type Mark, SOURCES, type SourceKind, sortTopics } from './model';
 
 /*
@@ -169,8 +170,15 @@ export const batchNotes = (exp: PinchExport): BatchNote[] =>
       ...(n.shape.kind === 'area' && n.shape.w >= 0.999 && n.shape.h >= 0.999
         ? { whole: true as const }
         : {}),
+      ...(isSmallSpot(n.shape) ? {} : { large: true as const }),
       ...(n.also?.length
-        ? { also: n.also.map((p) => ({ crop: p.crop, ...(p.where ? { where: p.where } : {}) })) }
+        ? {
+            also: n.also.map((p) => ({
+              crop: p.crop,
+              ...(p.where ? { where: p.where } : {}),
+              ...(isSmallSpot(p.shape) ? {} : { large: true as const }),
+            })),
+          }
         : {}),
     })),
   );

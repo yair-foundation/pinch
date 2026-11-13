@@ -25,9 +25,9 @@ import {
   NOTES_FILE,
   notesPackageRoot,
   READING_SHOWN,
-  takeFile,
   takePackage,
 } from '@/lib/pin/notes-package';
+import { quietOf } from '@/lib/pin/take-transcript';
 import { zip } from '@/lib/pin/zip';
 import { cn } from '@/lib/utils';
 import { PinchWordmark } from './brand';
@@ -815,8 +815,11 @@ function Workspace() {
     });
   };
 
-  /** The batch as its export, for a collection to keep; null when it has no notes yet. */
-  const batchZip = useCallback(async () => {
+  /**
+   * The batch as its export, for a collection to keep; null when it has no notes yet. `quiet` is
+   * the screens a take said nothing over (D193), which the export draws small on sheets.
+   */
+  const batchZip = useCallback(async (quiet: readonly string[] = []) => {
     const list = assetsRef.current;
     if (!list.some(hasMarks)) return null;
     try {
@@ -830,6 +833,7 @@ function Workspace() {
             sticky: true,
           }),
         (id) => screenText(id, store.getImage),
+        quiet,
       );
       // Kept in a collection is kept: going home won't ask about this batch.
       markExported();
@@ -842,18 +846,21 @@ function Workspace() {
   /** This take as the package an agent reads (D163): all of Pinch's output, one click from the end. */
   const exportTake = useCallback(async () => {
     try {
-      const made = await batchZip();
+      const takes = takesApplied(assetsRef.current, await store.loadTakes());
+      const quiet = takes.flatMap((take) =>
+        quietOf(take).quiet.map((q) => take.screens[q.screen].id),
+      );
+      const made = await batchZip(quiet);
       if (!made) {
         setStatus({ tone: 'info', text: 'There are no notes to export yet.' });
         return;
       }
       const found = await unzip(await made.blob.arrayBuffer());
       const stamp = new Date().toISOString();
-      const takes = takesApplied(assetsRef.current, await store.loadTakes());
       const pack = takePackage(readExport(found), found, stamp, takes);
-      // The take itself goes beside the folder (D183), for the placing of notes to be tuned on.
+      // The take itself is in the package, beside the folder (D183, D192).
       download(
-        new Blob(zip([...pack.files, ...takes.map(takeFile)]) as BlobPart[], {
+        new Blob(zip(pack.files) as BlobPart[], {
           type: 'application/zip',
         }),
         `${notesPackageRoot(stamp).slice(0, -1)}.zip`,

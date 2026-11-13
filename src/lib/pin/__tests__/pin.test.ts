@@ -35,7 +35,15 @@ import {
   itemsLine,
   itemsOf,
 } from '../model';
-import { layoutSheet, planSheetRows, SHEET_MAX_EDGE, SHEET_MAX_PIXELS } from '../sheet';
+import {
+  layoutSheet,
+  markedSheetOf,
+  planSheetRows,
+  SHEET_MAX_EDGE,
+  SHEET_MAX_PIXELS,
+  sheetFile,
+  sheetPages,
+} from '../sheet';
 import {
   addToDay,
   changedEntries,
@@ -279,6 +287,22 @@ describe('settleCrop', () => {
 });
 
 describe('contact sheet', () => {
+  it('splits a take into sheets, and gives one sheet\'s worth none (D193)', () => {
+    assert.deepEqual(sheetPages(0, 8), []);
+    assert.deepEqual(sheetPages(17, 8), [
+      { start: 0, end: 8 },
+      { start: 8, end: 16 },
+      { start: 16, end: 17 },
+    ]);
+    assert.equal(sheetFile('marked', 2), 'sheets/marked-03.jpg');
+    assert.equal(sheetFile('quiet', 0), 'sheets/quiet-01.jpg');
+    assert.equal(markedSheetOf(7, 8), null);
+    assert.equal(markedSheetOf(7, 9), 0);
+    assert.equal(markedSheetOf(8, 9), 1);
+    // Eight slides to a sheet come out two across, each wide enough for a note's number.
+    const eight = layoutSheet(Array(8).fill({ width: 1440, height: 810 }));
+    assert.ok(eight.cells.every((c) => c.w >= 500));
+  });
   it('plans rows like Scrawl: one, two and many', () => {
     assert.deepEqual(planSheetRows([]), []);
     assert.deepEqual(planSheetRows([1.6]), [{ start: 0, end: 1 }]);
@@ -343,10 +367,16 @@ describe('export names and text', () => {
     // A long name loses its middle, never its end (D188): the end tells two slides apart.
     const six = slug('slide_chart-bars__gallery-investor-final-6.png');
     const seven = slug('slide_chart-bars__gallery-investor-final-7.png');
-    assert.equal(six, 'slide-chart-bars-ga-ery-investor-final-6');
+    assert.equal(six, 'slide-chart-bars-g-ry-investor-final-6');
     assert.notEqual(six, seven);
     assert.ok(six.length <= 40 && seven.endsWith('-7'));
-    assert.equal(slug('a'.repeat(40)), 'a'.repeat(40));
+    assert.equal(slug('a'.repeat(37)), 'a'.repeat(37));
+    // Every page of a deck is cut at the same place, whatever its number's length (D192).
+    const page = (n: number) => slug(`Accounting Strategy Vision 2026 (2).pptx p${n}.png`);
+    assert.equal(page(9), 'accounting-strateg-sion-2026-2-pptx-p9');
+    assert.equal(page(12), 'accounting-strateg-sion-2026-2-pptx-p12');
+    const session = (n: number) => slug(`Copy of GV - Revnue managment session  (1) p${n}.png`);
+    assert.equal(session(9).slice(0, -1), session(10).slice(0, -2));
     // A note's other spots have close-ups of their own (D190), named after its first.
     const several = assetFiles(asset(), 2, 30);
     assert.equal(several.crop(0, 0), several.crop(0));

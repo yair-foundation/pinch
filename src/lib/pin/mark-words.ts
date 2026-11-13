@@ -115,3 +115,33 @@ export function whereLine(
   const point = !whole && at ? ` At the point: ${at}.` : '';
   return `Where: ${place}${on}.${point} Colours: ${colours.join(', ')}.`;
 }
+
+/**
+ * Whether a note speaks of colour (D192). A review of 220 slides gave every spot its colours, the
+ * slide's ground 116 times over, and they were a tenth of what the agent had to read.
+ */
+export const speaksOfColour = (words: string) =>
+  /\b(colou?r\w*|background|contrast\w*|clash\w*|gradient\w*|fade\w*|palette|tint\w*|shade\w*|hue|opacity|transparen\w*|dark\w*|light\w*|bright\w*|white|black|gr[ae]y|red|blue|green|yellow|orange|pink|purple|coral|brown|beige|teal|navy)\b/i.test(
+    words,
+  );
+
+/** A mark's line without its colours: where it is and the text there. */
+export const whereWithoutColours = (line: string) =>
+  line.replace(/ At the point: #[0-9a-f]{6}\.(?= Colours:)/i, '').replace(/ Colours: [#0-9a-f, ]*\.$/i, '');
+
+/** A spot under this share of the screen is small: a marked copy shows where it is, not what is in it. */
+const SMALL_SPOT = 0.01;
+/** An arrow shorter than this, across and down, is between two things close together. */
+const SHORT_ARROW = 0.2;
+
+/**
+ * Whether a spot is small enough to need its close-up (D193). On a review of 220 slides the
+ * package held 306 close-ups and its reader opened none: the marked copy already showed each spot.
+ * A point always is, and an area under a hundredth of the screen: an icon, a label, a number.
+ */
+export function isSmallSpot(shape: Shape): boolean {
+  if (shape.kind === 'dot') return true;
+  if (shape.kind === 'arrow')
+    return Math.abs(shape.x2 - shape.x) < SHORT_ARROW && Math.abs(shape.y2 - shape.y) < SHORT_ARROW;
+  return shape.w * shape.h < SMALL_SPOT;
+}

@@ -5,6 +5,7 @@ import type { Shown } from '../narration';
 import {
   opLabel,
   spoken,
+  withoutLooseHyphens,
   wordsByScreen,
   wordsFromChunks,
   wordsFromWhisper,
@@ -143,6 +144,26 @@ describe('transcript: the browser', () => {
       { text: ' mice', timestamp: [1.7, 2] },
     ] as { text: string; timestamp: [number, number] }[];
     assert.equal(spoken(wordsFromChunks(said)), 'very, very nice mice');
+  });
+});
+
+describe('transcript: a hyphen given to the next word (D192)', () => {
+  it('joins it to the word before, on reading and for a take read earlier', () => {
+    const words = wordsFromChunks([
+      { text: ' This', timestamp: [1, 1.2] },
+      { text: ' is', timestamp: [1.2, 1.4] },
+      { text: ' off', timestamp: [1.4, 1.7] },
+      { text: ' -brand.', timestamp: [1.7, 2.1] },
+    ]);
+    assert.equal(spoken(words), 'This is off-brand.');
+    assert.deepEqual(words.at(-1), { text: 'off-brand.', start: 1400, end: 2100 });
+    const kept: TimedWord[] = [
+      { text: 'copy', start: 0, end: 300 },
+      { text: '-paste', start: 300, end: 700 },
+      { text: '-', start: 800, end: 900 },
+      { text: 'fine', start: 900, end: 1200 },
+    ];
+    assert.equal(spoken(withoutLooseHyphens(kept)), 'copy-paste - fine');
   });
 });
 

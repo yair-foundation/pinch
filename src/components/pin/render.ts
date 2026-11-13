@@ -7,7 +7,9 @@ import {
   type CropOf,
   cropRect,
   exportable,
+  exportName,
   GUIDE_FILE,
+  hasNotes,
   type LumaGrid,
   manifest,
   type Mark,
@@ -31,7 +33,14 @@ import {
 } from '@/lib/pin/mark-words';
 import { isWhole } from '@/lib/pin/voice-notes';
 import { REVIEW, type ReviewCell, reviewPages } from '@/lib/pin/review-sheets';
-import { layoutSheet } from '@/lib/pin/sheet';
+import {
+  layoutSheet,
+  MARKED_PER_SHEET,
+  QUIET_PER_SHEET,
+  type SheetKind,
+  sheetFile,
+  sheetPages,
+} from '@/lib/pin/sheet';
 import { zip, type ZipEntry } from '@/lib/pin/zip';
 
 /*
@@ -711,7 +720,15 @@ function contactSheet(sizes: { width: number; height: number }[]) {
   ctx.fillStyle = SHEET_BG;
   ctx.fillRect(0, 0, layout.width, layout.height);
   return {
-    add(index: number, bitmap: ImageBitmap, asset: Asset, number: string, grid?: LumaGrid) {
+    /** `caption` names a screen that has no number (D193), along its foot in place of the badge. */
+    add(
+      index: number,
+      bitmap: ImageBitmap,
+      asset: Asset,
+      number: string,
+      grid?: LumaGrid,
+      caption?: string,
+    ) {
       const cell = layout.cells.find((c) => c.index === index);
       if (!cell) return;
       // The cell has the image's aspect, give or take rounding; a very tall or wide image
@@ -729,14 +746,82 @@ function contactSheet(sizes: { width: number; height: number }[]) {
       const badge = { w: 7 * k + 64 * k, h: 7 * k + 32 * k };
       const onImage = busyOn(grid, s, null);
       const busy: Busy = (x, y, r) =>
-        x - r < badge.w && y - r < badge.h ? 1 : (onImage?.(x, y, r) ?? 0);
+        !caption && x - r < badge.w && y - r < badge.h ? 1 : (onImage?.(x, y, r) ?? 0);
       drawAll(tile.ctx, written(asset), (x, y) => [x * dw, y * dh], unit, busy);
       const dx = cell.x + Math.round((cell.w - dw) / 2);
       const dy = cell.y + Math.round((cell.h - dh) / 2);
       ctx.drawImage(tile.canvas, dx, dy);
-      drawBadge(ctx, dx, dy, number, layout.badgeScale);
+      if (caption) drawCaption(ctx, dx, dy, dw, dh, caption, layout.badgeScale);
+      else drawBadge(ctx, dx, dy, number, layout.badgeScale);
     },
     blob: () => toBlob(canvas, 'image/jpeg', 0.86),
+  };
+}
+
+/** `text` cut in its middle to fit `maxW`: a screen's name ends on its page, so the end stays. */
+function fitMiddle(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  for (let keep = text.length - 1; keep > 4; keep--) {
+    const head = Math.ceil(keep / 2);
+    const cut = `${text.slice(0, head)}…${text.slice(text.length - (keep - head))}`;
+    if (ctx.measureText(cut).width <= maxW) return cut;
+  }
+  return text.slice(0, 4);
+}
+
+/** A screen's name along the foot of its tile. */
+function drawCaption(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  text: string,
+  k: number,
+) {
+  const bar = Math.round(24 * k);
+  ctx.fillStyle = 'rgba(14,15,18,0.86)';
+  ctx.fillRect(x, y + h - bar, w, bar);
+  ctx.font = `600 ${Math.round(14 * k)}px ${SANS}`;
+  ctx.fillStyle = '#f8f9fc';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(fitMiddle(ctx, text, w - 14 * k), x + 7 * k, y + h - bar / 2 + 0.5);
+}
+
+/**
+ * A take's sheets (D193): the screens a few to a sheet, in order, each sheet drawn as the contact
+ * sheet is. A screen is added by its place among them; a sheet nothing was added to is left out.
+ */
+function sheetsOf(kind: SheetKind, sizes: { width: number; height: number }[], per: number) {
+  const pages = sheetPages(sizes.length, per).map((p) => ({
+    sheet: contactSheet(sizes.slice(p.start, p.end)),
+    used: false,
+  }));
+  return {
+    add(
+      place: number,
+      bitmap: ImageBitmap,
+      asset: Asset,
+      number: string,
+      grid?: LumaGrid,
+      caption?: string,
+    ) {
+      const page = pages[Math.floor(place / per)];
+      if (!page) return;
+      page.sheet.add(place % per, bitmap, asset, number, grid, caption);
+      page.used = true;
+    },
+    async files(root: string): Promise<{ names: string[]; entries: ZipEntry[] }> {
+      const names: string[] = [];
+      const entries: ZipEntry[] = [];
+      for (const [i, page] of pages.entries()) {
+        if (!page.used) continue;
+        names.push(sheetFile(kind, i));
+        entries.push({ name: root + sheetFile(kind, i), data: await bytes(await page.sheet.blob()) });
+      }
+      return { names, entries };
+    },
   };
 }
 
@@ -935,6 +1020,8 @@ export async function buildExport(
   onProgress: (done: number, total: number) => void,
   /** The text on a screen (D166). An export doesn't wait long for it, and goes without if it must. */
   textOf: (id: string) => Promise<TextLine[]> = async () => [],
+  /** The screens a take said nothing over (D193), by id: those with no notes go on sheets too. */
+  quiet: readonly string[] = [],
 ) {
   const now = new Date();
   const stamp = now.toISOString();
@@ -945,10 +1032,21 @@ export async function buildExport(
   const crops = new Map<string, Rect>();
   const wheres = new Map<string, string>();
   const textUntil = performance.now() + Math.max(TEXT_WAIT_MS, TEXT_WAIT_MS_A_SCREEN * assets.length);
-  const sheet = contactSheet(list.map((a) => ({ width: a.width, height: a.height })));
+  const sizeOf = (a: Asset) => ({ width: a.width, height: a.height });
+  const sheet = contactSheet(list.map(sizeOf));
   let sheetUsed = false;
+  // One sheet's worth of screens needs no sheets: the marked copies are few enough to open.
+  const markedSheets = sheetsOf(
+    'marked',
+    list.length > MARKED_PER_SHEET ? list.map(sizeOf) : [],
+    MARKED_PER_SHEET,
+  );
+  const unsaid = new Set(quiet);
+  const quietList = assets.filter((a) => unsaid.has(a.id) && !hasNotes(a));
+  const quietSheets = sheetsOf('quiet', quietList.map(sizeOf), QUIET_PER_SHEET);
+  const total = list.length + quietList.length;
   for (const [i, asset] of list.entries()) {
-    onProgress(i, list.length);
+    onProgress(i, total);
     const blob = await imageOf(asset.id);
     if (!blob) continue;
     const names = assetFiles(asset, i, list.length);
@@ -957,6 +1055,7 @@ export async function buildExport(
     files.push({ name: root + names.image, data: await bytes(blob) });
     const markedBlob = await markedImage(bitmap, asset, undefined, grid);
     sheet.add(i, bitmap, asset, names.number, grid);
+    markedSheets.add(i, bitmap, asset, names.number, grid);
     sheetUsed = true;
     files.push({ name: root + names.marked, data: await bytes(markedBlob) });
     const text = await Promise.race([
@@ -995,6 +1094,16 @@ export async function buildExport(
     }
     bitmap.close();
   }
+  for (const [i, asset] of quietList.entries()) {
+    onProgress(list.length + i, total);
+    const blob = await imageOf(asset.id);
+    if (!blob) continue;
+    const bitmap = await bitmapOf(blob);
+    quietSheets.add(i, bitmap, asset, '', undefined, exportName(asset));
+    bitmap.close();
+  }
+  const marked = await markedSheets.files(root);
+  const unspoken = await quietSheets.files(root);
   const cropOf: CropOf = (a, m, place = 0) =>
     crops.get(`${a.id}/${m.id}/${place}`) ?? cropRect(placesOf(m)[place], a.width, a.height);
   const entries: ZipEntry[] = [
@@ -1004,8 +1113,12 @@ export async function buildExport(
       name: `${root}notes.json`,
       data: encoder.encode(
         `${JSON.stringify(
-          manifest(assets, stamp, cropOf, (a, m, place = 0) =>
-            wheres.get(`${a.id}/${m.id}/${place}`),
+          manifest(
+            assets,
+            stamp,
+            cropOf,
+            (a, m, place = 0) => wheres.get(`${a.id}/${m.id}/${place}`),
+            { marked: marked.names, quiet: unspoken.names },
           ),
           null,
           2,
@@ -1014,8 +1127,8 @@ export async function buildExport(
     },
   ];
   if (sheetUsed) entries.push({ name: root + SHEET_FILE, data: await bytes(await sheet.blob()) });
-  entries.push(...files);
-  onProgress(list.length, list.length);
+  entries.push(...marked.entries, ...unspoken.entries, ...files);
+  onProgress(total, total);
   return {
     blob: new Blob(zip(entries, now) as BlobPart[], {
       type: 'application/zip',

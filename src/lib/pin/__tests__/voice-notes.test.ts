@@ -123,6 +123,48 @@ describe('voice notes: pauses', () => {
       ['Great title.', 'The icons.'],
     );
   });
+  it('ends one at a long pause before lower case, unless the words go on (D192)', () => {
+    const texts = (...words: [string, number][]) => claimsOf(timed(...words)).map((c) => c.text);
+    // Read piece by piece, a short remark has no capital and no full stop.
+    assert.deepEqual(
+      texts(['No', 0], ['margin', 300], ['in', 600], ['here', 900], ['too', 5000], ['much', 5300], ['margin', 5600]),
+      ['No margin in here.', 'Too much margin.'],
+    );
+    // A stop to point, under two and a half seconds, is the same sentence.
+    assert.deepEqual(texts(['Make', 0], ['it', 300], ['sharp', 2500], ['corners.', 2800]), [
+      'Make it sharp corners.',
+    ]);
+    // A word no remark begins with goes on, however long the stop.
+    assert.deepEqual(
+      texts(['We', 0], ["don't", 300], ['have', 600], ['these', 900], ['shapes', 1200], ['in', 7000], ['the', 7300], ['system.', 7600]),
+      ["We don't have these shapes in the system."],
+    );
+    // So does a sentence that stopped on a word no remark ends on, or on a comma.
+    assert.deepEqual(
+      texts(['Avoid', 0], ['mocks', 300], ['without', 600], ['a', 4000], ['real', 4300], ['design.', 4600]),
+      ['Avoid mocks without a real design.'],
+    );
+    assert.deepEqual(texts(['Again,', 0], ['screenshot.', 3500]), ['Again, screenshot.']);
+    // And an order still waiting for how.
+    assert.deepEqual(
+      texts(['make', 0], ['those', 300], ['titles', 600], ['bigger', 4200], ['and', 4500], ['bolder.', 4800]),
+      ['Make those titles bigger and bolder.'],
+    );
+  });
+  it('runs a sentence on past "is", unless it says where or how something is (D192)', () => {
+    assert.deepEqual(
+      claimsOf(
+        timed(['The', 0], ['title', 300], ['is.', 600], ['Wrong', 3000], ['and', 3300], ['small.', 3600]),
+      ).map((c) => c.text),
+      ['The title is wrong and small.'],
+    );
+    assert.deepEqual(
+      claimsOf(
+        timed(['Down', 0], ['left', 300], ['where', 600], ['the', 900], ['disclaimers', 1200], ['are.', 1500], ['Remove', 4000], ['the', 4300], ['dot.', 4600]),
+      ).map((c) => c.text),
+      ['Down left where the disclaimers are.', 'Remove the dot.'],
+    );
+  });
   it('runs an unfinished sentence on past the stop and the capital a pause gave it (D186)', () => {
     assert.deepEqual(
       claimsOf(
@@ -870,7 +912,10 @@ describe('voice notes: several spots in one note (D190)', () => {
       [`pinch-x/${data.assets[0].image}`, PNG],
     ]);
     const exp = readExport(files);
-    assert.deepEqual(batchNotes(exp)[0].also, [{ crop: 'crops/01-one-note-1-2.jpg' }]);
+    assert.deepEqual(
+      batchNotes(exp)[0].also?.map((p) => p.crop),
+      ['crops/01-one-note-1-2.jpg'],
+    );
     let n = 0;
     const back = assetsOf(exp, files, () => `id${++n}`).assets[0].asset;
     assert.equal(back.marks[0].also?.length, 1);

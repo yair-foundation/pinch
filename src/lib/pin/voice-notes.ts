@@ -27,7 +27,7 @@ import {
   type Topic,
 } from './model';
 import type { PointerSample, Take } from './narration';
-import { wordsByScreen } from './transcript';
+import { withoutLooseHyphens, wordsByScreen } from './transcript';
 import {
   type NoteRef,
   parseVoiceTags,
@@ -107,6 +107,57 @@ const DANGLING = new Set([
   // "Change the numbers to. Bolder font." (D191): Whisper's stop at a pause to look.
   ...['would', 'could', 'should', 'very', 'to'],
 ]);
+/**
+ * "The styling of the title is. Wrong and off-brand." (D192) was two notes, neither whole: a
+ * sentence doesn't end on "is" either, unless it says where or how something is: "where the
+ * disclaimers are", "keep it as it is".
+ */
+const COPULA = new Set(['is', 'are']);
+const SETTLES = new Set(['where', 'what', 'how', 'who', 'which', 'as', 'way', 'than']);
+/** Whether what was said ends on a word no sentence ends on. */
+const hangs = (said: readonly string[]) => {
+  const last = said[said.length - 1];
+  return (
+    !!last && (DANGLING.has(last) || (COPULA.has(last) && !said.some((w) => SETTLES.has(w))))
+  );
+};
+/**
+ * A pause this long and a word in lower case no longer goes on with the sentence by itself (D192):
+ * read piece by piece (D187), Whisper gives a short remark no capital and no full stop, so "No
+ * margin in here", four seconds, "too much margin" came back as one sentence. On the author's
+ * three reviews a stop to point in mid-sentence was 1 to 2.3 seconds ("Make it", 2.0, "sharp
+ * corners") and the pause before a new remark 2.5 or more.
+ */
+const LONG_PAUSE = 2500;
+/** Words no remark begins with: after a long pause one of these still goes on with the sentence. */
+const CARRIES_ON = new Set([
+  ...['in', 'on', 'at', 'of', 'for', 'with', 'without', 'from', 'to', 'into', 'onto', 'over'],
+  ...['under', 'between', 'inside', 'outside', 'around', 'across', 'through', 'than', 'as', 'by'],
+  ...['about', 'like', 'and', 'or', 'because', 'so', 'if', 'when', 'where', 'while', 'which'],
+  ...['who', 'whose', 'since', 'unless', 'instead', 'rather', 'then', 'especially', 'including'],
+  ...['except', 'even', 'is', 'are', 'was', 'were', "isn't", "aren't", 'should', 'would', 'could'],
+  ...['can', 'will', 'must', 'has', 'have', 'had', 'does', "doesn't", 'looks', 'feels', 'seems'],
+  ...['needs', 'here', 'there'],
+]);
+/** Words no remark ends on, beside `DANGLING`: after a long pause the sentence is still open. */
+const LEADS_ON = new Set([
+  ...['in', 'on', 'at', 'for', 'with', 'without', 'from', 'into', 'between', 'than', 'as', 'by'],
+  ...['was', 'were', 'be', 'if', 'when', 'which', 'just', 'each', 'every', 'instead'],
+]);
+/** Orders that say what to do to a thing and then how or where. */
+const ORDERS = new Set(['make', 'move', 'put', 'turn', 'set']);
+/**
+ * Whether a sentence's last clause is an order still waiting for how or where: "Make those
+ * titles", 3.3 seconds, "bigger and move them up".
+ */
+function waits(sentence: readonly TimedWord[]): boolean {
+  let from = 0;
+  sentence.forEach((w, i) => {
+    if (norm(w.text) === 'and' || /[,;:]$/.test(w.text)) from = i + 1;
+  });
+  const clause = saidOf(sentence.slice(from));
+  return clause.length <= 3 && ORDERS.has(clause[0]);
+}
 /** Words that begin a thought without being one, so a sentence of only these is still open. */
 const OPENS = new Set(['is', 'are', 'was', 'were', 'be', "i'm", "it's", "that's", 'would']);
 
@@ -140,16 +191,45 @@ function unfinished(sentence: readonly TimedWord[]): boolean {
   const said = saidOf(sentence);
   const last = said[said.length - 1];
   if (!last) return false;
-  return DANGLING.has(last) || (saysNothing(said) && OPENS.has(last));
+  return hangs(said) || (saysNothing(said) && OPENS.has(last));
 }
 
 /**
  * Whether a pause before this word ends the sentence (D162). Whisper starts a sentence with a
  * capital, so a word in lower case after a pause goes on with the same thought, as people stop to
- * look or think in the middle of one: "a nice atmosphere … and vibes".
+ * look or think in the middle of one: "a nice atmosphere … and vibes". After a long pause that
+ * holds only where the words say so (D192): the one before can't end a remark, or ends on a
+ * comma, or this one can't begin one, or the sentence is an order still waiting for how. "It should be bigger", 2.7 seconds, "the margins here are
+ * too big" is two remarks; "these shapes", 5.9 seconds, "in the design system" is one.
  */
-const pauseEnds = (word: TimedWord, gap: number) =>
-  gap >= LOST_THREAD || (gap >= SENTENCE_PAUSE && !/^[^\p{L}\p{N}]*\p{Ll}/u.test(word.text));
+function pauseEnds(word: TimedWord, sentence: readonly TimedWord[], gap: number): boolean {
+  if (gap >= LOST_THREAD) return true;
+  if (gap < SENTENCE_PAUSE) return false;
+  if (!/^[^\p{L}\p{N}]*\p{Ll}/u.test(word.text)) return true;
+  if (gap < LONG_PAUSE) return false;
+  const prev = sentence[sentence.length - 1];
+  return !(
+    CARRIES_ON.has(norm(word.text)) ||
+    LEADS_ON.has(norm(prev.text)) ||
+    /[,;:]$/.test(prev.text) ||
+    waits(sentence)
+  );
+}
+
+/**
+ * Whether a remark stops in the middle of a sentence (D192): it ends on a word no remark ends on,
+ * "The typography is just." Whatever came next was said too late to be joined to it, or not at all.
+ */
+export const stopsShort = (words: readonly TimedWord[]) => {
+  const said = saidOf(words);
+  return hangs(said) || LEADS_ON.has(said[said.length - 1] ?? '');
+};
+
+/** Whether words are only what turns a sentence round, "but": where a remark was split, not one. */
+export const onlyTurns = (words: readonly TimedWord[]) => {
+  const said = saidOf(words);
+  return said.length > 0 && said.every((w) => CONTRAST.has(w));
+};
 
 /** What was said, as claims: a sentence each, split at a contrast. */
 export function claimsOf(words: readonly TimedWord[]): Claim[] {
@@ -159,7 +239,7 @@ export function claimsOf(words: readonly TimedWord[]): Claim[] {
   let current: TimedWord[] = [];
   words.forEach((word, i) => {
     const prev = words[i - 1];
-    if (current.length && prev && pauseEnds(word, word.start - prev.end)) {
+    if (current.length && prev && pauseEnds(word, current, word.start - prev.end)) {
       if (word.start - prev.end < LOST_THREAD && unfinished(current)) joined.add(prev);
       else {
         sentences.push(current);
@@ -270,7 +350,7 @@ export const namesOnlyTheScreen = (words: readonly TimedWord[]) => {
 
 /** A take's words that were said in it: one timed after the recording ended was never said. */
 export const wordsIn = (take: Pick<Take, 'words' | 'durationMs'>): TimedWord[] =>
-  (take.words ?? []).filter((w) => w.start <= take.durationMs);
+  withoutLooseHyphens((take.words ?? []).filter((w) => w.start <= take.durationMs));
 
 const PRAISE = new Set([
   'like',
