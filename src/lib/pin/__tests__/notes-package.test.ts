@@ -522,6 +522,38 @@ describe('a note about the whole screen, and what was said (D188)', () => {
     );
   });
 
+  it('says which notes are right, and ties one that takes something back to the note before (D195)', () => {
+    const where = 'Where: top left.';
+    const made = packed([
+      note('01.1', { spoken: 'Avoid this color.', where }),
+      note('01.2', { spoken: 'Actually you can use this color. The title styling is off-brand.', where }),
+      note('01.3', { spoken: 'Do not use colors.', where }),
+      note('01.4', { spoken: 'Like this.', where }),
+      note('01.5', { spoken: 'Do you have an idea how to make it better?', where }),
+    ]);
+    assert.match(
+      made.text,
+      /\n- 1\. Avoid this color\.\n {2}Where: top left\.\n {2}I took some of this back in note 2\.\n/,
+    );
+    assert.match(
+      made.text,
+      /\n- 2\. Partly right: Actually you can use this color\. The title styling is off-brand\.\n {2}Where: top left\.\n {2}This takes back some of note 1\.\n/,
+    );
+    assert.match(made.text, /\n- 3\. Do not use colors\.\n/);
+    assert.match(made.text, /\n- 4\. This is right: Like this\.\n/);
+    assert.match(made.text, /\n- 5\. A question: Do you have an idea how to make it better\?\n/);
+    assert.ok(
+      made.text.includes(
+        '\nMost of my notes correct something. 2 say something is right and begin "This is right:", or "Partly right:" where only some of the note does. 1 asks something and begins "A question:". Where I took something back, both notes say so. Only plain words are caught, so read every note for what it says.\n',
+      ),
+    );
+    // A take of corrections alone says nothing of it, and a note typed in is left as it is.
+    const plain = packed([note('01.1', { spoken: 'Off-brand.', where })]).text;
+    assert.doesNotMatch(plain, /Most of my notes|This is right|A question/);
+    const typed = packed([note('01.1', { works: 'This is okay.', where })]).text;
+    assert.doesNotMatch(typed, /This is right/);
+  });
+
   it('says how many screens nothing was said over, ahead of the notes (D189)', () => {
     const words = [
       { text: 'Great', start: 11_000, end: 11_250 },

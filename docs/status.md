@@ -2,6 +2,8 @@
 
 ## Current state (2026-11-07)
 
+Since D195 a note said aloud that plainly says something is right begins "This is right:", or "Partly right:" where only some of it does; one put to the reader begins "A question:"; and a note that begins "Actually" or "Sorry" is tied to the note before it on its screen, both ways. `notes.md` says how many there are, only where a take has any. On the author's three reviews nine notes are marked right and all nine are, with no correction marked. Not run through the taste harness or on the live site.
+
 Since D194 a strip gone up and down, a margin or the width of a paragraph, is a spot; a note said with the hand on the screenshot and nothing pointed at reads "Where: not pointed at." and "the whole screen" is kept for what means it; and a take that says "This take is …" opens `notes.md` with those words in place of the line about designing for the author. On the author's review of 220 slides four notes gain a place, three points become strips and six notes say they were not pointed at. The taste harness was not run; no take has said its purpose yet.
 
 Since D193 a take of more than eight noted screens comes with sheets of its marked copies, eight to a sheet, and with sheets of the screens nothing was said over, twelve to a sheet with their names; `notes.md` names the sheet each screen is on, and the package holds a close-up only for a small spot. On the author's review of 220 slides: 17 and 8 sheets, 121 close-ups where there were 306, exported in 28 seconds in a browser. Not run through the taste harness or on the live site.

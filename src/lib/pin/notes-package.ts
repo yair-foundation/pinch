@@ -11,6 +11,7 @@ import { batchNotes, type PinchExport } from './import';
 import { assetOf, numberOf } from './library';
 import { speaksOfColour, whereWithoutColours } from './mark-words';
 import type { Take } from './narration';
+import { ASKS_START, asks, KIND_START, kindOf, takesBack } from './note-kind';
 import { MARKED_PER_SHEET, markedSheetOf, sheetFile } from './sheet';
 import {
   drawnOn,
@@ -149,6 +150,28 @@ const MARKS_IN_WORDS = [
  */
 const SHEETS_LINE = `Look at the sheets first: the marked copies drawn small, ${MARKED_PER_SHEET} to a sheet, each screen with its number in the corner and its notes' numbers on their spots. Each screen below says which sheet it is on; open its marked copy to read it closely.`;
 
+/**
+ * What the starts of some notes mean (D195), said only where a take has such notes: how many say
+ * something is right, how many ask, and that a note taken back says so.
+ */
+function kindsLine(right: number, asking: number, back: number): string {
+  if (!right && !asking && !back) return '';
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return [
+    'Most of my notes correct something.',
+    right
+      ? `${count(right, 'says something is right and begins', 'say something is right and begin')} "${KIND_START.right.trim()}", or "${KIND_START.partly.trim()}" where only some of the note does.`
+      : '',
+    asking
+      ? `${count(asking, 'asks something and begins', 'ask something and begin')} "${ASKS_START.trim()}".`
+      : '',
+    back ? 'Where I took something back, both notes say so.' : '',
+    'Only plain words are caught, so read every note for what it says.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 /** The sheets an export says it drew: the marked copies', and those of the screens nothing was said over. */
 function sheetsOf(manifest: unknown): { marked: string[]; quiet: string[] } {
   const sheets = (manifest as { sheets?: { marked?: unknown; quiet?: unknown } } | null)?.sheets;
@@ -220,6 +243,26 @@ export function notesPackage(
   });
   const lines = [...introOf(purposeOf(takes)), inWords ? MARKS_IN_WORDS : MARKS_DRAWN];
   if (sheets.some((s) => s.marked.size)) lines.push('', SHEETS_LINE);
+  // Only a note said aloud, with its words kept as they were said, is read for what it is (D195).
+  const read = (n: BatchNote) => (inWords && n.spoken?.trim() ? wordsOf(n) : '');
+  /** The note a note takes back: the one said before it on its screen, by its number there. */
+  const before = new Map<BatchNote, BatchNote>();
+  for (const b of c.batches) {
+    const last = new Map<string, BatchNote>();
+    for (const n of b.notes) {
+      const prev = last.get(numberOf(n.ref));
+      if (prev && takesBack(read(n))) before.set(n, prev);
+      last.set(numberOf(n.ref), n);
+    }
+  }
+  const after = new Map([...before].map(([n, prev]) => [prev, n]));
+  const aloud = c.batches.flatMap((b) => b.notes.map(read)).filter(Boolean);
+  const kinds = kindsLine(
+    aloud.filter((w) => kindOf(w)).length,
+    aloud.filter((w) => !kindOf(w) && asks(w)).length,
+    before.size,
+  );
+  if (kinds) lines.push('', kinds);
   const quiet = quietLine(takes);
   const quietSheets = sheets.flatMap((s) => s.quiet);
   if (quiet) lines.push('', quiet + drawnOn(quietSheets));
@@ -270,13 +313,21 @@ export function notesPackage(
         const shown = inWords ? [] : crops.flatMap((c) => (c ? [`\`${c}\``] : []));
         const words = wordsOf(n);
         const where = (line: string) => (speaksOfColour(words) ? line : whereWithoutColours(line));
+        // What it is, where its words say so plainly (D195): right, partly right, or a question.
+        const kind = kindOf(read(n));
+        const start = kind ? KIND_START[kind] : asks(read(n)) ? ASKS_START : '';
+        const numberIn = (other: BatchNote) => other.ref.split('.')[1];
         notes++;
         lines.push(
-          `- ${n.ref.split('.')[1]}. ${shown.length ? `(${shown.join(', ')}) ` : ''}${n.best ? 'My best example: ' : ''}${words}`,
+          `- ${numberIn(n)}. ${shown.length ? `(${shown.join(', ')}) ` : ''}${n.best ? 'My best example: ' : ''}${start}${words}`,
         );
         if (n.where) lines.push(`  ${where(n.where)}`);
         for (const p of n.also ?? [])
           if (p.where) lines.push(`  ${where(p.where).replace(/^Where:/, 'Also:')}`);
+        const back = before.get(n);
+        if (back) lines.push(`  This takes back some of note ${numberIn(back)}.`);
+        const taken = after.get(n);
+        if (taken) lines.push(`  I took some of this back in note ${numberIn(taken)}.`);
       }
     }
   }
