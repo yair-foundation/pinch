@@ -231,6 +231,9 @@ const TAB_ID = newId();
 type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'delete';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
+/** A take's package, put together and waiting to be downloaded (D196). */
+type TakePack = { digest: string; blob: Blob; name: string; notes: number; missing: number };
+
 const digestOf = (list: Asset[]) => {
   const s = JSON.stringify(list);
   let h = 5381;
@@ -258,8 +261,8 @@ function Workspace() {
   const closeDialog = useCallback(() => setDialog(null), []);
   // The session as last exported (or copied whole), kept with it, so going home can ask first.
   const exported = useRef<string | undefined>(undefined);
-  const markExported = useCallback(() => {
-    exported.current = digestOf(assetsRef.current);
+  const markExported = useCallback((digest = digestOf(assetsRef.current)) => {
+    exported.current = digest;
     store.saveExported(exported.current).catch(() => undefined);
   }, []);
   const pathname = usePathname() ?? '/pin';
@@ -815,66 +818,84 @@ function Workspace() {
     });
   };
 
-  /**
-   * The batch as its export, for a collection to keep; null when it has no notes yet. `quiet` is
-   * the screens a take said nothing over (D193), which the export draws small on sheets.
-   */
-  const batchZip = useCallback(async (quiet: readonly string[] = []) => {
-    const list = assetsRef.current;
-    if (!list.some(hasMarks)) return null;
-    try {
-      const made = await buildExport(
-        list,
-        store.getImage,
-        (done, total) =>
-          setStatus({
-            tone: 'info',
-            text: `Preparing ${Math.min(done + 1, total)} of ${total}…`,
-            sticky: true,
-          }),
-        (id) => screenText(id, store.getImage),
-        quiet,
-      );
-      // Kept in a collection is kept: going home won't ask about this batch.
-      markExported();
-      return made;
-    } finally {
-      setStatus((s) => (s?.sticky ? null : s));
-    }
-  }, [markExported]);
+  // How far the package of this take has come, while it is put together (D196).
+  const [packing, setPacking] = useState<{ done: number; total: number } | null>(null);
+  // The package of the batch as it is now, built once and kept until the notes change (D196).
+  const pack = useRef<{ digest: string; made: Promise<TakePack | null> } | null>(null);
 
-  /** This take as the package an agent reads (D163): all of Pinch's output, one click from the end. */
-  const exportTake = useCallback(async () => {
-    try {
-      const takes = takesApplied(assetsRef.current, await store.loadTakes());
+  /**
+   * This take as the package an agent reads (D163), built once for the notes as they are: right
+   * after a take is read, so that Export only downloads it (D196), or on Export when the notes
+   * changed since. Null when the batch has no notes yet. The screens a take said nothing over
+   * (D193) are drawn small on sheets.
+   */
+  const packTake = useCallback(() => {
+    const digest = digestOf(assetsRef.current);
+    if (pack.current?.digest === digest) return pack.current.made;
+    const mine = { digest } as { digest: string; made: Promise<TakePack | null> };
+    const current = () => pack.current === mine;
+    mine.made = (async () => {
+      const list = assetsRef.current;
+      if (!list.some(hasMarks)) return null;
+      const takes = takesApplied(list, await store.loadTakes());
       const quiet = takes.flatMap((take) =>
         quietOf(take).quiet.map((q) => take.screens[q.screen].id),
       );
-      const made = await batchZip(quiet);
+      if (current()) setPacking({ done: 0, total: list.length });
+      const made = await buildExport(
+        list,
+        store.getImage,
+        (done, total) => {
+          if (current()) setPacking({ done, total });
+        },
+        (id) => screenText(id, store.getImage),
+        quiet,
+      );
+      const found = await unzip(await made.blob.arrayBuffer());
+      const stamp = new Date().toISOString();
+      const p = takePackage(readExport(found), found, stamp, takes);
+      // The take itself is in the package, beside the folder (D183, D192).
+      return {
+        digest,
+        blob: new Blob(zip(p.files) as BlobPart[], { type: 'application/zip' }),
+        name: `${notesPackageRoot(stamp).slice(0, -1)}.zip`,
+        notes: p.notes,
+        missing: p.missing,
+      };
+    })();
+    pack.current = mine;
+    mine.made
+      .catch(() => {
+        // A build that failed is tried again on the next Export.
+        if (current()) pack.current = null;
+      })
+      .finally(() => {
+        if (current()) setPacking(null);
+      });
+    return mine.made;
+  }, []);
+
+  /** The package of this take, downloaded: all of Pinch's output, one click from the end. */
+  const exportTake = useCallback(async () => {
+    try {
+      const made = await packTake();
       if (!made) {
         setStatus({ tone: 'info', text: 'There are no notes to export yet.' });
         return;
       }
-      const found = await unzip(await made.blob.arrayBuffer());
-      const stamp = new Date().toISOString();
-      const pack = takePackage(readExport(found), found, stamp, takes);
-      // The take itself is in the package, beside the folder (D183, D192).
-      download(
-        new Blob(zip(pack.files) as BlobPart[], {
-          type: 'application/zip',
-        }),
-        `${notesPackageRoot(stamp).slice(0, -1)}.zip`,
-      );
+      download(made.blob, made.name);
+      // Downloaded is kept: going home won't ask about the batch as it was built.
+      markExported(made.digest);
       setStatus({
-        tone: pack.missing ? 'error' : 'info',
-        text: pack.missing
-          ? `Exported ${count(pack.notes, 'note')}, but ${count(pack.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
-          : `Exported ${count(pack.notes, 'note')}. Point your agent at ${NOTES_FILE}.`,
+        tone: made.missing ? 'error' : 'info',
+        text: made.missing
+          ? `Exported ${count(made.notes, 'note')}, but ${count(made.missing, 'close-up')} couldn’t be read, so they’re not in the zip.`
+          : `Exported ${count(made.notes, 'note')}. Point your agent at ${NOTES_FILE}.`,
       });
     } catch {
       setStatus({ tone: 'error', text: 'The export didn’t finish. Try again.' });
     }
-  }, [batchZip]);
+  }, [packTake, markExported]);
 
   /** Everything saved before D164, for its owner to take: all that's left of Your notes. */
   const exportSaved = useCallback(async () => {
@@ -1104,6 +1125,8 @@ function Workspace() {
             }))
           }
           onExport={() => void exportTake()}
+          onPrepare={() => void packTake().catch(() => undefined)}
+          packing={packing}
         />
       )}
       {dialog === 'shortcuts' && (
@@ -1241,8 +1264,9 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
   {
     group: 'Recording',
     rows: [
-      { combos: [['R']], what: 'Record, or resume' },
-      { combos: [['Space']], what: 'Pause, or resume' },
+      { combos: [['Space']], what: 'Hold to talk, let go to pause' },
+      { combos: [['R']], what: 'Record hands-free, or pause' },
+      { combos: [['⌫']], what: 'Talk again, from the first screen' },
       { combos: [['Esc']], what: 'Stop the count' },
     ],
   },
@@ -1278,7 +1302,8 @@ function ShortcutsDialog({
   opener: HTMLElement | null;
   onClose: () => void;
 }) {
-  const show = (k: string) => (mac ? k : k === '⌘' ? 'Ctrl' : k === '⇧' ? 'Shift' : k);
+  const show = (k: string) =>
+    mac ? k : k === '⌘' ? 'Ctrl' : k === '⇧' ? 'Shift' : k === '⌫' ? 'Backspace' : k;
   return (
     <Dialog
       id="shortcuts-title"

@@ -1,6 +1,15 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, CircleHelp, Download, Star, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CircleHelp,
+  Download,
+  LoaderCircle,
+  RotateCcw,
+  Star,
+  X,
+} from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { type Asset, type Mark, placesOf, verdictOf } from '@/lib/pin/model';
 import {
@@ -17,6 +26,7 @@ import {
   wheelTurn,
 } from '@/lib/pin/narration';
 import { READING_SHOWN } from '@/lib/pin/notes-package';
+import { createHold } from '@/lib/pin/push-to-talk';
 import { opLabel, wordsByScreen, wordsLookWrong } from '@/lib/pin/transcript';
 import { heard, isWhole, voiceNotes, voicePrefix, wordsIn } from '@/lib/pin/voice-notes';
 import { type TimedWord, VOICE_LEGEND } from '@/lib/pin/voice-tags';
@@ -29,19 +39,66 @@ import {
   transcribeInBrowser,
 } from './browser-voice';
 import { MARK_COLOR } from './render';
+import { ShimmerText, Skeleton } from './shimmer';
 
 /*
  * The walkthrough (D131): the batch on a reel, after a View-Master. The screenshot being narrated
  * sits in the middle; the one before and the one after are tilted at the edges, lower down and
- * fading. R records (the first time in a visit after a five-second count, D143), Space pauses
- * and resumes at once, the arrows (or a scroll or swipe) turn the reel, F goes to the end, and ?
- * or the Keys and voice button opens the legend. While recording, the microphone and the
+ * fading. Space is held to talk and let go to stop (D196); R records hands-free (the first time
+ * in a visit after a five-second count, D143) and pauses; Backspace drops the recording to talk
+ * again, with Undo; the arrows (or a scroll or swipe) turn the reel, F goes to the end, and ? or
+ * the Keys and voice button opens the legend. While recording, the microphone and the
  * pointer's path over the screenshot are kept, in recording time, and Finish keeps them in
  * this browser as a take. Where speech-to-text is on (D136), the take's words are read after
  * Finish and made into notes where the pointer was, with the voice tags heard applied (D137);
- * the end card lists them by screen, and the middle screenshot shows its notes, numbered. From
- * the end card Export gives the package of this take (D144, D157, D163).
+ * the end card lists them by screen, and the middle screenshot shows its notes, numbered. The
+ * package of the take is put together straight after, under the same bar, so Export only
+ * downloads it (D144, D157, D163, D196).
  */
+
+/** A wait the end card shows: what is happening, and how far it has come when that is known. */
+function Progress({ label, done }: { label: string; done: number | null }) {
+  const pct = done === null ? null : Math.floor(Math.min(1, Math.max(0, done)) * 100);
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct ?? undefined}
+      className="grid w-[min(20rem,calc(var(--w)-2rem))] gap-2 text-sm"
+    >
+      <span aria-live="polite" className="sr-only">
+        {label}
+      </span>
+      <span className="flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2">
+          <LoaderCircle
+            aria-hidden
+            className="size-3.5 shrink-0 animate-spin text-muted-foreground motion-reduce:hidden"
+          />
+          <ShimmerText className="truncate">{label}</ShimmerText>
+        </span>
+        {pct !== null && <span className="text-muted-foreground tabular-nums">{pct}%</span>}
+      </span>
+      {pct === null ? (
+        <Skeleton className="h-1 rounded-full" />
+      ) : (
+        <span className="block h-1 overflow-hidden rounded-full bg-muted">
+          <span
+            className="block h-full rounded-full bg-foreground transition-[width] duration-300 motion-reduce:transition-none"
+            style={{ width: `${pct}%` }}
+          />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** How many bars the waveform has: the last two and a half seconds, a bar every 100 ms. */
+const BARS = 25;
+/** The input's loudness as a bar's height, 0 to 1: speech fills it, a quiet room barely shows. */
+const barOf = (rms: number) => Math.min(1, Math.sqrt(rms) * 2.4);
 
 /** What was said over one screen: its voice tags, and the notes the take made, numbered. */
 type Heard = { id: string; name: string; ops: string[]; notes: { mark: Mark; n: number }[] }[];
@@ -132,9 +189,21 @@ function VoiceMarks({ marks }: { marks: Mark[] }) {
 
 /**
  * Where the take is: paused (or not begun), asking for the microphone, counting in, recording,
- * keeping it in this browser, or kept.
+ * keeping it in this browser, or kept. A take whose talk key was let go is still live, muted, for
+ * a few seconds before it pauses (D196).
  */
 type Phase = 'paused' | 'opening' | 'counting' | 'live' | 'saving' | 'saved';
+
+/** A take being recorded: its recorder, its clock, and what it has kept so far. */
+type LiveTake = {
+  id: string;
+  recorder: MediaRecorder;
+  chunks: Blob[];
+  clock: ReturnType<typeof createClock>;
+  shown: Shown[];
+  pointer: PointerSample[];
+  off: boolean;
+};
 
 /** A card on the reel, by its slot: the middle, the edges, and hidden beyond them. */
 const SLOT: Record<number, CSSProperties> = {
@@ -234,6 +303,8 @@ export function Reel({
   onTake,
   onFlip,
   onExport,
+  onPrepare,
+  packing,
 }: {
   assets: Asset[];
   urls: Record<string, string>;
@@ -249,6 +320,10 @@ export function Reel({
   onFlip: (assetId: string, markId: string) => void;
   /** Give the package of this take (D163). */
   onExport: () => void;
+  /** Put the package of the batch together now, so Export only downloads it (D196). */
+  onPrepare: () => void;
+  /** How far the package has come while it is put together. */
+  packing: { done: number; total: number } | null;
 }) {
   const [atEnd, setAtEnd] = useState(false);
   const at = atEnd ? assets.length : Math.min(index, assets.length - 1);
@@ -272,25 +347,40 @@ export function Reel({
   const [reading, setReading] = useState<'idle' | 'working' | 'failed'>('idle');
   // How much of the browser's voice model has come in, while it downloads the first time.
   const [model, setModel] = useState<number | null>(null);
+  // How far the reading of a take has come (0–1), where the browser says (D196).
+  const [readDone, setReadDone] = useState<number | null>(null);
+  // The talk key was let go: the take is live, its microphone muted, until it pauses (D196).
+  const [muted, setMuted] = useState(false);
+  // A recording dropped to talk again, and how long it was, while Undo can bring it back.
+  const [dropped, setDropped] = useState<number | null>(null);
 
   const reel = useRef<HTMLDivElement>(null);
   // Each card's screenshot by its place in the batch; the middle one is the one on show. One ref
   // passed from card to card as the reel turns could be left on the card that just left.
   const imgs = useRef<(HTMLImageElement | null)[]>([]);
   const middle = () => imgs.current[atRef.current] ?? null;
-  const level = useRef<HTMLSpanElement>(null);
-  // The take in progress: the microphone, the recorder, its clock and what it has kept so far.
-  const take = useRef<{
-    id: string;
-    stream: MediaStream;
-    audio: AudioContext;
-    recorder: MediaRecorder;
-    chunks: Blob[];
-    clock: ReturnType<typeof createClock>;
-    shown: Shown[];
-    pointer: PointerSample[];
-    off: boolean;
-  } | null>(null);
+  // The waveform's bars, drawn from the microphone without a render.
+  const bars = useRef<(HTMLSpanElement | null)[]>([]);
+  // Whether the waveform shows what the microphone hears: only while it is recorded.
+  const hearing = useRef(false);
+  /*
+   * The microphone, open from the first recording to Finish. Letting go of the talk key turns its
+   * track off, which the take records as silence while it keeps time (D196); the recording never
+   * goes through the page's audio, which a browser may hold back.
+   */
+  const mic = useRef<{ stream: MediaStream; audio: AudioContext } | null>(null);
+  // The take in progress: the recorder, its clock and what it has kept so far.
+  const take = useRef<LiveTake | null>(null);
+  // What Talk again dropped, while Undo can bring it back: the take in progress, or a kept one.
+  const aside = useRef<
+    | { kind: 'live'; take: LiveTake | null; unsaved: { take: Take; audio: Blob } | null }
+    | { kind: 'saved'; done: { take: Take; audio: Blob } }
+    | null
+  >(null);
+  // Kept takes dropped since: a reading that lands after doesn't bring their notes back.
+  const droppedIds = useRef(new Set<string>());
+  // The kept take whose words are being read now.
+  const readingId = useRef<string | null>(null);
   // A stopped take the browser couldn't keep yet: Finish tries again, and nothing records over it.
   const unsaved = useRef<{ take: Take; audio: Blob } | null>(null);
   // The take the end card is about, so a reading of an earlier one doesn't land on it.
@@ -319,9 +409,33 @@ export function Reel({
     [assets.length, onIndex],
   );
 
+  /** A new take on the open microphone, recording from its first sound. */
+  const newTake = (m: NonNullable<typeof mic.current>): LiveTake => {
+    const mimeType =
+      ['audio/webm;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+    const recorder = new MediaRecorder(m.stream, mimeType ? { mimeType } : undefined);
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    return {
+      id: crypto.randomUUID(),
+      recorder,
+      chunks,
+      clock: createClock(),
+      shown: [],
+      pointer: [],
+      off: false,
+    };
+  };
+
   /** Ask for the microphone once, and start a take on it. */
   const open = async () => {
     if (take.current) return true;
+    if (mic.current) {
+      take.current = newTake(mic.current);
+      return true;
+    }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -337,51 +451,74 @@ export function Reel({
       return false;
     }
     setMicError(false);
-    const mimeType =
-      ['audio/webm;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => {
-      if (e.data.size) chunks.push(e.data);
-    };
-    // The level under the state, so the author sees the microphone hears them.
+    // The waveform, so the author sees the microphone hears them while they talk.
     const audio = new AudioContext();
+    audio.resume().catch(() => undefined);
     const analyser = audio.createAnalyser();
-    analyser.fftSize = 512;
+    analyser.fftSize = 1024;
     audio.createMediaStreamSource(stream).connect(analyser);
-    const data = new Uint8Array(analyser.fftSize);
-    const loop = () => {
+    const data = new Float32Array(analyser.fftSize);
+    const levels = new Float32Array(BARS);
+    let last = 0;
+    const loop = (now: number) => {
       if (audio.state === 'closed') return;
-      analyser.getByteTimeDomainData(data);
-      let peak = 0;
-      for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
-      if (level.current) level.current.style.width = `${Math.min(100, (peak / 64) * 100)}%`;
       requestAnimationFrame(loop);
+      if (now - last < 100) return;
+      last = now;
+      analyser.getFloatTimeDomainData(data);
+      let sum = 0;
+      for (const v of data) sum += v * v;
+      levels.copyWithin(0, 1);
+      levels[BARS - 1] = hearing.current ? barOf(Math.sqrt(sum / data.length)) : 0;
+      bars.current.forEach((bar, i) => {
+        if (bar) bar.style.transform = `scaleY(${0.15 + 0.85 * levels[i]})`;
+      });
     };
-    loop();
-    take.current = {
-      id: crypto.randomUUID(),
-      stream,
-      audio,
-      recorder,
-      chunks,
-      clock: createClock(),
-      shown: [],
-      pointer: [],
-      off: false,
-    };
+    requestAnimationFrame(loop);
+    mic.current = { stream, audio };
+    take.current = newTake(mic.current);
     return true;
   };
+
+  /** The microphone heard in the recording, or muted: silence, recorded in its place. */
+  const listen = (on: boolean) => {
+    const m = mic.current;
+    hearing.current = on;
+    setMuted(!on && phaseNow.current === 'live');
+    if (!m) return;
+    for (const track of m.stream.getAudioTracks()) track.enabled = on;
+    if (on) m.audio.resume().catch(() => undefined);
+  };
+
+  /** Let the microphone go. */
+  const release = useCallback(() => {
+    const m = mic.current;
+    mic.current = null;
+    hearing.current = false;
+    if (!m) return;
+    for (const track of m.stream.getTracks()) track.stop();
+    m.audio.close().catch(() => undefined);
+  }, []);
+
+  /** What Talk again dropped is gone for good: a new recording began, or the take finished. */
+  const forget = useCallback(() => {
+    const a = aside.current;
+    aside.current = null;
+    setDropped(null);
+    if (a?.kind === 'live' && a.take && a.take.recorder.state !== 'inactive') a.take.recorder.stop();
+  }, []);
 
   const goLive = () => {
     const t = take.current;
     if (!t) return;
     if (t.clock.time() === 0)
       t.shown.push({ t: 0, screen: atRef.current < assets.length ? atRef.current : null });
+    forget();
     t.clock.start();
     if (t.recorder.state === 'inactive') t.recorder.start(1000);
     else t.recorder.resume();
     go('live');
+    listen(true);
   };
 
   /** What the end card shows: a kept take, or none. */
@@ -390,7 +527,8 @@ export function Reel({
     setSaved(done);
   };
 
-  const record = async () => {
+  /** Record from a pause or the end card: hands-free from R, or while the talk key is held. */
+  const record = async (held = false) => {
     const from = phaseNow.current;
     if ((from !== 'paused' && from !== 'saved') || unsaved.current) return;
     go('opening');
@@ -398,11 +536,15 @@ export function Reel({
       if (mounted.current) go(from);
       return;
     }
+    // The key was let go while the browser asked for the microphone: nothing to hear yet.
+    if (held && !hold.current.held) return go(from);
     if (from === 'saved') {
       show(null);
       setReading('idle');
     }
-    // Only the first recording of a visit waits for the count (D143): a resume starts at once.
+    // Only the first recording of a visit waits for the count (D143), and never one held to
+    // talk: holding the key says the author is ready (D196). A resume starts at once.
+    if (held) markCounted();
     if (counted()) return goLive();
     go('counting');
     setCount(COUNTDOWN);
@@ -417,6 +559,7 @@ export function Reel({
   };
 
   const pause = () => {
+    hold.current.reset();
     if (phaseNow.current === 'counting') {
       clearInterval(countTimer.current);
       go('paused');
@@ -424,6 +567,7 @@ export function Reel({
     }
     const t = take.current;
     if (phaseNow.current !== 'live' || !t) return;
+    listen(false);
     t.clock.pause();
     t.recorder.pause();
     t.shown.push({
@@ -432,12 +576,49 @@ export function Reel({
       paused: true,
     });
     go('paused');
+    setMuted(false);
   };
+
+  /*
+   * The talk key (D196): held, the take records; let go, it is muted a moment later and paused a
+   * few seconds after that. A press while counting in skips the count.
+   */
+  const onHold = useRef({ talk: () => {}, mute: () => {}, pause: () => {} });
+  onHold.current = {
+    talk: () => {
+      const p = phaseNow.current;
+      if (p === 'live') return listen(true);
+      if (p === 'counting') {
+        clearInterval(countTimer.current);
+        markCounted();
+        return goLive();
+      }
+      void record(true);
+    },
+    mute: () => {
+      if (phaseNow.current === 'live') listen(false);
+    },
+    pause: () => {
+      if (phaseNow.current === 'live') pause();
+    },
+  };
+  const hold = useRef(
+    createHold({
+      talk: () => onHold.current.talk(),
+      mute: () => onHold.current.mute(),
+      pause: () => onHold.current.pause(),
+    }),
+  );
 
   /** Stop the take in progress, let the microphone go, and put together what it kept. */
   const stop = useCallback(async () => {
     const t = take.current;
-    if (!t) return null;
+    hold.current.reset();
+    forget();
+    if (!t) {
+      release();
+      return null;
+    }
     take.current = null;
     clearInterval(countTimer.current);
     t.clock.pause();
@@ -448,8 +629,8 @@ export function Reel({
         t.recorder.stop();
       });
     }
-    for (const track of t.stream.getTracks()) track.stop();
-    t.audio.close().catch(() => undefined);
+    release();
+    if (mounted.current) setMuted(false);
     if (!durationMs || !t.chunks.length) return null;
     const audio = new Blob(t.chunks, { type: t.recorder.mimeType });
     const kept: Take = {
@@ -463,7 +644,7 @@ export function Reel({
       pointer: t.pointer,
     };
     return { take: kept, audio };
-  }, [assets]);
+  }, [assets, forget, release]);
 
   /**
    * Stop the take and keep it: from Finish, or when the reel closes mid-take. One the browser
@@ -481,9 +662,15 @@ export function Reel({
   /** The words in a take: on Pinch's server where it has speech-to-text, else in this browser. */
   const wordsOf = async (audio: Blob): Promise<{ words: TimedWord[]; readBy?: ReadBy }> => {
     if (engine === 'browser')
-      return transcribeInBrowser(audio, (p) => {
-        if (mounted.current) setModel(p < 100 ? p : null);
-      });
+      return transcribeInBrowser(
+        audio,
+        (p) => {
+          if (mounted.current) setModel(p < 100 ? p : null);
+        },
+        (done) => {
+          if (mounted.current) setReadDone(done);
+        },
+      );
     const res = await fetch('/api/pin/voice', {
       method: 'POST',
       headers: { 'Content-Type': audio.type || 'audio/webm' },
@@ -497,26 +684,104 @@ export function Reel({
   const read = async (done: { take: Take; audio: Blob }) => {
     // A new take since: its notes are still made, but the end card is the new one's.
     const onShow = () => mounted.current && shownTake.current === done.take.id;
+    readingId.current = done.take.id;
     setReading('working');
+    setReadDone(null);
+    const over = () => {
+      if (readingId.current === done.take.id) readingId.current = null;
+      if (!mounted.current) return;
+      setModel(null);
+      setReadDone(null);
+    };
     try {
       const { words, readBy } = await wordsOf(done.audio);
-      if (mounted.current) setModel(null);
+      over();
       const take = { ...done.take, words, ...(readBy && { readBy }) };
       await onSave(take, done.audio);
+      // Dropped while it was read: Undo brings it back with its words.
+      if (droppedIds.current.has(take.id)) {
+        const a = aside.current;
+        if (a?.kind === 'saved' && a.done.take.id === take.id)
+          aside.current = { kind: 'saved', done: { take, audio: done.audio } };
+        return;
+      }
       onTake(take);
+      // The package is put together under the same bar, so Export only downloads it (D196).
+      onPrepare();
       if (!onShow()) return;
       show({ take, audio: done.audio });
       setReading('idle');
     } catch {
-      if (mounted.current) setModel(null);
+      over();
       if (onShow()) setReading('failed');
     }
   };
 
-  /** The kept take's notes taken out, and a new recording in its place (D159). */
+  /**
+   * Talk again (D159, D196): the recording so far is dropped, or the kept take's notes taken out,
+   * and the reel goes back to the first screen to record anew. Undo brings it back until the next
+   * recording begins.
+   */
   const talkAgain = () => {
-    if (saved) onTake({ ...saved.take, words: [] });
-    void record();
+    const p = phaseNow.current;
+    if (p === 'opening' || p === 'saving') return;
+    hold.current.reset();
+    clearInterval(countTimer.current);
+    forget();
+    if (p === 'saved') {
+      if (!saved) return;
+      droppedIds.current.add(saved.take.id);
+      onTake({ ...saved.take, words: [] });
+      aside.current = { kind: 'saved', done: saved };
+      setDropped(saved.take.durationMs);
+      show(null);
+      setReading('idle');
+    } else {
+      const t = take.current;
+      if (!(t && t.clock.time() > 0) && !unsaved.current) return go('paused');
+      if (t) {
+        if (p === 'live') listen(false);
+        t.clock.pause();
+        if (t.recorder.state === 'recording') t.recorder.pause();
+      }
+      aside.current = { kind: 'live', take: t, unsaved: unsaved.current };
+      setDropped(unsaved.current?.take.durationMs ?? t?.clock.time() ?? 0);
+      unsaved.current = null;
+      take.current = mic.current ? newTake(mic.current) : null;
+    }
+    setSaveError(false);
+    go('paused');
+    setMuted(false);
+    turn(0);
+  };
+
+  /** What Talk again dropped, back where it was. */
+  const undoDrop = () => {
+    const a = aside.current;
+    if (!a) return;
+    aside.current = null;
+    setDropped(null);
+    if (a.kind === 'saved') {
+      droppedIds.current.delete(a.done.take.id);
+      if (a.done.take.words) onTake(a.done.take);
+      show(a.done);
+      setReading(
+        a.done.take.words || !voiceOn
+          ? 'idle'
+          : readingId.current === a.done.take.id
+            ? 'working'
+            : 'failed',
+      );
+      go('saved');
+      turn(assets.length);
+      return;
+    }
+    // Nothing was recorded since, or the drop would be gone: the fresh take goes unused.
+    const fresh = take.current;
+    if (fresh && fresh.recorder.state !== 'inactive') fresh.recorder.stop();
+    take.current = a.take;
+    unsaved.current = a.unsaved;
+    go('paused');
   };
 
   const finish = async () => {
@@ -540,11 +805,15 @@ export function Reel({
   // The clock in the corner, read from the take's own clock, or the kept take's length.
   const keptMs = saved?.take.durationMs ?? 0;
   useEffect(() => {
+    // Muted, it keeps time for the notes but shows the time talked (D196).
+    let still: number | null = null;
     const id = window.setInterval(() => {
-      setClock(clockText(take.current?.clock.time() ?? keptMs));
+      const t = take.current;
+      still = t && muted ? (still ?? t.clock.time()) : null;
+      setClock(clockText(still ?? t?.clock.time() ?? keptMs));
     }, 250);
     return () => clearInterval(id);
-  }, [keptMs]);
+  }, [keptMs, muted]);
 
   // The server's speech-to-text where it has it (D136); this browser's everywhere else (D140).
   useEffect(() => {
@@ -577,8 +846,10 @@ export function Reel({
   keepRef.current = keep;
   useEffect(() => {
     mounted.current = true;
+    const holding = hold.current;
     return () => {
       mounted.current = false;
+      holding.reset();
       keepRef.current().catch(() => undefined);
     };
   }, []);
@@ -615,11 +886,22 @@ export function Reel({
     const onKey = (e: KeyboardEvent) => {
       if (inert || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      // A focused button takes its own Enter and Space.
-      if ((key === 'Enter' || key === ' ') && e.target instanceof HTMLButtonElement) return;
+      // Space is the talk key (D196), held: even over a button last clicked, which would take
+      // it as a click. A button reached with Tab keeps its own Space, and its Enter.
+      if (key === ' ') {
+        const button = e.target instanceof HTMLButtonElement ? e.target : null;
+        if (button?.matches(':focus-visible')) return;
+        button?.blur();
+        e.preventDefault();
+        if (!e.repeat) hold.current.press();
+        return;
+      }
+      if (key === 'Enter' && e.target instanceof HTMLButtonElement) return;
+      // A key held down acts once, but the arrows turn on.
+      if (e.repeat && !key.startsWith('Arrow') && !key.startsWith('Page')) return;
       const act: Record<string, () => void> = {
-        r: () => void record(),
-        ' ': () => (phase === 'paused' || phase === 'saved' ? void record() : pause()),
+        r: () => (phase === 'live' ? pause() : void record()),
+        Backspace: talkAgain,
         Escape: () => (phase === 'counting' ? pause() : setLegendOpen(false)),
         ArrowRight: () => turn(at + 1),
         ArrowDown: () => turn(at + 1),
@@ -638,8 +920,26 @@ export function Reel({
       e.preventDefault();
       run();
     };
+    // A key let go out of sight never says so: losing the window lets go of it too.
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || !hold.current.held) return;
+      e.preventDefault();
+      hold.current.release();
+    };
+    const letGo = () => hold.current.release();
+    const onHidden = () => {
+      if (document.hidden) letGo();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', letGo);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', letGo);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
   });
 
   // The ring under the pointer on the screenshot while recording (D184), moved without a render.
@@ -705,7 +1005,7 @@ export function Reel({
     paused: recorded() || unsaved.current ? 'Paused' : 'Ready',
     opening: 'Starting',
     counting: 'Starting',
-    live: 'Recording',
+    live: muted ? 'Paused' : 'Recording',
     saving: 'Saving',
     saved: 'Saved',
   }[phase];
@@ -729,18 +1029,50 @@ export function Reel({
           aria-hidden
           className={cn(
             'size-2 rounded-full',
-            phase === 'live' ? 'bg-red-600' : 'bg-muted-foreground/60',
+            phase === 'live' && !muted ? 'bg-red-600' : 'bg-muted-foreground/60',
           )}
         />
         <span aria-live="polite" className="text-foreground">
           {state}
         </span>
-        <span aria-hidden className="h-1 w-20 overflow-hidden rounded-full bg-muted">
-          <span ref={level} className="block h-full w-0 bg-foreground" />
-        </span>
         <span className="font-mono tabular-nums">{clock}</span>
         {model !== null && <span className="tabular-nums">Voice model {Math.floor(model)}%</span>}
-        <span className="ml-auto">{at < assets.length ? `${at + 1} of ${assets.length}` : ''}</span>
+        {packing && !atEnd && (
+          <span className="flex items-center gap-1.5 tabular-nums">
+            <LoaderCircle aria-hidden className="size-3.5 animate-spin motion-reduce:hidden" />
+            Export {Math.floor((packing.done / Math.max(1, packing.total)) * 100)}%
+          </span>
+        )}
+        <span className="ml-auto flex items-center gap-3">
+          {dropped !== null ? (
+            <span role="status" className="flex items-center gap-2">
+              Dropped {clockText(dropped)}
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={undoDrop}
+                className={cn(BUTTON, 'min-h-8 px-2.5 text-[13px] text-foreground')}
+              >
+                Undo
+              </button>
+            </span>
+          ) : (
+            (recorded() || unsaved.current || phase === 'saved') &&
+            phase !== 'saving' &&
+            phase !== 'opening' && (
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={talkAgain}
+                className={cn(BUTTON, 'min-h-8 px-2.5 text-[13px] text-foreground')}
+              >
+                <RotateCcw className="size-3.5" aria-hidden />
+                Talk again
+              </button>
+            )
+          )}
+          <span>{at < assets.length ? `${at + 1} of ${assets.length}` : ''}</span>
+        </span>
       </div>
 
       {assets.map((a, k) => {
@@ -817,12 +1149,23 @@ export function Reel({
                 {saved.take.screens.length === 1 ? 'screen' : 'screens'}.
                 {!voiceOn && ' Notes from it come next.'}
               </p>
-              {reading === 'working' && (
-                <p aria-live="polite" className="m-0 text-sm text-muted-foreground tabular-nums">
-                  {model === null
-                    ? 'Reading the words…'
-                    : `Getting the voice model, once (up to ${MODEL_MB} MB): ${Math.floor(model)}%`}
-                </p>
+              {/* One wait with one bar: the words read, then the package put together (D196). */}
+              {reading === 'working' ? (
+                <Progress
+                  label={
+                    model === null
+                      ? 'Reading the words'
+                      : `Getting the voice model, once (up to ${MODEL_MB} MB)`
+                  }
+                  done={model === null ? readDone : model / 100}
+                />
+              ) : (
+                packing && (
+                  <Progress
+                    label="Preparing the export"
+                    done={packing.total ? packing.done / packing.total : null}
+                  />
+                )
               )}
               {reading === 'failed' && (
                 <p role="alert" className="m-0 text-sm text-destructive">
@@ -950,7 +1293,7 @@ export function Reel({
                 </button>
               ) : (
                 <p className="m-0 text-sm text-muted-foreground">
-                  Press <Kbd>R</Kbd> to record first.
+                  Hold <Kbd>Space</Kbd> to talk first.
                 </p>
               )}
               {saveError && (
@@ -979,25 +1322,49 @@ export function Reel({
           </div>
         </div>
       ) : (
-        ((phase === 'paused' && !unsaved.current) || micError) && (
-          <p
+        (!atEnd || micError) && (
+          <div
             aria-live="polite"
-            className="pointer-events-none absolute inset-x-0 bottom-12 z-10 m-0 text-center text-sm text-muted-foreground"
+            className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center text-sm text-muted-foreground"
           >
             {micError ? (
-              'Allow the microphone for this site, then press R.'
+              <p className="m-0">Allow the microphone for this site, then hold Space.</p>
+            ) : phase === 'live' && !muted ? (
+              // While it records: what the microphone hears, after Wispr Flow (D196).
+              <span className="flex h-9 items-center gap-2.5 rounded-full border border-border bg-background px-3.5">
+                <span aria-hidden className="size-2 rounded-full bg-red-600" />
+                <span aria-hidden className="flex h-5 items-center gap-[3px]">
+                  {Array.from({ length: BARS }, (_, i) => (
+                    <span
+                      // biome-ignore lint/suspicious/noArrayIndexKey: the bars are a fixed row
+                      key={i}
+                      ref={(el) => {
+                        bars.current[i] = el;
+                      }}
+                      className="block h-full w-[3px] origin-center rounded-full bg-foreground"
+                      style={{ transform: 'scaleY(0.15)' }}
+                    />
+                  ))}
+                </span>
+                <span className="sr-only">Recording</span>
+              </span>
             ) : (
-              <>
-                Press <Kbd>R</Kbd> to {recorded() ? 'resume' : 'record'}
-              </>
+              ((phase === 'paused' && !unsaved.current) || (phase === 'live' && muted)) && (
+                <p className="m-0">
+                  Hold <Kbd>Space</Kbd> to talk
+                </p>
+              )
             )}
-          </p>
+          </div>
         )
       )}
 
       <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-5 px-4 py-3 text-[13px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <Kbd>Space</Kbd> Pause
+          <Kbd>Space</Kbd> Hold to talk
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Kbd>R</Kbd> Hands-free
         </span>
         <span className="flex items-center gap-1.5">
           <Left />
@@ -1010,7 +1377,7 @@ export function Reel({
           type="button"
           aria-expanded={legendOpen}
           aria-controls="reel-legend"
-          // A click keeps the focus where it was, so Space still pauses.
+          // A click keeps the focus where it was, so Space still talks.
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => setLegendOpen((o) => !o)}
           className={cn(
@@ -1052,8 +1419,9 @@ export function Reel({
               <dl className="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
                 {(
                   [
-                    [<Kbd key="r">R</Kbd>, 'Record, or resume'],
-                    [<Kbd key="s">Space</Kbd>, 'Pause, or resume'],
+                    [<Kbd key="s">Space</Kbd>, 'Hold to talk, let go to pause'],
+                    [<Kbd key="r">R</Kbd>, 'Record hands-free, or pause'],
+                    [<Kbd key="b">Backspace</Kbd>, 'Talk again, from the first screen'],
                     [<Kbd key="e">Esc</Kbd>, 'Stop the count'],
                     [<Right key="n" />, 'Next screen, also a scroll or swipe'],
                     [<Left key="p" />, 'Previous screen'],
