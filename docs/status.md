@@ -6,6 +6,8 @@ Since D198 a spot with no text under it keeps the colour under the pointer in it
 
 Since D197 the package is tested end to end: `pnpm test:e2e` runs three made-up takes through the app's own placing and Export in headless Chromium and holds each zip to what its take should make. It found, and this fixes, two near spots made one, a note taken back joined to the note it takes back, and one silent screen called "they".
 
+Since D209 the ring while recording is the pointer itself, drawn by the system with no lag. Since D210 a pointer held still while the reel turns is placed on the new screen, so what is said before it moves lands where it points.
+
 Since D208 a zip of screenshots, not only a Pinch export, can be dropped or chosen: its images and PDFs come in, in name order.
 
 Since D207 the Dark mode switch is in the account menu only on the reel. Since D206 a take begins with "Point at it. Say why." shimmering beside the waveform, whose bars now rise and fall in place, a 2 px strip under the header shows how far through the batch the reel is, and tooltips are one line that goes once its button is used.

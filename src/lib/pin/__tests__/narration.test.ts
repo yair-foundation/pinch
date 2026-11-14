@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 import {
   clockText,
   createClock,
+  type PointerSample,
   pointOn,
+  sampleAtTurn,
   slotOf,
   wheelTurn,
 } from '../narration';
@@ -92,5 +94,32 @@ describe('the take', () => {
     assert.equal(clockText(0), '0:00');
     assert.equal(clockText(61_999), '1:01');
     assert.equal(clockText(600_000), '10:00');
+  });
+});
+
+describe('narration: the pointer held still through a turn (D210)', () => {
+  const moved: PointerSample[] = [
+    [1000, 0, 0.2, 0.3],
+    [1200, 0, 0.4, 0.5],
+  ];
+
+  it('places it on the new screen, timed at the turn', () => {
+    assert.deepEqual(sampleAtTurn(moved, 3000, 1, [0.4, 0.5]), [3000, 1, 0.4, 0.5]);
+  });
+
+  it('adds nothing once a move since the turn says where it is', () => {
+    const since: PointerSample[] = [...moved, [3100, 1, 0.6, 0.6]];
+    assert.equal(sampleAtTurn(since, 3000, 1, [0.4, 0.5]), null);
+  });
+
+  it('says it left when the new screenshot is not under it', () => {
+    assert.deepEqual(sampleAtTurn(moved, 3000, 1, null), [3000, 1, null, null]);
+  });
+
+  it('adds nothing when it was off before and is off still, or never moved', () => {
+    const off: PointerSample[] = [[1000, 0, null, null]];
+    assert.equal(sampleAtTurn(off, 3000, 1, null), null);
+    assert.equal(sampleAtTurn([], 3000, 1, null), null);
+    assert.deepEqual(sampleAtTurn([], 3000, 1, [0.5, 0.5]), [3000, 1, 0.5, 0.5]);
   });
 });
