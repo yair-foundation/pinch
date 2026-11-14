@@ -20,6 +20,7 @@ import {
   type PointerSample,
   pointOn,
   type ReadBy,
+  sampleAtTurn,
   type Shown,
   slotOf,
   type Take,
@@ -96,6 +97,45 @@ function Progress({ label, done }: { label: string; done: number | null }) {
     </div>
   );
 }
+
+/**
+ * The ring that shows where the take sees the pointer (D184), as the pointer itself (D209). A
+ * ring the page drew after each move ran a frame or two behind the system's arrow, which is drawn
+ * straight to the screen, and on a trackpad the gap showed; drawn as the cursor, it has none. A
+ * white ring in a dark edge, at 1x and 2x so it is sharp on a Retina screen, its hotspot in the
+ * middle. Made once, in the browser.
+ */
+let ringCursorCss: string | null = null;
+function ringCursor(): string {
+  if (ringCursorCss) return ringCursorCss;
+  const at = (scale: number) => {
+    const size = 24 * scale;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d');
+    if (!g) return '';
+    const mid = size / 2;
+    g.lineWidth = 4 * scale;
+    g.strokeStyle = 'rgb(0 0 0 / 0.55)';
+    g.beginPath();
+    g.arc(mid, mid, 8 * scale, 0, Math.PI * 2);
+    g.stroke();
+    g.lineWidth = 2 * scale;
+    g.strokeStyle = '#fff';
+    g.stroke();
+    return c.toDataURL('image/png');
+  };
+  const one = at(1);
+  const two = at(2);
+  ringCursorCss = one
+    ? `image-set(url("${one}") 1x, url("${two}") 2x) 12 12, url("${one}") 12 12, crosshair`
+    : 'crosshair';
+  return ringCursorCss;
+}
+
+/** How long a turn of the reel takes to settle, its cards' 500 ms and a frame (D210). */
+const TURN_SETTLE = 520;
 
 /** How long a take is talked before its hint goes (D206): long enough to have begun. */
 const HINT_MS = 8000;
@@ -526,6 +566,15 @@ export function Reel({
   const countTimer = useRef(0);
   const wheel = useRef<Wheel>({ built: 0, at: -Infinity });
   const atRef = useRef(at);
+  // Where the pointer is now, in the window, whether or not a take is recording (D210).
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
   atRef.current = at;
   const mounted = useRef(true);
 
@@ -543,6 +592,21 @@ export function Reel({
       const t = take.current;
       if (t && t.clock.time() > 0)
         t.shown.push({ t: t.clock.time(), screen: to < assets.length ? to : null });
+      // A pointer held still through the turn is placed on the new screen once it has turned
+      // into place, timed at the turn, so "this" said before it moves lands where it points (D210).
+      if (t && phaseNow.current === 'live' && to < assets.length) {
+        const turnedAt = t.clock.time();
+        window.setTimeout(() => {
+          const img = imgs.current[to];
+          const still = lastPointer.current;
+          if (take.current !== t || atRef.current !== to || !img || !still) return;
+          const at = pointOn(img.getBoundingClientRect(), still.x, still.y);
+          const sample = sampleAtTurn(t.pointer, turnedAt, to, at);
+          if (!sample) return;
+          t.pointer.push(sample);
+          t.off = !at;
+        }, TURN_SETTLE);
+      }
     },
     [assets.length, onIndex],
   );
@@ -1133,8 +1197,6 @@ export function Reel({
     };
   });
 
-  // The ring under the pointer on the screenshot while recording (D184), moved without a render.
-  const ring = useRef<HTMLSpanElement>(null);
   /*
    * The pointer over the middle screenshot, while recording, heard on the window (D184): the
    * author's first gesture take lost the pointer for 26 to 42 seconds on three screens while
@@ -1143,10 +1205,7 @@ export function Reel({
    * development a line a second says what the recorder saw, to chase a pointer that goes missing.
    */
   useEffect(() => {
-    if (phase !== 'live') {
-      if (ring.current) ring.current.style.opacity = '0';
-      return;
-    }
+    if (phase !== 'live') return;
     let moves = 0;
     let on = false;
     const onMove = (e: PointerEvent) => {
@@ -1154,15 +1213,9 @@ export function Reel({
       const img = imgs.current[atRef.current];
       if (!t || !img) return;
       moves++;
+      // Nothing is written to the page here, so reading the box never forces a layout (D209).
       const p = pointOn(img.getBoundingClientRect(), e.clientX, e.clientY);
       on = p !== null;
-      if (ring.current) {
-        ring.current.style.opacity = p ? '1' : '0';
-        if (p) {
-          ring.current.style.left = `${p[0] * 100}%`;
-          ring.current.style.top = `${p[1] * 100}%`;
-        }
-      }
       if (!p && t.off) return;
       t.off = !p;
       t.pointer.push([t.clock.time(), atRef.current, p?.[0] ?? null, p?.[1] ?? null]);
@@ -1342,15 +1395,11 @@ export function Reel({
                   height={a.height}
                   draggable={false}
                   className="block h-auto max-h-[calc(var(--w)*0.75)] w-auto max-w-(--w) rounded-[14px] bg-muted"
+                  // While recording, the ring is the pointer itself, drawn by the system (D209).
+                  style={slot === 0 && phase === 'live' ? { cursor: ringCursor() } : undefined}
                 />
                 {slot === 0 && <VoiceMarks marks={voiceNotes(a)} />}
-                {slot === 0 && (
-                  <span
-                    ref={ring}
-                    aria-hidden
-                    className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white opacity-0 ring-1 ring-black/50"
-                  />
-                )}
+
               </span>
             ) : (
               <span className="block size-full rounded-[14px] bg-muted" />

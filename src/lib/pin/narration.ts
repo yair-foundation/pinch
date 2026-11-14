@@ -74,6 +74,26 @@ export function pointOn(
   return [Number(x.toFixed(4)), Number(y.toFixed(4))];
 }
 
+/**
+ * Where the pointer is on a screen the reel has just turned to, if it hasn't moved since (D210).
+ * The take keeps the pointer as it moves, each sample on the screen it was over, so a pointer held
+ * still through a turn had no place on the new screen until it moved, and "this" said before then
+ * fell to the whole screen. `at` is where the still pointer is on the new screenshot, read once it
+ * has turned into place. The sample to keep, timed at the turn, or null: when a move since the turn
+ * already says where the pointer is, or when it was off the screenshot and still is.
+ */
+export function sampleAtTurn(
+  pointer: readonly PointerSample[],
+  turnedAt: number,
+  screen: number,
+  at: [number, number] | null,
+): PointerSample | null {
+  const last = pointer.at(-1);
+  if (last && last[0] > turnedAt) return null;
+  if (!at && (!last || last[2] === null)) return null;
+  return [turnedAt, screen, at?.[0] ?? null, at?.[1] ?? null];
+}
+
 /** The clock as m:ss. */
 export const clockText = (ms: number) => {
   const s = Math.floor(ms / 1000);
