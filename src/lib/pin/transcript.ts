@@ -105,18 +105,36 @@ function withoutRepeats(words: TimedWord[]): TimedWord[] {
   return out;
 }
 
+/** A pause this long between two words: what comes after was said again, not looped (D199). */
+const LOOP_GAP = 1500;
+
 /**
  * Whether a take's words look invented (D159): over a long silence Whisper can repeat a phrase on a
  * loop, "I'm not going to get it" thirteen times over. A phrase of up to eight words said three times
- * running, or a shorter one more, is that; a person says "very, very" or "no, no, no".
+ * running, or a shorter one more, is that; a person says "very, very" or "no, no, no". A loop runs
+ * on without a break, so a pause of 1.5 seconds or a turn of the reel (`turns`, in take time) ends
+ * the run (D199): "Delete this slide" said over three slides in a row was said three times.
  */
-export function wordsLookWrong(words: readonly TimedWord[]): boolean {
-  const bare = words.map((w) => bareWord(w.text)).filter(Boolean);
+export function wordsLookWrong(
+  words: readonly TimedWord[],
+  turns: readonly number[] = [],
+): boolean {
+  const kept = [...words]
+    .sort((a, b) => a.start - b.start)
+    .map((w) => ({ bare: bareWord(w.text), start: w.start, end: w.end }))
+    .filter((w) => w.bare);
+  // Whether a pause or a turn falls between two words, so the run of repeats starts again.
+  const broken = (a: (typeof kept)[number], b: (typeof kept)[number]) =>
+    b.start - a.end >= LOOP_GAP || turns.some((t) => t > a.start && t <= b.start);
   for (let phrase = 1; phrase <= 8; phrase++) {
     const times = phrase === 1 ? 5 : phrase === 2 ? 4 : 3;
     let same = 0;
-    for (let i = phrase; i < bare.length; i++) {
-      same = bare[i] === bare[i - phrase] ? same + 1 : 0;
+    for (let i = phrase; i < kept.length; i++) {
+      if (broken(kept[i - 1], kept[i])) {
+        same = 0;
+        continue;
+      }
+      same = kept[i].bare === kept[i - phrase].bare ? same + 1 : 0;
       if (same >= phrase * (times - 1)) return true;
     }
   }

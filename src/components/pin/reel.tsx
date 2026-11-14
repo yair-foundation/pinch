@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Download,
   LoaderCircle,
+  Plus,
   RotateCcw,
   Star,
   X,
@@ -38,6 +39,7 @@ import {
   prepareBrowserVoice,
   transcribeInBrowser,
 } from './browser-voice';
+import { TheEnd } from './landing-art';
 import { MARK_COLOR } from './render';
 import { ShimmerText, Skeleton } from './shimmer';
 
@@ -95,8 +97,18 @@ function Progress({ label, done }: { label: string; done: number | null }) {
   );
 }
 
-/** How many bars the waveform has: the last two and a half seconds, a bar every 100 ms. */
-const BARS = 25;
+/** How long a take is talked before its hint goes (D206): long enough to have begun. */
+const HINT_MS = 8000;
+
+/**
+ * How many bars the waveform has (D206). They stand still and rise and fall, after Wispr Flow:
+ * each is a band of the voice, the lowest in the middle and the same out to either side, eased to
+ * its height on every frame.
+ */
+const BARS = 21;
+/** The voice's range, in Hz, spread over the bars from the middle out. */
+const VOICE_LOW = 90;
+const VOICE_HIGH = 4000;
 /** The input's loudness as a bar's height, 0 to 1: speech fills it, a quiet room barely shows. */
 const barOf = (rms: number) => Math.min(1, Math.sqrt(rms) * 2.4);
 
@@ -203,15 +215,38 @@ type LiveTake = {
   shown: Shown[];
   pointer: PointerSample[];
   off: boolean;
+  /** Take time spent muted, the talk key up (D196), and since when it is muted now. */
+  mutedMs: number;
+  mutedAt: number | null;
 };
+
+/**
+ * How long the author talked in a take: its time without the stretches the talk key was up (D199).
+ * The take keeps those, so the notes are cut where the author stopped; the clock doesn't show
+ * them, or it would jump on by them when the take pauses.
+ */
+const talkedIn = (t: LiveTake) => {
+  const now = t.clock.time();
+  return Math.max(0, now - t.mutedMs - (t.mutedAt === null ? 0 : now - t.mutedAt));
+};
+
+/**
+ * How far an edge card sits from the middle: 45% of the reel's width, or clear of the middle card
+ * where the reel is too narrow for that (D201). The middle card is as wide as the height allows
+ * on a wide window, and as 64% of the width on a narrower one, where the tilted edge cards ran
+ * over it; there they go out by its half-width and theirs, tilted (0.84 of its width).
+ */
+const EDGE = 'max(45cqw, var(--w) * 0.84)';
 
 /** A card on the reel, by its slot: the middle, the edges, and hidden beyond them. */
 const SLOT: Record<number, CSSProperties> = {
   0: { transform: 'translate(-50%, -50%)' },
   [-1]: {
-    transform: 'translate(calc(-50% - 45cqw), calc(-50% + 22cqh)) rotate(-15deg) scale(0.55)',
+    transform: `translate(calc(-50% - ${EDGE}), calc(-50% + 22cqh)) rotate(-15deg) scale(0.55)`,
   },
-  1: { transform: 'translate(calc(-50% + 45cqw), calc(-50% + 22cqh)) rotate(15deg) scale(0.55)' },
+  1: {
+    transform: `translate(calc(-50% + ${EDGE}), calc(-50% + 22cqh)) rotate(15deg) scale(0.55)`,
+  },
   [-2]: {
     transform: 'translate(calc(-50% - 90cqw), calc(-50% + 60cqh)) rotate(-30deg) scale(0.45)',
     opacity: 0,
@@ -247,6 +282,74 @@ function Kbd({ children, label }: { children: React.ReactNode; label?: string })
     </kbd>
   );
 }
+
+/**
+ * A key at the reel's foot (D202): large, its name shown on hover, and lit while it is held, so
+ * the author sees the reel take it. Space stays lit for as long as they talk.
+ */
+function BarKey({
+  name,
+  on,
+  wide,
+  children,
+}: {
+  name: string;
+  on: boolean;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="group relative flex" {...tipGroup}>
+      <kbd
+        className={cn(
+          'inline-flex h-10 min-w-10 items-center justify-center rounded-lg border font-mono text-[15px] transition-colors duration-100 motion-reduce:transition-none',
+          wide ? 'px-5' : 'px-3',
+          on
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-border bg-muted text-foreground',
+        )}
+      >
+        {children}
+      </kbd>
+      <span role="tooltip" className={cn(TIP, 'bottom-full mb-2')}>
+        {name}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The reel’s tooltips (D202): white in dark and black in light, shown on
+ * hover of the `group` they sit in.
+ */
+const TIP =
+  'pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 rounded-md bg-black px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white opacity-0 dark:bg-white dark:text-black transition-opacity duration-150 group-hover:opacity-100 group-data-[off]:opacity-0! motion-reduce:transition-none';
+
+/**
+ * A tooltip's group, which hides it once its button is clicked, until the pointer leaves (D206):
+ * by then the picker or the legend it named is open, and the name is in the way.
+ */
+const tipGroup = {
+  onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+    e.currentTarget.dataset.off = '';
+  },
+  onPointerLeave: (e: React.PointerEvent<HTMLElement>) => {
+    delete e.currentTarget.dataset.off;
+  },
+};
+
+/** The keys at the reel's foot, by what is pressed: the arrows and their stand-ins light the same. */
+const BAR_KEY: Record<string, string> = {
+  ' ': 'space',
+  r: 'r',
+  f: 'f',
+  ArrowLeft: 'left',
+  ArrowUp: 'left',
+  PageUp: 'left',
+  ArrowRight: 'right',
+  ArrowDown: 'right',
+  PageDown: 'right',
+};
 
 const Left = () => (
   <Kbd label="Left arrow">
@@ -305,6 +408,9 @@ export function Reel({
   onExport,
   onPrepare,
   packing,
+  onDropped,
+  onDropGone,
+  onAdd,
 }: {
   assets: Asset[];
   urls: Record<string, string>;
@@ -324,6 +430,15 @@ export function Reel({
   onPrepare: () => void;
   /** How far the package has come while it is put together. */
   packing: { done: number; total: number } | null;
+  /**
+   * Start over dropped a recording (`talkedMs` long) or a kept take with its notes: say so, with
+   * `undo` to bring it back (D200).
+   */
+  onDropped: (drop: { talkedMs: number; notes: boolean; undo: () => void }) => void;
+  /** What Start over dropped can't come back any more: a new recording began, or it finished. */
+  onDropGone: () => void;
+  /** Choose more images to add to the batch (D201). */
+  onAdd: () => void;
 }) {
   const [atEnd, setAtEnd] = useState(false);
   const at = atEnd ? assets.length : Math.min(index, assets.length - 1);
@@ -338,6 +453,25 @@ export function Reel({
   const [micError, setMicError] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  // The keys at the reel's foot held down now, to light them (D202).
+  const [pressed, setPressed] = useState<ReadonlySet<string>>(() => new Set());
+  const lit = useRef(new Map<string, number>());
+  /** Light a key, or let it go a moment later, so a quick tap still shows. */
+  const light = (key: string, on: boolean) => {
+    const k = BAR_KEY[key];
+    if (!k) return;
+    window.clearTimeout(lit.current.get(k));
+    const set = (to: boolean) =>
+      setPressed((was) => {
+        if (was.has(k) === to) return was;
+        const next = new Set(was);
+        if (to) next.add(k);
+        else next.delete(k);
+        return next;
+      });
+    if (on) set(true);
+    else lit.current.set(k, window.setTimeout(() => set(false), 120));
+  };
   const [clock, setClock] = useState('0:00');
   const [saved, setSaved] = useState<{ take: Take; audio: Blob } | null>(null);
   // Speech-to-text: whether it's on here, and reading a take's words.
@@ -351,8 +485,6 @@ export function Reel({
   const [readDone, setReadDone] = useState<number | null>(null);
   // The talk key was let go: the take is live, its microphone muted, until it pauses (D196).
   const [muted, setMuted] = useState(false);
-  // A recording dropped to talk again, and how long it was, while Undo can bring it back.
-  const [dropped, setDropped] = useState<number | null>(null);
 
   const reel = useRef<HTMLDivElement>(null);
   // Each card's screenshot by its place in the batch; the middle one is the one on show. One ref
@@ -371,12 +503,18 @@ export function Reel({
   const mic = useRef<{ stream: MediaStream; audio: AudioContext } | null>(null);
   // The take in progress: the recorder, its clock and what it has kept so far.
   const take = useRef<LiveTake | null>(null);
-  // What Talk again dropped, while Undo can bring it back: the take in progress, or a kept one.
+  // What Start over dropped, while Undo can bring it back: the take in progress, or a kept one.
   const aside = useRef<
     | { kind: 'live'; take: LiveTake | null; unsaved: { take: Take; audio: Blob } | null }
     | { kind: 'saved'; done: { take: Take; audio: Blob } }
     | null
   >(null);
+  // How long the author talked in each take kept here, by its id (D199).
+  const talked = useRef(new Map<string, number>());
+  const talkedOf = (kept: Take) => talked.current.get(kept.id) ?? kept.durationMs;
+  // The page's toast about a drop goes once it can't be undone (D200).
+  const dropGone = useRef(onDropGone);
+  dropGone.current = onDropGone;
   // Kept takes dropped since: a reading that lands after doesn't bring their notes back.
   const droppedIds = useRef(new Set<string>());
   // The kept take whose words are being read now.
@@ -426,6 +564,8 @@ export function Reel({
       shown: [],
       pointer: [],
       off: false,
+      mutedMs: 0,
+      mutedAt: null,
     };
   };
 
@@ -455,23 +595,40 @@ export function Reel({
     const audio = new AudioContext();
     audio.resume().catch(() => undefined);
     const analyser = audio.createAnalyser();
-    analyser.fftSize = 1024;
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.55;
+    analyser.minDecibels = -90;
+    analyser.maxDecibels = -25;
     audio.createMediaStreamSource(stream).connect(analyser);
-    const data = new Float32Array(analyser.fftSize);
-    const levels = new Float32Array(BARS);
-    let last = 0;
-    const loop = (now: number) => {
+    const spectrum = new Uint8Array(analyser.frequencyBinCount);
+    const wave = new Float32Array(analyser.fftSize);
+    // The bands, from the middle bar out: spaced as the ear hears, closer at the low end.
+    const half = Math.ceil(BARS / 2);
+    const hz = audio.sampleRate / analyser.fftSize;
+    const band = Array.from({ length: half + 1 }, (_, k) =>
+      Math.round((VOICE_LOW * (VOICE_HIGH / VOICE_LOW) ** (k / half)) / hz),
+    );
+    const shown = new Float32Array(BARS);
+    const loop = () => {
       if (audio.state === 'closed') return;
       requestAnimationFrame(loop);
-      if (now - last < 100) return;
-      last = now;
-      analyser.getFloatTimeDomainData(data);
+      analyser.getByteFrequencyData(spectrum);
+      analyser.getFloatTimeDomainData(wave);
       let sum = 0;
-      for (const v of data) sum += v * v;
-      levels.copyWithin(0, 1);
-      levels[BARS - 1] = hearing.current ? barOf(Math.sqrt(sum / data.length)) : 0;
+      for (const v of wave) sum += v * v;
+      // How loud, overall: the bars stand only as tall as the voice is, and lie flat when muted.
+      const loud = hearing.current ? barOf(Math.sqrt(sum / wave.length)) : 0;
       bars.current.forEach((bar, i) => {
-        if (bar) bar.style.transform = `scaleY(${0.15 + 0.85 * levels[i]})`;
+        const k = Math.abs(i - (half - 1));
+        let peak = 0;
+        for (let b = band[k]; b <= Math.max(band[k], band[k + 1] - 1); b++)
+          peak = Math.max(peak, spectrum[b] ?? 0);
+        // Taller in the middle, tapering out, and each band its own height within that.
+        const taper = 1 - 0.5 * (k / (half - 1)) ** 1.4;
+        const target = loud * taper * (0.2 + 0.8 * (peak / 255) ** 1.8);
+        // Up quickly, down softly.
+        shown[i] += (target - shown[i]) * (target > shown[i] ? 0.45 : 0.18);
+        if (bar) bar.style.transform = `scaleY(${0.12 + 0.88 * shown[i]})`;
       });
     };
     requestAnimationFrame(loop);
@@ -483,8 +640,15 @@ export function Reel({
   /** The microphone heard in the recording, or muted: silence, recorded in its place. */
   const listen = (on: boolean) => {
     const m = mic.current;
+    const t = take.current;
     hearing.current = on;
     setMuted(!on && phaseNow.current === 'live');
+    // The muted stretch, kept off the clock (D199).
+    if (t && !on && t.mutedAt === null && phaseNow.current === 'live') t.mutedAt = t.clock.time();
+    if (t && on && t.mutedAt !== null) {
+      t.mutedMs += t.clock.time() - t.mutedAt;
+      t.mutedAt = null;
+    }
     if (!m) return;
     for (const track of m.stream.getAudioTracks()) track.enabled = on;
     if (on) m.audio.resume().catch(() => undefined);
@@ -500,11 +664,11 @@ export function Reel({
     m.audio.close().catch(() => undefined);
   }, []);
 
-  /** What Talk again dropped is gone for good: a new recording began, or the take finished. */
+  /** What Start over dropped is gone for good: a new recording began, or the take finished. */
   const forget = useCallback(() => {
     const a = aside.current;
     aside.current = null;
-    setDropped(null);
+    if (a) dropGone.current();
     if (a?.kind === 'live' && a.take && a.take.recorder.state !== 'inactive') a.take.recorder.stop();
   }, []);
 
@@ -570,6 +734,10 @@ export function Reel({
     listen(false);
     t.clock.pause();
     t.recorder.pause();
+    if (t.mutedAt !== null) {
+      t.mutedMs += t.clock.time() - t.mutedAt;
+      t.mutedAt = null;
+    }
     t.shown.push({
       t: t.clock.time(),
       screen: atRef.current < assets.length ? atRef.current : null,
@@ -623,6 +791,7 @@ export function Reel({
     clearInterval(countTimer.current);
     t.clock.pause();
     const durationMs = t.clock.time();
+    talked.current.set(t.id, talkedIn(t));
     if (t.recorder.state !== 'inactive') {
       await new Promise<void>((resolve) => {
         t.recorder.onstop = () => resolve();
@@ -718,7 +887,7 @@ export function Reel({
   };
 
   /**
-   * Talk again (D159, D196): the recording so far is dropped, or the kept take's notes taken out,
+   * Start over (D159, D196, D199): the recording so far is dropped, or the kept take's notes taken out,
    * and the reel goes back to the first screen to record anew. Undo brings it back until the next
    * recording begins.
    */
@@ -728,12 +897,13 @@ export function Reel({
     hold.current.reset();
     clearInterval(countTimer.current);
     forget();
+    let dropped: { talkedMs: number; notes: boolean };
     if (p === 'saved') {
       if (!saved) return;
       droppedIds.current.add(saved.take.id);
       onTake({ ...saved.take, words: [] });
       aside.current = { kind: 'saved', done: saved };
-      setDropped(saved.take.durationMs);
+      dropped = { talkedMs: talkedOf(saved.take), notes: true };
       show(null);
       setReading('idle');
     } else {
@@ -745,7 +915,8 @@ export function Reel({
         if (t.recorder.state === 'recording') t.recorder.pause();
       }
       aside.current = { kind: 'live', take: t, unsaved: unsaved.current };
-      setDropped(unsaved.current?.take.durationMs ?? t?.clock.time() ?? 0);
+      const was = unsaved.current?.take;
+      dropped = { talkedMs: was ? talkedOf(was) : t ? talkedIn(t) : 0, notes: false };
       unsaved.current = null;
       take.current = mic.current ? newTake(mic.current) : null;
     }
@@ -753,14 +924,15 @@ export function Reel({
     go('paused');
     setMuted(false);
     turn(0);
+    // Said in the page's toast, with Undo (D200).
+    onDropped({ ...dropped, undo: () => undoRef.current() });
   };
 
-  /** What Talk again dropped, back where it was. */
+  /** What Start over dropped, back where it was. */
   const undoDrop = () => {
     const a = aside.current;
     if (!a) return;
     aside.current = null;
-    setDropped(null);
     if (a.kind === 'saved') {
       droppedIds.current.delete(a.done.take.id);
       if (a.done.take.words) onTake(a.done.take);
@@ -783,6 +955,9 @@ export function Reel({
     unsaved.current = a.unsaved;
     go('paused');
   };
+  // The latest of each, for the toast's Undo and for `forget`, which outlive a render.
+  const undoRef = useRef(undoDrop);
+  undoRef.current = undoDrop;
 
   const finish = async () => {
     if (phaseNow.current === 'saving' || (!recorded() && !unsaved.current)) return;
@@ -803,17 +978,15 @@ export function Reel({
   };
 
   // The clock in the corner, read from the take's own clock, or the kept take's length.
-  const keptMs = saved?.take.durationMs ?? 0;
+  // The time talked, not the muted stretches the take keeps for its notes (D199).
+  const keptMs = saved ? talkedOf(saved.take) : 0;
   useEffect(() => {
-    // Muted, it keeps time for the notes but shows the time talked (D196).
-    let still: number | null = null;
     const id = window.setInterval(() => {
       const t = take.current;
-      still = t && muted ? (still ?? t.clock.time()) : null;
-      setClock(clockText(still ?? t?.clock.time() ?? keptMs));
+      setClock(clockText(t ? talkedIn(t) : keptMs));
     }, 250);
     return () => clearInterval(id);
-  }, [keptMs, muted]);
+  }, [keptMs]);
 
   // The server's speech-to-text where it has it (D136); this browser's everywhere else (D140).
   useEffect(() => {
@@ -854,6 +1027,18 @@ export function Reel({
     };
   }, []);
 
+  // A click anywhere but the legend or its button closes it (D202).
+  useEffect(() => {
+    if (!legendOpen) return;
+    const away = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest('#reel-legend, [aria-controls="reel-legend"]')) return;
+      setLegendOpen(false);
+    };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [legendOpen]);
+
   // A sideways swipe turns the reel instead of going back a page.
   useEffect(() => {
     const root = document.documentElement;
@@ -893,6 +1078,7 @@ export function Reel({
         if (button?.matches(':focus-visible')) return;
         button?.blur();
         e.preventDefault();
+        light(' ', true);
         if (!e.repeat) hold.current.press();
         return;
       }
@@ -918,15 +1104,20 @@ export function Reel({
       const run = act[key];
       if (!run) return;
       e.preventDefault();
+      light(key, true);
       run();
     };
     // A key let go out of sight never says so: losing the window lets go of it too.
     const onUp = (e: KeyboardEvent) => {
+      light(e.key.length === 1 ? e.key.toLowerCase() : e.key, false);
       if (e.key !== ' ' || !hold.current.held) return;
       e.preventDefault();
       hold.current.release();
     };
-    const letGo = () => hold.current.release();
+    const letGo = () => {
+      hold.current.release();
+      for (const key of Object.keys(BAR_KEY)) light(key, false);
+    };
     const onHidden = () => {
       if (document.hidden) letGo();
     };
@@ -1024,54 +1215,103 @@ export function Reel({
         } as CSSProperties
       }
     >
-      <div className="absolute inset-x-0 top-0 z-20 flex items-center gap-3 px-5 py-3 text-[13px] text-muted-foreground">
-        <span
-          aria-hidden
-          className={cn(
-            'size-2 rounded-full',
-            phase === 'live' && !muted ? 'bg-red-600' : 'bg-muted-foreground/60',
-          )}
+      {/*
+       * How far through the batch, against the header's divider (D206): a 2 px strip that fills
+       * to the screen on show, and full on the last card.
+       */}
+      <div
+        role="progressbar"
+        aria-label="Screens"
+        aria-valuemin={1}
+        aria-valuemax={Math.max(1, assets.length)}
+        aria-valuenow={Math.min(at + 1, assets.length)}
+        className="absolute inset-x-0 top-0 z-30 h-0.5"
+      >
+        <div
+          className="h-full bg-foreground transition-[width] duration-300 ease-out motion-reduce:transition-none"
+          style={{
+            width: `${assets.length ? (Math.min(at + 1, assets.length) / assets.length) * 100 : 0}%`,
+          }}
         />
-        <span aria-live="polite" className="text-foreground">
-          {state}
-        </span>
-        <span className="font-mono tabular-nums">{clock}</span>
-        {model !== null && <span className="tabular-nums">Voice model {Math.floor(model)}%</span>}
-        {packing && !atEnd && (
-          <span className="flex items-center gap-1.5 tabular-nums">
-            <LoaderCircle aria-hidden className="size-3.5 animate-spin motion-reduce:hidden" />
-            Export {Math.floor((packing.done / Math.max(1, packing.total)) * 100)}%
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-3">
-          {dropped !== null ? (
-            <span role="status" className="flex items-center gap-2">
-              Dropped {clockText(dropped)}
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={undoDrop}
-                className={cn(BUTTON, 'min-h-8 px-2.5 text-[13px] text-foreground')}
-              >
-                Undo
-              </button>
+      </div>
+      <div className="absolute inset-x-0 top-0 z-20 flex h-12 items-center px-5 text-[13px] text-muted-foreground">
+        {/* What is coming in, out of the way: the voice model, the package. */}
+        <span className="flex items-center gap-3 tabular-nums">
+          {/* Not at 0: a model kept from before reports 0 a moment as it opens (D199). */}
+          {model !== null && model > 0 && <span>Voice model {Math.floor(model)}%</span>}
+          {packing && !atEnd && (
+            <span className="flex items-center gap-1.5">
+              <LoaderCircle aria-hidden className="size-3.5 animate-spin motion-reduce:hidden" />
+              Export {Math.floor((packing.done / Math.max(1, packing.total)) * 100)}%
             </span>
-          ) : (
-            (recorded() || unsaved.current || phase === 'saved') &&
-            phase !== 'saving' &&
-            phase !== 'opening' && (
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={talkAgain}
-                className={cn(BUTTON, 'min-h-8 px-2.5 text-[13px] text-foreground')}
-              >
-                <RotateCcw className="size-3.5" aria-hidden />
-                Talk again
-              </button>
-            )
           )}
-          <span>{at < assets.length ? `${at + 1} of ${assets.length}` : ''}</span>
+        </span>
+        {/* The take and the screen on show, centred over the reel (D199). */}
+        <span className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap">
+          <span
+            aria-hidden
+            className={cn(
+              'size-2 rounded-full',
+              phase === 'live' && !muted ? 'bg-red-600' : 'bg-muted-foreground/60',
+            )}
+          />
+          <span aria-live="polite" className="text-foreground">
+            {state}
+          </span>
+          <span className="font-mono tabular-nums">{clock}</span>
+          {at < assets.length && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">
+                {at + 1} of {assets.length}
+              </span>
+            </>
+          )}
+        </span>
+        {/* More images (D201), and the keys and voice (D202), top right. */}
+        <span className="ml-auto flex items-center gap-2">
+          <span className="group relative flex" {...tipGroup}>
+            <button
+              type="button"
+              aria-label="Add images"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={onAdd}
+              className={cn(BUTTON, 'size-8 min-h-8 justify-center px-0 text-foreground')}
+            >
+              <Plus className="size-4" aria-hidden />
+            </button>
+            {/* Near the window's edge, it opens leftwards. */}
+            <span
+              aria-hidden
+              className={cn(TIP, 'top-full right-0 left-auto mt-2 translate-x-0 text-left')}
+            >
+              Add images
+            </span>
+          </span>
+          <span className="group relative flex" {...tipGroup}>
+          <button
+            type="button"
+            aria-label="Keys and voice"
+            aria-expanded={legendOpen}
+            aria-controls="reel-legend"
+            // A click keeps the focus where it was, so Space still talks.
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => setLegendOpen((o) => !o)}
+            className={cn(
+              BUTTON,
+              'size-8 min-h-8 justify-center px-0 text-foreground',
+              legendOpen && 'bg-muted',
+            )}
+          >
+            <CircleHelp className="size-4" aria-hidden />
+          </button>
+            {!legendOpen && (
+              // At the window's edge: it opens leftwards, from the button's right edge.
+              <span aria-hidden className={cn(TIP, 'top-full right-0 left-auto mt-2 translate-x-0')}>
+                Keys and voice
+              </span>
+            )}
+          </span>
         </span>
       </div>
 
@@ -1145,7 +1385,7 @@ export function Reel({
                 {made ? `${made} ${made === 1 ? 'note' : 'notes'}` : 'Finished'}
               </p>
               <p className="m-0 text-sm text-muted-foreground">
-                {clockText(saved.take.durationMs)} over {saved.take.screens.length}{' '}
+                {clockText(talkedOf(saved.take))} over {saved.take.screens.length}{' '}
                 {saved.take.screens.length === 1 ? 'screen' : 'screens'}.
                 {!voiceOn && ' Notes from it come next.'}
               </p>
@@ -1253,21 +1493,27 @@ export function Reel({
                 ) : (
                   <p className="m-0 text-sm text-muted-foreground">No words heard.</p>
                 ))}
-              {saved.take.words && wordsLookWrong(saved.take.words) && (
-                <p role="alert" className="m-0 text-sm text-destructive">
-                  These words look wrong.{' '}
-                  <button
-                    type="button"
-                    onClick={talkAgain}
-                    className="underline underline-offset-2"
-                  >
-                    Talk again
-                  </button>
-                </p>
-              )}
+              {saved.take.words &&
+                wordsLookWrong(
+                  saved.take.words,
+                  saved.take.shown.filter((x) => !x.click && !x.paused).map((x) => x.t),
+                ) && (
+                  // Whisper repeating itself over a stretch of quiet (D159, D199).
+                  <p role="alert" className="m-0 max-w-[min(36rem,calc(var(--w)-2rem))] text-sm text-destructive">
+                    Some words repeat as if misheard. Check them, or{' '}
+                    <button
+                      type="button"
+                      onClick={talkAgain}
+                      className="underline underline-offset-2"
+                    >
+                      start over
+                    </button>
+                    .
+                  </p>
+                )}
               <div className="mt-1 flex gap-2">
                 <button type="button" onClick={() => turn(0)} className={BUTTON}>
-                  Back to the first
+                  Back
                 </button>
                 {made > 0 && (
                   <button type="button" onClick={onExport} className={PRIMARY}>
@@ -1279,6 +1525,13 @@ export function Reel({
             </>
           ) : (
             <>
+              {/* The end of the reel, in the landing's drawing language (D203). */}
+              {/* Played each time the card comes into view (D203). */}
+              <TheEnd
+                key={atEnd ? 'shown' : 'hidden'}
+                play={atEnd}
+                className="block h-auto w-[min(220px,calc(var(--w)*0.36))] text-muted-foreground"
+              />
               <p className="m-0 text-[15px] font-medium text-foreground">
                 That was the last screen
               </p>
@@ -1325,77 +1578,83 @@ export function Reel({
         (!atEnd || micError) && (
           <div
             aria-live="polite"
-            className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center text-sm text-muted-foreground"
+            className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center text-sm text-muted-foreground"
           >
             {micError ? (
               <p className="m-0">Allow the microphone for this site, then hold Space.</p>
             ) : phase === 'live' && !muted ? (
-              // While it records: what the microphone hears, after Wispr Flow (D196).
-              <span className="flex h-9 items-center gap-2.5 rounded-full border border-border bg-background px-3.5">
-                <span aria-hidden className="size-2 rounded-full bg-red-600" />
-                <span aria-hidden className="flex h-5 items-center gap-[3px]">
-                  {Array.from({ length: BARS }, (_, i) => (
-                    <span
-                      // biome-ignore lint/suspicious/noArrayIndexKey: the bars are a fixed row
-                      key={i}
-                      ref={(el) => {
-                        bars.current[i] = el;
-                      }}
-                      className="block h-full w-[3px] origin-center rounded-full bg-foreground"
-                      style={{ transform: 'scaleY(0.15)' }}
-                    />
-                  ))}
+              // While it records: what the microphone hears, after Wispr Flow (D196), and beside
+              // it what to do as a take begins (D206), the two centred together.
+              <span className="flex items-center gap-3">
+                <span className="flex h-9 items-center gap-2.5 rounded-full border border-border bg-background px-3.5">
+                  <span aria-hidden className="size-2 rounded-full bg-red-600" />
+                  <span aria-hidden className="flex h-5 items-center gap-[3px]">
+                    {Array.from({ length: BARS }, (_, i) => (
+                      <span
+                        // biome-ignore lint/suspicious/noArrayIndexKey: the bars are a fixed row
+                        key={i}
+                        ref={(el) => {
+                          bars.current[i] = el;
+                        }}
+                        className="block h-full w-[3px] origin-center rounded-full bg-foreground"
+                        style={{ transform: 'scaleY(0.15)' }}
+                      />
+                    ))}
+                  </span>
+                  <span className="sr-only">Recording</span>
                 </span>
-                <span className="sr-only">Recording</span>
+                {/* The landing's headline, light passing over it. */}
+                {take.current && talkedIn(take.current) < HINT_MS && (
+                  <ShimmerText duration={2.2} className="text-[13px] font-medium whitespace-nowrap">
+                    Point at it. Say why.
+                  </ShimmerText>
+                )}
               </span>
-            ) : (
-              ((phase === 'paused' && !unsaved.current) || (phase === 'live' && muted)) && (
-                <p className="m-0">
-                  Hold <Kbd>Space</Kbd> to talk
-                </p>
-              )
-            )}
+            ) : null}
           </div>
         )
       )}
 
-      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-5 px-4 py-3 text-[13px] text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <Kbd>Space</Kbd> Hold to talk
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Kbd>R</Kbd> Hands-free
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Left />
-          <Right /> Turn
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Kbd>F</Kbd> Finish
-        </span>
-        <button
-          type="button"
-          aria-expanded={legendOpen}
-          aria-controls="reel-legend"
-          // A click keeps the focus where it was, so Space still talks.
-          onPointerDown={(e) => e.preventDefault()}
-          onClick={() => setLegendOpen((o) => !o)}
-          className={cn(
-            BUTTON,
-            'absolute right-5 min-h-8 px-2.5 text-[13px]',
-            legendOpen && 'bg-muted',
+      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-3 px-4 py-3 text-[13px] text-muted-foreground">
+        {/* The keys, named on hover and lit while held (D202). */}
+        <BarKey name="Hold to talk" on={pressed.has('space')} wide>
+          Space
+        </BarKey>
+        <BarKey name="Hands-free" on={pressed.has('r')}>
+          R
+        </BarKey>
+        <BarKey name="Previous screen" on={pressed.has('left')}>
+          <ArrowLeft className="size-5" aria-label="Left arrow" />
+        </BarKey>
+        <BarKey name="Next screen" on={pressed.has('right')}>
+          <ArrowRight className="size-5" aria-label="Right arrow" />
+        </BarKey>
+        <BarKey name="Finish" on={pressed.has('f')}>
+          F
+        </BarKey>
+        {/* Start over, in the corner across from the legend (D199); the toast says it, with Undo. */}
+        {(recorded() || unsaved.current || phase === 'saved') &&
+          phase !== 'saving' &&
+          phase !== 'opening' && (
+            <button
+              type="button"
+              aria-keyshortcuts="Backspace"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={talkAgain}
+              className={cn(BUTTON, 'absolute left-5 min-h-8 px-2.5 text-[13px] text-foreground')}
+            >
+              <RotateCcw className="size-3.5" aria-hidden />
+              Start over
+            </button>
           )}
-        >
-          <CircleHelp className="size-4" aria-hidden />
-          Keys and voice
-        </button>
       </div>
 
       {legendOpen && (
         <section
           id="reel-legend"
           aria-labelledby="reel-legend-title"
-          className="absolute right-5 bottom-16 z-30 w-[min(44rem,calc(100%-2.5rem))] rounded-xl border border-border bg-background p-5 text-[13px] shadow-lg dark:shadow-none"
+          data-reel-scroll
+          className="absolute top-12 right-5 z-30 max-h-[calc(100%-8.5rem)] w-[min(44rem,calc(100%-2.5rem))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-background p-5 text-[13px] shadow-lg dark:shadow-none"
         >
           <div className="mb-4 flex items-center justify-between">
             <h2 id="reel-legend-title" className="m-0 text-[15px] font-medium">
@@ -1421,7 +1680,7 @@ export function Reel({
                   [
                     [<Kbd key="s">Space</Kbd>, 'Hold to talk, let go to pause'],
                     [<Kbd key="r">R</Kbd>, 'Record hands-free, or pause'],
-                    [<Kbd key="b">Backspace</Kbd>, 'Talk again, from the first screen'],
+                    [<Kbd key="b">Backspace</Kbd>, 'Start over, from the first screen'],
                     [<Kbd key="e">Esc</Kbd>, 'Stop the count'],
                     [<Right key="n" />, 'Next screen, also a scroll or swipe'],
                     [<Left key="p" />, 'Previous screen'],

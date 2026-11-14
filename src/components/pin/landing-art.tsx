@@ -823,3 +823,321 @@ export function MissingMouse({ className }: ArtProps) {
     </svg>
   );
 }
+
+/**
+ * The landing's line, for a drawing shown off the landing (D203): its ink in both themes, so on
+ * the tool's dark the shapes show by their fills alone, with no light edge round them.
+ */
+const LINE = { stroke: '#17131f', strokeLinejoin: 'round', strokeLinecap: 'round' } as const;
+/** The lines that are only lines, the ticks of motion: in the page's muted text colour. */
+const TICK = { stroke: 'currentColor', strokeLinejoin: 'round', strokeLinecap: 'round' } as const;
+
+/** The frames on the reel, round from the top: the screens it held, the last one ticked. */
+const FRAMES = ['#3b9f87', '#f59bd8', '#ffc93c', '#5a32d1', '#d8c3f6', '#f2613f', '#ffffff'];
+
+/** A four-pointed sparkle, centred on 0, 0. */
+const SPARKLE = 'M0 -9C1 -3 3 -1 9 0C3 1 1 3 0 9C-1 3 -3 1 -9 0C-3 -1 -1 -3 0 -9Z';
+
+/*
+ * TheEnd's moves (D203), played once each time it is shown: the lever is pulled down, the reel
+ * pops up out of the slot with a turn and a bounce, the viewer gives a little jolt, and the
+ * sparkles and ticks come out after. Still under reduced motion, where it shows as it ends.
+ */
+const END_CSS = `
+.the-end .te-move { transform-box: view-box; }
+.the-end-play .te-lever { transform-origin: 214px 116px; animation: te-lever 420ms cubic-bezier(.3,0,.2,1) both; }
+.the-end-play .te-reel { transform-origin: 125px 62px; animation: te-reel 760ms cubic-bezier(.2,1.5,.45,1) 260ms both; }
+.the-end-play .te-body { transform-origin: 125px 172px; animation: te-jolt 360ms ease-out 240ms both; }
+.the-end-play .te-pop { transform-box: fill-box; transform-origin: center; animation: te-pop 420ms cubic-bezier(.2,1.6,.4,1) both; }
+.the-end-play .te-tick { animation: te-fade 300ms ease-out both; }
+@keyframes te-lever { from { transform: rotate(-52deg); } to { transform: rotate(0); } }
+@keyframes te-reel {
+  from { transform: translateY(96px) rotate(-70deg); }
+  to { transform: translateY(0) rotate(0); }
+}
+@keyframes te-jolt {
+  0%, 100% { transform: scale(1, 1); }
+  40% { transform: scale(1.04, .94); }
+}
+@keyframes te-pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes te-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .the-end-play .te-lever, .the-end-play .te-reel, .the-end-play .te-body,
+  .the-end-play .te-pop, .the-end-play .te-tick { animation: none; }
+}
+`;
+
+/** When each sparkle and tick comes out, in ms, after the reel is up. */
+const delay = (ms: number) => ({ animationDelay: `${ms}ms` });
+
+/**
+ * The end of the reel (D203), on its last card: the View-Master the reel is named after, its
+ * lever pulled down, and the reel popping up out of it with every frame seen, the last one
+ * ticked. `play` runs its moves; mount it again to run them again.
+ */
+export function TheEnd({ className, play = false }: ArtProps & { play?: boolean }) {
+  return (
+    <svg
+      className={[className, 'the-end', play && 'the-end-play'].filter(Boolean).join(' ')}
+      width="250"
+      height="190"
+      viewBox="0 0 250 190"
+      aria-hidden="true"
+    >
+      <style href="pinch-the-end" precedence="default">
+        {END_CSS}
+      </style>
+      {/* The reel, popped up out of the slot, from behind the viewer. */}
+      <g className="te-move te-reel">
+        <g transform="rotate(-8 125 62)">
+          <circle {...LINE} strokeWidth={4} cx="125" cy="62" r="50" fill="#fff" />
+          <circle
+            {...LINE}
+            strokeWidth={2.5}
+            cx="125"
+            cy="62"
+            r="40"
+            fill="none"
+            strokeDasharray="2 7"
+          />
+          {FRAMES.map((fill, k) => (
+            <g key={fill} transform={`rotate(${k * 51.43} 125 62)`}>
+              <rect
+                {...LINE}
+                strokeWidth={3}
+                x="115"
+                y="21"
+                width="20"
+                height="15"
+                rx="3"
+                fill={fill}
+              />
+              {k > 0 && <path {...LINE} strokeWidth={2} fill="none" d="M119 31h12" />}
+            </g>
+          ))}
+          <path
+            stroke="#fff"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            d="M119 29l4 4 7-8"
+          />
+          <circle {...LINE} strokeWidth={3} cx="125" cy="62" r="7" fill="#17131f" />
+        </g>
+      </g>
+      <path
+        className="te-tick"
+        style={delay(900)}
+        {...TICK}
+        strokeWidth={3}
+        fill="none"
+        d="M62 22l-9-6M58 44h-11M188 22l9-6M192 44h11"
+      />
+      <g transform="translate(38 70)">
+        <path
+          className="te-pop"
+          style={delay(820)}
+          {...LINE}
+          strokeWidth={2.5}
+          fill="#ffc93c"
+          d={SPARKLE}
+        />
+      </g>
+      <g transform="translate(214 66) scale(.8)">
+        <path
+          className="te-pop"
+          style={delay(940)}
+          {...LINE}
+          strokeWidth={2.5}
+          fill="#f59bd8"
+          d={SPARKLE}
+        />
+      </g>
+      <g transform="translate(206 10) scale(.6)">
+        <path
+          className="te-pop"
+          style={delay(1060)}
+          {...LINE}
+          strokeWidth={2.5}
+          fill="#3b9f87"
+          d={SPARKLE}
+        />
+      </g>
+      {/* The viewer, in front of the reel's lower half. */}
+      <g className="te-move te-body">
+        <rect
+          {...LINE}
+          strokeWidth={4}
+          x="34"
+          y="96"
+          width="182"
+          height="76"
+          rx="24"
+          fill="#f2613f"
+        />
+        <rect
+          {...LINE}
+          strokeWidth={3}
+          x="70"
+          y="91"
+          width="110"
+          height="11"
+          rx="5.5"
+          fill="#17131f"
+        />
+        <path {...LINE} strokeWidth={3} fill="none" d="M112 172c4-12 22-12 26 0" />
+        {[88, 162].map((x) => (
+          <g key={x}>
+            <circle {...LINE} strokeWidth={4} cx={x} cy="134" r="22" fill="#ffc93c" />
+            <circle {...LINE} strokeWidth={3} cx={x} cy="134" r="13" fill="#17131f" />
+            <circle cx={x - 5} cy="129" r="3.5" fill="#fff" />
+          </g>
+        ))}
+      </g>
+      {/* The lever, pulled down. */}
+      <g className="te-move te-lever">
+        <path {...LINE} strokeWidth={8} fill="none" d="M214 116l20 26" />
+        <path
+          stroke="#ffc93c"
+          strokeWidth={3}
+          strokeLinecap="round"
+          fill="none"
+          d="M214 116l20 26"
+        />
+        <circle {...LINE} strokeWidth={3.5} cx="236" cy="146" r="8" fill="#fff" />
+      </g>
+      <path
+        className="te-tick"
+        style={delay(380)}
+        {...TICK}
+        strokeWidth={2.5}
+        fill="none"
+        d="M226 104l7-6M240 118l8-2"
+      />
+    </svg>
+  );
+}
+
+/** The screenshots dropping into the viewer while a reel loads: each one's colour and tilt. */
+const DROPS: [fill: string, tilt: number][] = [
+  ['#f59bd8', -10],
+  ['#ffc93c', 8],
+  ['#3b9f87', -4],
+];
+
+/*
+ * LoadingReel's moves (D204), on a loop: screenshots drop one after another into the viewer's
+ * slot and out of sight behind it, the lever clicks down as each goes in, and the eyepieces
+ * glint. Still under reduced motion, where one screenshot waits above the slot.
+ */
+const LOADING_CSS = `
+.loading-reel .lr-move { transform-box: view-box; }
+.loading-reel .lr-drop { animation: lr-drop 1.8s cubic-bezier(.45,0,.6,1) infinite both; }
+.loading-reel .lr-lever { transform-origin: 239px 146px; animation: lr-lever .6s ease-in-out infinite; }
+.loading-reel .lr-glint { transform-box: fill-box; transform-origin: center; animation: lr-glint .6s ease-in-out infinite; }
+@keyframes lr-drop {
+  0% { transform: translateY(-70px); opacity: 0; }
+  12% { opacity: 1; }
+  58% { transform: translateY(0); }
+  100% { transform: translateY(78px); opacity: 1; }
+}
+@keyframes lr-lever { 0%, 55%, 100% { transform: rotate(-38deg); } 75% { transform: rotate(0); } }
+@keyframes lr-glint { 0%, 60%, 100% { transform: scale(1); } 78% { transform: scale(1.6); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-reel .lr-drop, .loading-reel .lr-lever, .loading-reel .lr-glint { animation: none; }
+  .loading-reel .lr-drop:not(:first-child) { display: none; }
+}
+`;
+
+/**
+ * Screens going into the reel (D204), while the images chosen load: the View-Master of the
+ * reel's last card (`TheEnd`), its slot taking one screenshot after another.
+ */
+export function LoadingReel({ className }: ArtProps) {
+  return (
+    <svg
+      className={[className, 'loading-reel'].filter(Boolean).join(' ')}
+      width="300"
+      height="220"
+      viewBox="0 0 300 220"
+      aria-hidden="true"
+    >
+      <style href="pinch-loading-reel" precedence="default">
+        {LOADING_CSS}
+      </style>
+      {/* The screenshots, each dropping in a third of the loop after the one before. */}
+      <g>
+        {DROPS.map(([fill, tilt], k) => (
+          <g key={fill} className="lr-move lr-drop" style={{ animationDelay: `${k * 0.6 - 1.8}s` }}>
+            <g transform={`rotate(${tilt} 150 92)`}>
+              <rect
+                {...LINE}
+                strokeWidth={4}
+                x="122"
+                y="70"
+                width="56"
+                height="44"
+                rx="5"
+                fill={fill}
+              />
+              <rect
+                {...LINE}
+                strokeWidth={2.5}
+                x="130"
+                y="78"
+                width="26"
+                height="12"
+                rx="2"
+                fill="#fff"
+              />
+              <path {...LINE} strokeWidth={2.5} fill="none" d="M130 100h36" />
+            </g>
+          </g>
+        ))}
+      </g>
+      <path {...TICK} strokeWidth={3} fill="none" d="M96 76l-9-5M92 98h-11M204 76l9-5M208 98h11" />
+      {/* The viewer, in front: what drops in goes out of sight behind it. */}
+      <rect
+        {...LINE}
+        strokeWidth={4}
+        x="59"
+        y="126"
+        width="182"
+        height="76"
+        rx="24"
+        fill="#f2613f"
+      />
+      <rect
+        {...LINE}
+        strokeWidth={3}
+        x="95"
+        y="121"
+        width="110"
+        height="11"
+        rx="5.5"
+        fill="#17131f"
+      />
+      <path {...LINE} strokeWidth={3} fill="none" d="M137 202c4-12 22-12 26 0" />
+      {[113, 187].map((x) => (
+        <g key={x}>
+          <circle {...LINE} strokeWidth={4} cx={x} cy="164" r="22" fill="#ffc93c" />
+          <circle {...LINE} strokeWidth={3} cx={x} cy="164" r="13" fill="#17131f" />
+          <circle className="lr-glint" cx={x - 5} cy="159" r="3.5" fill="#fff" />
+        </g>
+      ))}
+      {/* The lever, clicking down as each screenshot goes in. */}
+      <g className="lr-move lr-lever">
+        <path {...LINE} strokeWidth={8} fill="none" d="M239 146l20 26" />
+        <path
+          stroke="#ffc93c"
+          strokeWidth={3}
+          strokeLinecap="round"
+          fill="none"
+          d="M239 146l20 26"
+        />
+        <circle {...LINE} strokeWidth={3.5} cx="261" cy="176" r="8" fill="#fff" />
+      </g>
+    </svg>
+  );
+}

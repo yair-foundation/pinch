@@ -8,6 +8,7 @@ import {
   SPEECH_RATE,
   soundOf,
   speechIn,
+  withRoomTone,
 } from '@/lib/pin/speech-pieces';
 import { type VoiceTier, voiceTiers } from '@/lib/pin/voice-models';
 
@@ -135,9 +136,11 @@ async function load(): Promise<{ asr: Asr; tier: VoiceTier }> {
 }
 
 async function transcribe(
-  audio: Float32Array,
+  recorded: Float32Array,
   id?: number,
 ): Promise<{ model: string } & ({ chunks: Chunk[] } | { pieces: PieceRead[] })> {
+  // The stretches the talk key was up sound like the room, not like nothing (D199).
+  const audio = withRoomTone(recorded);
   const pieces = await piecesIn(audio, id);
   const duration = (audio.length * 1000) / SPEECH_RATE;
   const at = (ms: number) => Math.round((ms * SPEECH_RATE) / 1000);

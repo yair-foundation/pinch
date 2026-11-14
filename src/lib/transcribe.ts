@@ -12,6 +12,7 @@ import {
   SPEECH_RATE,
   type Span,
   soundOf,
+  withRoomTone,
   wordsOfPieces,
 } from './pin/speech-pieces';
 import type { ReadBy } from './pin/narration';
@@ -115,7 +116,11 @@ async function wordsByPiece(
   let pieces: Piece[];
   let samples: Float32Array;
   try {
-    samples = samplesOf(await readFile(wav));
+    const recorded = samplesOf(await readFile(wav));
+    // The stretches the talk key was up sound like the room, not like nothing (D199), for
+    // Silero and for Whisper.
+    samples = withRoomTone(recorded);
+    if (samples !== recorded) await writeFile(wav, wavOf(samples));
     const db = loudnessOf(samples);
     pieces = piecesOf(loudRuns(db), await speechOf(wav, vad, whisper), db);
   } catch {

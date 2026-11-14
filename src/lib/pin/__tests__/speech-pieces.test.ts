@@ -5,9 +5,11 @@ import {
   loudnessOf,
   loudRuns,
   piecesOf,
+  roomOf,
   SPEECH_RATE,
   soundOf,
   speechIn,
+  withRoomTone,
   wordsOfPiece,
   wordsOfPieces,
 } from '../speech-pieces';
@@ -63,6 +65,32 @@ describe('speech pieces: what is loud', () => {
       ]),
     );
     assert.deepEqual(loudRuns(db), [{ from: 5000, to: 6000 }]);
+  });
+  it('measures the room only where the talk key was down (D199)', () => {
+    // Held from 0 to 4 s, with a voice from 1 to 2 s; the key up, so nothing at all, for 6 s.
+    const samples = recording(10_000, [[1000, 2000]]);
+    samples.fill(0, (4000 * SPEECH_RATE) / 1000);
+    const db = loudnessOf(samples);
+    assert.ok(roomOf(db) > -100, 'the room is the hum, not the silence');
+    assert.deepEqual(loudRuns(db), [{ from: 1000, to: 2000 }]);
+  });
+  it('gives the muted stretches the room’s level, and leaves the rest as it was (D199)', () => {
+    const samples = recording(10_000, [[1000, 2000]]);
+    samples.fill(0, (4000 * SPEECH_RATE) / 1000);
+    const filled = withRoomTone(samples);
+    assert.notEqual(filled, samples);
+    // What was heard is untouched.
+    assert.deepEqual(filled.subarray(0, 64_000), samples.subarray(0, 64_000));
+    // The muted part is now about as loud as the room, within a few dB.
+    const room = roomOf(loudnessOf(samples));
+    const after = loudnessOf(filled).subarray(250);
+    const mean = after.reduce((a, b) => a + b, 0) / after.length;
+    assert.ok(Math.abs(mean - room) < 6, `${mean} against ${room}`);
+    // Still only the voice is a sound.
+    assert.deepEqual(loudRuns(loudnessOf(filled)), [{ from: 1000, to: 2000 }]);
+    // A take never muted is handed back as it is.
+    const plain = recording(3000, [[1000, 2000]]);
+    assert.equal(withRoomTone(plain), plain);
   });
   it('finds nothing in a silent recording', () => {
     assert.deepEqual(loudRuns(loudnessOf(recording(5000, []))), []);

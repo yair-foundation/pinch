@@ -65,11 +65,50 @@ export function loudnessOf(samples: Float32Array, rate = SPEECH_RATE): Float32Ar
   return out;
 }
 
-/** The room's own level: what the quietest fifth of the recording stays under. */
-function roomOf(db: Float32Array): number {
-  if (!db.length) return 0;
-  const sorted = Float32Array.from(db).sort();
-  return sorted[Math.floor(sorted.length * 0.2)];
+/** Quieter than any microphone in a room: nothing was recorded, the talk key was up (D196). */
+const MUTED = -100;
+
+/**
+ * The room's own level: what the quietest fifth of the recording stays under. The stretches the
+ * talk key was up are silence no room makes, so they are left out (D199): counted, they put the
+ * room at nothing, and every breath and hum while talking would be a sound.
+ */
+export function roomOf(db: Float32Array): number {
+  const heard = Float32Array.from(db.filter((d) => d > MUTED)).sort();
+  if (!heard.length) return 0;
+  return heard[Math.floor(heard.length * 0.2)];
+}
+
+/**
+ * A recording with its muted stretches given the room's hum (D199). While the talk key is up the
+ * take holds silence no room makes (D196), and Whisper hears speech that starts out of it worse:
+ * the same "Delete this slide" came back "Delete the slide" every time it followed such a
+ * stretch, and "this" every time it followed the room. So each muted stretch is filled with soft
+ * noise at the room's level before the take is read. It is made here, not recorded: nothing of
+ * the room while the key was up is in the take. A new array; times don't move.
+ */
+export function withRoomTone(samples: Float32Array, rate = SPEECH_RATE): Float32Array {
+  const db = loudnessOf(samples, rate);
+  const size = Math.round((rate * FRAME_MS) / 1000);
+  if (!db.some((d) => d <= MUTED)) return samples;
+  const room = roomOf(db);
+  if (room <= MUTED) return samples;
+  // Noise with the room's power: a frame's dB is its mean square.
+  const level = Math.sqrt(10 ** (room / 10));
+  const out = Float32Array.from(samples);
+  // A fixed sequence, so the same take is always read the same way.
+  let seed = 1;
+  let low = 0;
+  for (let f = 0; f < db.length; f++) {
+    if (db[f] > MUTED) continue;
+    for (let i = f * size; i < (f + 1) * size; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      // Soft, low noise, as a room's is, scaled back to the room's power.
+      low = 0.9 * low + 0.1 * ((seed / 0x7fffffff) * 2 - 1);
+      out[i] = low * level * 5.5;
+    }
+  }
+  return out;
 }
 
 /** The stretches louder than the room: where anything was said, and where anything else was. */

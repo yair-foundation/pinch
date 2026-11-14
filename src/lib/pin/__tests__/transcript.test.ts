@@ -193,6 +193,23 @@ describe('transcript: words that look invented', () => {
       assert.equal(wordsLookWrong(said(text)), false, text);
     assert.equal(wordsLookWrong([]), false);
   });
+
+  it('leaves a phrase said again after a pause or a turn (D199)', () => {
+    // "Delete this slide." over three slides in a row, with a pause before each.
+    const again = (phrase: string, times: number, gap: number): TimedWord[] =>
+      Array.from({ length: times }).flatMap((_, k) =>
+        phrase.split(' ').map((w, i) => {
+          const start = k * (phrase.split(' ').length * 300 + gap) + i * 300;
+          return { text: w, start, end: start + 250 };
+        }),
+      );
+    assert.equal(wordsLookWrong(again('Delete this slide.', 3, 2000)), false);
+    assert.equal(wordsLookWrong(again('Okay.', 6, 1600)), false);
+    // Said quickly on each screen, the reel turning between them.
+    const quick = again('Delete this slide.', 3, 400);
+    assert.equal(wordsLookWrong(quick), true);
+    assert.equal(wordsLookWrong(quick, [1100, 2400]), false);
+  });
 });
 
 describe('transcript: by screen', () => {
