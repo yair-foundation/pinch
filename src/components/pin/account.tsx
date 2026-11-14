@@ -200,7 +200,8 @@ export function Avatar({ me, className }: { me: Me | null; className?: string })
       ) : user ? (
         (user.name || user.email).charAt(0)
       ) : (
-        <CircleUserRound className="size-[60%] text-muted-foreground" />
+        // In the avatar's own colour, not muted: an icon needs 3:1 against what it sits on (D205).
+        <CircleUserRound className="size-[60%]" />
       )}
     </span>
   );
@@ -332,12 +333,19 @@ export function AccountMenu({
         onClick={() => setOpen(!open)}
         className={cn(
           hit,
-          'flex items-center justify-center rounded-full outline-none transition-[box-shadow] duration-150 motion-reduce:transition-none hover:ring-2 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring',
-          landing ? 'size-7' : 'size-8',
-          open && 'ring-2 ring-border',
+          'flex items-center justify-center rounded-full outline-none transition-[box-shadow,background-color] duration-150 motion-reduce:transition-none',
+          // On the landing, in its language: white in an ink ring, butter on hover, the violet
+          // focus ring of its buttons (D205).
+          landing
+            ? 'size-10 border-2 border-[#17131f] bg-white text-[#17131f] hover:bg-[#ffc93c] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#5a32d1]'
+            : 'size-8 hover:ring-2 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring',
+          open && (landing ? 'bg-[#ffc93c]' : 'ring-2 ring-border'),
         )}
       >
-        <Avatar me={me} className="size-full text-[13px]" />
+        <Avatar
+          me={me}
+          className={cn('size-full text-[13px]', landing && 'bg-transparent text-inherit')}
+        />
       </button>
       {open && (
         <div
@@ -378,17 +386,20 @@ export function AccountMenu({
                   <Knob on={suggestions.on} />
                 </button>
               )}
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={dark}
-                onClick={() => setTheme(dark ? 'light' : 'dark')}
-                className={item}
-              >
-                <Moon aria-hidden />
-                <span className="flex-1">Dark mode</span>
-                <Knob on={dark} />
-              </button>
+              {/* The landing keeps its own look in both themes (D169), so the switch is only in the tool (D207). */}
+              {!landing && (
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={dark}
+                  onClick={() => setTheme(dark ? 'light' : 'dark')}
+                  className={item}
+                >
+                  <Moon aria-hidden />
+                  <span className="flex-1">Dark mode</span>
+                  <Knob on={dark} />
+                </button>
+              )}
               <button type="button" role="menuitem" onClick={choose(onShortcuts)} className={item}>
                 <Keyboard aria-hidden />
                 <span className="flex-1">Keyboard shortcuts</span>

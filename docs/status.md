@@ -6,6 +6,16 @@ Since D198 a spot with no text under it keeps the colour under the pointer in it
 
 Since D197 the package is tested end to end: `pnpm test:e2e` runs three made-up takes through the app's own placing and Export in headless Chromium and holds each zip to what its take should make. It found, and this fixes, two near spots made one, a note taken back joined to the note it takes back, and one silent screen called "they".
 
+Since D207 the Dark mode switch is in the account menu only on the reel. Since D206 a take begins with "Point at it. Say why." shimmering beside the waveform, whose bars now rise and fall in place, a 2 px strip under the header shows how far through the batch the reel is, and tooltips are one line that goes once its button is used.
+
+Since D204 images chosen in the picker, from the landing or the reel's plus, load under a modal with the View-Master taking the screens in and how far they have come. Since D205 the landing's account button is white in an ink ring and its menu opens over the title.
+
+Since D202 and D203 the reel's keys are large chips, named on hover and lit while held, the legend is a question mark beside the plus, its tooltips are white in dark and black in light, a click outside closes the legend, and the last card has a drawing in the landing's language.
+
+Since D201 the reel's edge cards stay clear of the middle one on a narrower window, and a plus at its top right adds images.
+
+Since D199 the reel's state, clock and screen count sit at the top centre, Start over (Backspace) is at the bottom left, and since D200 the toast says what it removed, with Undo, the clock shows only the time talked, and a take recorded in holds reads word for word as it does hands-free: muted stretches get the room's level before reading. "These words look wrong" is now "Some words repeat as if misheard", and only for a loop, not a phrase said again after a pause or a turn. Checked with a stand-in microphone; not with a real one.
+
 Since D196 Space is held to talk and let go to stop, after Wispr Flow: the microphone is muted at once and the take keeps time for a few seconds so the notes are still cut where the author stopped; R still records hands-free. Backspace, or Talk again at the top, drops the recording and goes back to the first screen, with Undo until the next recording. While recording, a waveform shows what the microphone hears. After Finish one bar shows the words being read, with a percentage where the browser reads them, then the package being put together, so Export only downloads it. Checked on a production build with a stand-in microphone, light and dark; not with a real microphone.
 
 Since D195 a note said aloud that plainly says something is right begins "This is right:", or "Partly right:" where only some of it does; one put to the reader begins "A question:"; and a note that begins "Actually" or "Sorry" is tied to the note before it on its screen, both ways. `notes.md` says how many there are, only where a take has any. On the author's three reviews nine notes are marked right and all nine are, with no correction marked. Not run through the taste harness or on the live site.

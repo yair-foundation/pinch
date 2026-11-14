@@ -17,6 +17,7 @@ import {
 } from '@/lib/pin/model';
 import { assetsOf, readExport } from '@/lib/pin/import';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
+import { clockText } from '@/lib/pin/narration';
 import { unzip } from '@/lib/pin/unzip';
 import { applyTake, flipVerdict, removedScreens, takesApplied } from '@/lib/pin/voice-notes';
 import { isPdf } from '@/lib/pin/pdf-pages';
@@ -45,6 +46,7 @@ import { DesktopOnly } from './desktop-only';
 import { Dialog, hit } from './dialog';
 import { pdfPages } from './pdf';
 import { Reel } from './reel';
+import { type ReelLoad, ReelLoading } from './reel-loading';
 import {
   buildExport,
   download,
@@ -231,6 +233,13 @@ const TAB_ID = newId();
 type DialogKind = 'shortcuts' | 'privacy' | 'home' | 'delete';
 
 /** A short digest of the session's notes, to tell whether anything changed since the last export. */
+/**
+ * How long loading the reel shows at least once files are chosen, so a quick load still shows its
+ * screens going in, and how long "Reel's in" holds before it goes (D204).
+ */
+const LOAD_SHOWN = 1800;
+const DONE_SHOWN = 700;
+
 /** A take's package, put together and waiting to be downloaded (D196). */
 type TakePack = { digest: string; blob: Blob; name: string; notes: number; missing: number };
 
@@ -251,6 +260,10 @@ function Workspace() {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Status>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  // Loading the reel (D204): shown from the picker's opening until what was chosen is in.
+  const [load, setLoad] = useState<ReelLoad | null>(null);
+  // Whether the files coming in were picked with the picker, so their progress shows there.
+  const picked = useRef(false);
   // The one dialog open, and what had focus before it, so closing it puts focus back.
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -658,11 +671,13 @@ function Workspace() {
         try {
           files.push(
             ...(await pdfPages(file, (page, pages) =>
-              setStatus({
-                tone: 'info',
-                text: `Reading ${file.name}: page ${page} of ${pages}…`,
-                sticky: true,
-              }),
+              picked.current
+                ? setLoad({ phase: 'loading', done: page, total: pages, pdf: true })
+                : setStatus({
+                    tone: 'info',
+                    text: `Reading ${file.name}: page ${page} of ${pages}…`,
+                    sticky: true,
+                  }),
             )),
           );
         } catch {
@@ -695,7 +710,8 @@ function Workspace() {
       const source: Source | undefined = open ? { kind: open.kind } : undefined;
       // And its tag (D100), for the same reason.
       const screenTag = cleanScreenTag(assetsRef.current[indexRef.current]?.screenTag);
-      for (const file of images) {
+      for (const [k, file] of images.entries()) {
+        if (picked.current) setLoad({ phase: 'loading', done: k, total: images.length });
         const name = file.name || 'Pasted image.png';
         if (isSvg(file)) {
           failed.push(`${name} (SVG isn't supported)`);
@@ -756,6 +772,28 @@ function Workspace() {
     [commit, openExport],
   );
 
+  /** The picker; loading the reel shows once files are chosen in it (D204). */
+  const openPicker = useCallback(() => fileInput.current?.click(), []);
+  const closeLoad = useCallback(() => {
+    picked.current = false;
+    setLoad(null);
+  }, []);
+  /** What the picker gave, loaded with its progress shown, and the modal held long enough to read. */
+  const addPicked = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      const from = performance.now();
+      picked.current = true;
+      setLoad({ phase: 'loading', done: 0, total: files.length });
+      try {
+        await addFiles(files);
+      } finally {
+        setLoad({ phase: 'done' });
+        window.setTimeout(closeLoad, Math.max(DONE_SHOWN, LOAD_SHOWN - (performance.now() - from)));
+      }
+    },
+    [addFiles, closeLoad],
+  );
   // The site's shell opens a docs search on ⌘K; Pinch is its own site, so that key does nothing here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -818,6 +856,8 @@ function Workspace() {
     });
   };
 
+  // The toast saying Start over dropped a recording, so it goes once that can't be undone (D200).
+  const dropToast = useRef<Status>(null);
   // How far the package of this take has come, while it is put together (D196).
   const [packing, setPacking] = useState<{ done: number; total: number } | null>(null);
   // The package of the batch as it is now, built once and kept until the notes change (D196).
@@ -957,11 +997,13 @@ function Workspace() {
     >
       {/* While a dialog is open, everything behind it is inert: no focus, no clicks, nothing read. */}
       <header
-        inert={dialog !== null}
+        inert={dialog !== null || load !== null}
         className={cn(
           'flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1',
+          // Over the landing's title, its marks and its cursor, so the account menu opens on
+          // top (D205); under the toast and the loading modal.
           landing
-            ? 'absolute inset-x-0 top-0 z-10 h-16 px-6 py-0 sm:px-[8vw]'
+            ? 'absolute inset-x-0 top-0 z-[35] h-16 px-6 py-0 sm:px-[8vw]'
             : 'border-b border-border',
         )}
       >
@@ -1029,7 +1071,7 @@ function Workspace() {
           tabIndex={-1}
           aria-hidden
           onChange={(e) => {
-            addFiles([...(e.target.files ?? [])]);
+            void addPicked([...(e.target.files ?? [])]);
             e.target.value = '';
           }}
         />
@@ -1039,7 +1081,7 @@ function Workspace() {
         // The session can't be kept: a banner, not a toast, because it holds for the whole visit.
         <p
           role="status"
-          inert={dialog !== null}
+          inert={dialog !== null || load !== null}
           className="m-0 shrink-0 border-b border-border bg-muted/60 px-4 py-2 text-center text-[13px] text-foreground"
         >
           This browser blocks storage, so your session lasts until you close the tab. Export
@@ -1051,8 +1093,12 @@ function Workspace() {
         // A toast: it floats over the page, so a message never moves the layout.
         <div
           role={status.tone === 'error' ? 'alert' : 'status'}
-          inert={dialog !== null}
-          className="fixed bottom-4 left-1/2 z-30 flex w-max max-w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground shadow-lg dark:shadow-none"
+          inert={dialog !== null || load !== null}
+          className={cn(
+            // Over the reel it sits just above the keys at its foot (D199, D202).
+            asset ? 'bottom-20' : 'bottom-4',
+            'fixed left-1/2 z-30 flex w-max max-w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground shadow-lg dark:shadow-none',
+          )}
         >
           <span className="min-w-0 flex-1">{status.text}</span>
           {status.action && (
@@ -1087,8 +1133,8 @@ function Workspace() {
       {!asset ? (
         <Landing
           dragging={dragging}
-          inert={dialog !== null}
-          onChoose={() => fileInput.current?.click()}
+          inert={dialog !== null || load !== null}
+          onChoose={openPicker}
         />
       ) : (
         // The walkthrough (D131): the batch on a reel, talked through with the microphone on.
@@ -1096,7 +1142,7 @@ function Workspace() {
           assets={assets}
           urls={urls}
           index={index}
-          inert={dialog !== null}
+          inert={dialog !== null || load !== null}
           onIndex={setIndex}
           onSave={store.saveTake}
           onTake={(take) => {
@@ -1127,8 +1173,22 @@ function Workspace() {
           onExport={() => void exportTake()}
           onPrepare={() => void packTake().catch(() => undefined)}
           packing={packing}
+          onDropped={({ talkedMs, notes, undo }) => {
+            const said: Status = {
+              tone: 'info',
+              text: notes
+                ? `Started over. The ${clockText(talkedMs)} take and its notes are removed.`
+                : `Started over. The ${clockText(talkedMs)} recording is removed.`,
+              action: { label: 'Undo', run: undo },
+            };
+            dropToast.current = said;
+            setStatus(said);
+          }}
+          onDropGone={() => setStatus((s) => (s === dropToast.current ? null : s))}
+          onAdd={openPicker}
         />
       )}
+      {load && <ReelLoading load={load} />}
       {dialog === 'shortcuts' && (
         <ShortcutsDialog mac={mac} opener={opener.current} onClose={closeDialog} />
       )}
@@ -1266,7 +1326,7 @@ const SHORTCUTS: { group: string; rows: ShortcutRow[] }[] = [
     rows: [
       { combos: [['Space']], what: 'Hold to talk, let go to pause' },
       { combos: [['R']], what: 'Record hands-free, or pause' },
-      { combos: [['⌫']], what: 'Talk again, from the first screen' },
+      { combos: [['⌫']], what: 'Start over, from the first screen' },
       { combos: [['Esc']], what: 'Stop the count' },
     ],
   },

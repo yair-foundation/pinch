@@ -22,13 +22,14 @@ Geist for all text in the tool (`--font-sans`) and Geist Mono for keyboard hints
 | Body, labels, fields | 13–14px | everywhere |
 | Meta (counts, hints) | 13px muted | header, panel |
 | Keyboard key | 12px mono in a bordered chip | `Kbd` |
+| The reel's keys | 15px mono in a 40px chip, named on hover, filled while held (D202) | `BarKey` in `reel.tsx` |
 
 - **13px is the floor.** Smaller only for secondary information the user can do without (a footnote); never a label, value, action or warning. 
 - Placeholders (a grey suggestion, an example) render muted and regular weight.
 
 ## The landing
 
-The landing keeps its own look in both themes (D169), in `landing.tsx`, `landing-art.tsx` and `landing.css`, and so does the message phones get (D170, `desktop-only.tsx`): flat lilac with butter yellow and violet, thick-outlined drawings with some humour, Bricolage Grotesque for titles and big numbers, and Figtree for text. The rules on this page about neutral surfaces, Geist and the type roles are for the tool, where a surface around a screenshot has to stay out of the way. Contrast, keyboard use, hit areas, reduced motion and the copy rules hold here too.
+The landing keeps its own look in both themes (D169), in `landing.tsx`, `landing-art.tsx` and `landing.css`, and so does the message phones get (D170, `desktop-only.tsx`): flat lilac with butter yellow and violet, thick-outlined drawings with some humour, Bricolage Grotesque for titles and big numbers, and Figtree for text. The rules on this page about neutral surfaces, Geist and the type roles are for the tool, where a surface around a screenshot has to stay out of the way. The reel's last card is the one exception (D203): the landing's kind of drawing, a View-Master in its ink and fills, where no screenshot is on show. Contrast, keyboard use, hit areas, reduced motion and the copy rules hold here too.
 
 ## Colour
 
@@ -48,7 +49,7 @@ Tokens only (`text-foreground`, `text-muted-foreground`, `bg-background`, `bg-mu
 
 ## Motion
 
-- Short and purposeful: the landing's take acted out, a cursor marking spots while a sound wave moves, and the small pieces falling from its pinch (D169, the one decorative scene), the shimmer while rules load, the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). The reel's waveform while recording and the spinner and filling bar of a wait after Finish (D196) are feedback, not decoration. No other decorative motion.
+- Short and purposeful: the landing's take acted out, a cursor marking spots while a sound wave moves, and the small pieces falling from its pinch (D169, the one decorative scene), the shimmer while rules load and over the reel's hint as a take begins (D206), the 700 ms sunrise and sunset of the sun and moon icons in the theme switch and of the logo's two theme colours, the 700 ms colour fade of the landing pills, `animate-in` fades on tooltips, the fade-in of each picture in the gallery as it loads (D132). The reel's waveform while recording and the spinner and filling bar of a wait after Finish (D196) are feedback, not decoration. The View-Master on the reel's last card plays once as the card comes into view (D203), and takes screenshots into its slot on a loop while picked images load (D204): the two decorative moves in the tool, both still under reduced motion. No other decorative motion.
 - **Reduced motion is honoured.** The theme icons and the logo swap without moving; spinners hide under `motion-reduce:hidden` and a progress bar fills without sliding; the reel's waveform keeps moving, as it is what the microphone hears, and "Recording" says the same in words; on the landing every mark stands there, the wave lies flat, and the pieces and buttons don't move; the shimmer and the gallery's fade-in stand still under `prefers-reduced-motion`; nothing needed is conveyed by motion alone.
 
 ## Icons
