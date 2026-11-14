@@ -19,6 +19,7 @@ import { assetsOf, readExport } from '@/lib/pin/import';
 import { changedEntries, fingerprint, logEntries, MAX_BATCH } from '@/lib/pin/notes-log';
 import { clockText } from '@/lib/pin/narration';
 import { unzip } from '@/lib/pin/unzip';
+import { imagesInZip, isPinchExport } from '@/lib/pin/zip-images';
 import { applyTake, flipVerdict, removedScreens, takesApplied } from '@/lib/pin/voice-notes';
 import { isPdf } from '@/lib/pin/pdf-pages';
 import {
@@ -204,7 +205,7 @@ const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|bmp|heic|heif|tiff?)$/i;
 const isSvg = (f: File) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name);
 const isImageFile = (f: File) =>
   f.type.startsWith('image/') || (!f.type && IMAGE_EXT.test(f.name)) || isSvg(f);
-/** A zip: a Pinch export to open, by its type or, when the type is blank or generic, its name. */
+/** A zip, by its type or, when the type is blank or generic, its name: an export or screenshots (D208). */
 const isZip = (f: File) => /zip/.test(f.type) || /\.zip$/i.test(f.name);
 
 /** Whether this browser says it is a small or touch device: a phone or a tablet, not a narrow window. */
@@ -612,11 +613,10 @@ function Workspace() {
    * images do, so a batch can move between browsers. The zip is read here and kept nowhere.
    */
   const openExport = useCallback(
-    async (file: File) => {
+    async (file: File, files: Map<string, Uint8Array>) => {
       setStatus({ tone: 'info', text: `Opening ${file.name}…`, sticky: true });
       let found: ReturnType<typeof assetsOf>;
       try {
-        const files = await unzip(await file.arrayBuffer());
         found = assetsOf(readExport(files), files, newId);
       } catch (e) {
         setStatus({ tone: 'error', text: `Couldn't open ${file.name}. ${(e as Error).message}` });
@@ -657,13 +657,42 @@ function Workspace() {
     [commit],
   );
 
+  /**
+   * A zip: a Pinch export opens into the session, with its notes; any other zip is read for the
+   * images and PDFs in it, which come back to be added as if chosen one by one (D208).
+   */
+  const filesOfZip = useCallback(
+    async (file: File): Promise<File[]> => {
+      let files: Map<string, Uint8Array>;
+      try {
+        files = await unzip(await file.arrayBuffer());
+      } catch (e) {
+        setStatus({ tone: 'error', text: `Couldn't open ${file.name}. ${(e as Error).message}` });
+        return [];
+      }
+      if (isPinchExport(files)) {
+        await openExport(file, files);
+        return [];
+      }
+      const images = imagesInZip(files);
+      if (!images.length) {
+        setStatus({ tone: 'error', text: `${file.name} has no images or PDFs in it.` });
+        return [];
+      }
+      return images.map((i) => new File([i.bytes as BlobPart], i.name, { type: i.type }));
+    },
+    [openExport],
+  );
+
   const addFiles = useCallback(
     async (dropped: File[]) => {
-      for (const file of dropped.filter(isZip)) await openExport(file);
+      // A zip's screenshots join the files around it, in the order they were in it (D208).
+      const fromZips: File[] = [];
+      for (const file of dropped.filter(isZip)) fromZips.push(...(await filesOfZip(file)));
       // A PDF is its pages, each a screenshot of its own, in order (D139).
       const files: File[] = [];
       const unreadable: string[] = [];
-      for (const file of dropped.filter((f) => !isZip(f))) {
+      for (const file of [...dropped.filter((f) => !isZip(f)), ...fromZips]) {
         if (!isPdf(file)) {
           files.push(file);
           continue;
@@ -769,7 +798,7 @@ function Workspace() {
       const trouble = failed.length > 0 || skipped > 0 || full;
       setStatus({ tone: trouble ? 'error' : 'info', text: lines.join(' ') });
     },
-    [commit, openExport],
+    [commit, filesOfZip],
   );
 
   /** The picker; loading the reel shows once files are chosen in it (D204). */

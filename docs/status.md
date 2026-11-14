@@ -6,6 +6,8 @@ Since D198 a spot with no text under it keeps the colour under the pointer in it
 
 Since D197 the package is tested end to end: `pnpm test:e2e` runs three made-up takes through the app's own placing and Export in headless Chromium and holds each zip to what its take should make. It found, and this fixes, two near spots made one, a note taken back joined to the note it takes back, and one silent screen called "they".
 
+Since D208 a zip of screenshots, not only a Pinch export, can be dropped or chosen: its images and PDFs come in, in name order.
+
 Since D207 the Dark mode switch is in the account menu only on the reel. Since D206 a take begins with "Point at it. Say why." shimmering beside the waveform, whose bars now rise and fall in place, a 2 px strip under the header shows how far through the batch the reel is, and tooltips are one line that goes once its button is used.
 
 Since D204 images chosen in the picker, from the landing or the reel's plus, load under a modal with the View-Master taking the screens in and how far they have come. Since D205 the landing's account button is white in an ink ring and its menu opens over the title.
